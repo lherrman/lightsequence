@@ -1,9 +1,12 @@
+import json
 import logging
+import os
 import time
 import typing as t
+from pathlib import Path
 
-from controller.daslight import Daslight
-from controller.launchpad import LaunchpadMK2, ButtonType
+from daslight import Daslight
+from launchpad import LaunchpadMK2, ButtonType
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -23,8 +26,167 @@ class LightController:
         self.midi_software = Daslight()
         self.launchpad = LaunchpadMK2()
         self.active_preset: t.Optional[t.List[int]] = None
+        self.active_scenes: t.Set[t.Tuple[int, int]] = (
+            set()
+        )  # Track active scene coordinates
 
         self.save_button_state = False  # Track save button state
+        self.preset_file = Path(__file__).parent / "presets.json"
+
+    def _load_presets(self) -> t.Dict[str, t.Any]:
+        """Load presets from JSON file."""
+        try:
+            if self.preset_file.exists():
+                with open(self.preset_file, "r") as f:
+                    content = f.read().strip()
+                    if not content:
+                        # File exists but is empty
+                        logger.info("Presets file is empty, creating default structure")
+                        return {"presets": []}
+                    data = json.loads(content)
+                    # Ensure the data has the expected structure
+                    if not isinstance(data, dict) or "presets" not in data:
+                        logger.warning(
+                            "Invalid presets file format, creating default structure"
+                        )
+                        return {"presets": []}
+                    return data
+            else:
+                # File doesn't exist, create default structure
+                logger.info("Presets file doesn't exist, will create it when saving")
+                return {"presets": []}
+        except (json.JSONDecodeError, Exception) as e:
+            logger.error(f"Error loading presets: {e}, using default structure")
+            return {"presets": []}
+
+    def _save_presets(self, presets_data: t.Dict[str, t.Any]) -> None:
+        """Save presets to JSON file."""
+        try:
+            # Ensure the directory exists
+            preset_dir = self.preset_file.parent
+            if preset_dir and not preset_dir.exists():
+                preset_dir.mkdir(parents=True, exist_ok=True)
+
+            # Ensure the data has the correct structure
+            if not isinstance(presets_data, dict):
+                presets_data = {"presets": []}
+            if "presets" not in presets_data:
+                presets_data["presets"] = []
+
+            # Validate the presets data structure before saving
+            for i, preset in enumerate(presets_data["presets"]):
+                if not isinstance(preset, dict):
+                    logger.error(f"Invalid preset at index {i}: not a dictionary")
+                    continue
+                if "index" not in preset or "scenes" not in preset:
+                    logger.error(
+                        f"Invalid preset at index {i}: missing required fields"
+                    )
+                    continue
+                if not isinstance(preset["index"], list) or not isinstance(
+                    preset["scenes"], list
+                ):
+                    logger.error(
+                        f"Invalid preset at index {i}: index or scenes not a list"
+                    )
+                    continue
+
+            # Write to a temporary file first, then rename to avoid corruption
+            temp_file = self.preset_file.with_suffix(".tmp")
+            with open(temp_file, "w", encoding="utf-8") as f:
+                json.dump(presets_data, f, indent=4, ensure_ascii=False)
+
+            # Atomic rename to replace the original file
+            temp_file.replace(self.preset_file)
+            logger.info("Presets saved successfully")
+        except Exception as e:
+            logger.error(f"Error saving presets: {e}")
+            # Clean up temporary file if it exists
+            temp_file = self.preset_file.with_suffix(".tmp")
+            if temp_file.exists():
+                try:
+                    temp_file.unlink()
+                except Exception:
+                    pass
+
+    def _get_preset_by_index(
+        self, index: t.List[int]
+    ) -> t.Optional[t.Dict[str, t.Any]]:
+        """Get preset by index coordinates."""
+        presets_data = self._load_presets()
+        for preset in presets_data.get("presets", []):
+            if preset.get("index") == index:
+                return preset
+        return None
+
+    def _save_preset(self, index: t.List[int], scenes: t.List[t.List[int]]) -> None:
+        """Save or update a preset with given scenes."""
+        try:
+            # Validate input parameters
+            if not isinstance(index, list) or len(index) < 2:
+                logger.error(f"Invalid index format: {index}")
+                return
+
+            if not isinstance(scenes, list):
+                logger.error(f"Invalid scenes format: {scenes}")
+                return
+
+            # Validate scene coordinates
+            valid_scenes = []
+            for scene in scenes:
+                if isinstance(scene, list) and len(scene) >= 2:
+                    valid_scenes.append([int(scene[0]), int(scene[1])])
+                else:
+                    logger.warning(f"Skipping invalid scene format: {scene}")
+
+            presets_data = self._load_presets()
+
+            # Find existing preset or create new one
+            preset_found = False
+            for preset in presets_data["presets"]:
+                if preset["index"] == index:
+                    preset["scenes"] = valid_scenes
+                    preset_found = True
+                    logger.info(f"Updated existing preset {index}")
+                    break
+
+            if not preset_found:
+                new_preset = {
+                    "index": [int(index[0]), int(index[1])],
+                    "scenes": valid_scenes,
+                }
+                presets_data["presets"].append(new_preset)
+                logger.info(f"Created new preset {index}")
+
+            self._save_presets(presets_data)
+            logger.info(f"Preset {index} saved with {len(valid_scenes)} scenes")
+        except Exception as e:
+            logger.error(f"Error in _save_preset: {e}")
+
+    def _update_preset_leds_for_save_mode(self) -> None:
+        """Update preset button LEDs when in save mode to show which have presets."""
+        if not self.save_button_state:
+            return
+
+        presets_data = self._load_presets()
+        preset_indices = {
+            tuple(preset["index"]): True for preset in presets_data.get("presets", [])
+        }
+
+        # Light up all preset buttons that have presets saved
+        for x in range(8):
+            for y in range(3):
+                coords = [x, y]
+                if tuple(coords) in preset_indices:
+                    # Preset exists - make it glow
+                    self.launchpad.set_button_led(
+                        ButtonType.PRESET, coords, [0.0, 0.0, 1.0]
+                    )  # Blue
+                else:
+                    # No preset - turn off
+                    self.launchpad.set_button_led(
+                        ButtonType.PRESET, coords, self.COLOR_PRESET_OFF
+                    )
 
     def connect(self) -> bool:
         """Connect to both MIDI and Launchpad devices."""
@@ -46,10 +208,22 @@ class LightController:
             self.midi_software.send_scene_command(coord_tuple)
 
     def _handle_preset_button(self, coords: t.List[int], active: bool) -> None:
-        """Handle preset button press with toggle functionality."""
+        """Handle preset button press with toggle functionality and save mode."""
         if not active:
             return
 
+        # If in save mode, save current active scenes to this preset
+        if self.save_button_state:
+            active_scene_list = [[scene[0], scene[1]] for scene in self.active_scenes]
+            self._save_preset(coords, active_scene_list)
+            logger.info(f"Saved {len(active_scene_list)} scenes to preset {coords}")
+
+            self.save_button_state = False
+            SAVE_BUTTON = [0, 0]  # Example: top-left button as save button
+            self.launchpad.set_button_led(ButtonType.TOP, SAVE_BUTTON, [0.0, 0.0, 0.0])
+            return
+
+        # Normal preset activation/deactivation logic
         # Clear previous preset LED
         if self.active_preset:
             self.launchpad.set_button_led(
@@ -62,21 +236,63 @@ class LightController:
             self.launchpad.set_button_led(
                 ButtonType.PRESET, coords, self.COLOR_PRESET_OFF
             )
+            self.midi_software.send_scene_command((7, 0))
             logger.debug(f"Preset {coords} deactivated")
             return
 
         # Activate new preset
         self.active_preset = coords.copy()
+
+        # send blackout (7,0)
+        self.midi_software.send_scene_command((7, 0))
         self.launchpad.set_button_led(ButtonType.PRESET, coords, self.COLOR_PRESET_ON)
+
+        # Load and activate scenes from the preset
+        preset = self._get_preset_by_index(coords)
+        if preset and "scenes" in preset:
+            for scene_coords in preset["scenes"]:
+                if len(scene_coords) >= 2:
+                    scene_tuple = (scene_coords[0], scene_coords[1])
+                    self.midi_software.send_scene_command(scene_tuple)
+                    self.active_scenes.add(scene_tuple)
+                    # Use abstracted LED control with relative coordinates
+                    color = self.COLOR_SCENE_ON
+                    coords_list = [scene_coords[0], scene_coords[1]]
+                    self.launchpad.set_button_led(ButtonType.SCENE, coords_list, color)
+            logger.info(
+                f"Activated preset {coords} with {len(preset['scenes'])} scenes"
+            )
+
         logger.debug(f"Preset {coords} activated")
 
     def _handle_top_button(self, coords: t.List[int], is_pressed: bool) -> None:
         """Handle top button press - light up when pressed, turn off when released."""
+
         SAVE_BUTTON = [0, 0]  # Example: top-left button as save button
-        if coords == SAVE_BUTTON and is_pressed:
-            self.save_button_state = not self.save_button_state
-            color = [1.0, 0.0, 0.0] if self.save_button_state else [0.0, 0.0, 0.0]
-            self.launchpad.set_button_led(ButtonType.TOP, coords, color)
+        if coords == SAVE_BUTTON:
+            if is_pressed:
+                self.save_button_state = not self.save_button_state
+                color = [1.0, 0.0, 0.0] if self.save_button_state else [0.0, 0.0, 0.0]
+                self.launchpad.set_button_led(ButtonType.TOP, coords, color)
+
+                # Update preset LEDs based on save mode
+                if self.save_button_state:
+                    self._update_preset_leds_for_save_mode()
+            else:
+                # Clear all preset LEDs when exiting save mode
+                for x in range(8):
+                    for y in range(3):
+                        preset_coords = [x, y]
+                        if self.active_preset == preset_coords:
+                            # Keep active preset lit
+                            self.launchpad.set_button_led(
+                                ButtonType.PRESET, preset_coords, self.COLOR_PRESET_ON
+                            )
+                        else:
+                            self.launchpad.set_button_led(
+                                ButtonType.PRESET, preset_coords, self.COLOR_PRESET_OFF
+                            )
+                self.save_button_state = False
 
     def _process_button_event(self, button_event: t.Dict[str, t.Any]) -> None:
         """Process a button event based on its type."""
@@ -98,6 +314,12 @@ class LightController:
         for note, state in changes.items():
             scene_coords = self.midi_software.get_scene_coordinates_for_note(note)
             if scene_coords:
+                # Update active scenes tracking
+                if state:
+                    self.active_scenes.add(scene_coords)
+                else:
+                    self.active_scenes.discard(scene_coords)
+
                 # Use abstracted LED control with relative coordinates
                 color = self.COLOR_SCENE_ON if state else self.COLOR_SCENE_OFF
                 coords_list = [scene_coords[0], scene_coords[1]]
