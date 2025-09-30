@@ -69,12 +69,16 @@ class LightController:
         logger.debug(f"Preset {coords} activated")
 
     def _handle_top_button(self, coords: t.List[int], active: bool) -> None:
-        """make pressed button stay lit"""
-        if len(coords) >= 2 and active:
-            logger.debug(f"Top button {coords} pressed")
-            self.launchpad.set_button_led(
-                ButtonType.TOP, coords, [0.0, 0.0, 1.0]
-            )  # Blue
+        """Handle top button press - light up when pressed, turn off when released."""
+        if len(coords) >= 2:
+            if active:
+                logger.debug(f"Top button {coords} pressed")
+                # Light up blue when pressed
+                self.launchpad.set_button_led(ButtonType.TOP, coords, [0.0, 0.0, 1.0])
+            else:
+                logger.debug(f"Top button {coords} released")
+                # Turn off when released
+                self.launchpad.set_button_led(ButtonType.TOP, coords, [0.0, 0.0, 0.0])
 
     def _process_button_event(self, button_event: t.Dict[str, t.Any]) -> None:
         """Process a button event based on its type."""
@@ -125,6 +129,20 @@ class LightController:
             logger.info("Shutting down light controller...")
         finally:
             self.cleanup()
+
+    def get_pressed_buttons_info(self) -> str:
+        """Get information about all currently pressed buttons."""
+        pressed = self.launchpad.get_pressed_buttons()
+        if not pressed:
+            return "No buttons currently pressed"
+
+        info_lines = [f"Currently pressed buttons ({len(pressed)}):"]
+        for button in pressed:
+            button_type = button["type"]
+            coords = button["index"]
+            info_lines.append(f"  {button_type.value}: {coords}")
+
+        return "\n".join(info_lines)
 
     def cleanup(self) -> None:
         """Clean up resources."""

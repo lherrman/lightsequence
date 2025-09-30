@@ -21,6 +21,10 @@ class LaunchpadMK2:
         self.BOUNDS_PRESETS = np.array([[0, 6], [7, 8]])
         self.BOUNDS_TOP = np.array([[0, 0], [7, 0]])
         self.BOUNDS_RIGHT = np.array([[8, 1], [8, 8]])
+
+        # Track pressed buttons state: {(button_type, rel_x, rel_y): True}
+        self._pressed_buttons: t.Dict[t.Tuple[ButtonType, int, int], bool] = {}
+
         self.connect()
 
     def connect(self) -> bool:
@@ -163,9 +167,48 @@ class LaunchpadMK2:
                     y - self.BOUNDS_RIGHT[0][1],
                 ]
 
+            # Update button state tracking
+            button_key = (button_type, relative_coords[0], relative_coords[1])
+            if state:
+                self._pressed_buttons[button_key] = True
+            else:
+                self._pressed_buttons.pop(button_key, None)
+
             return {"type": button_type, "index": relative_coords, "active": state}
 
         return None
+
+    def get_pressed_buttons(self) -> t.List[t.Dict[str, t.Any]]:
+        """
+        Get all currently pressed buttons.
+
+        Returns:
+            List of button dictionaries with 'type' and 'index' keys
+        """
+        pressed = []
+        for button_type, rel_x, rel_y in self._pressed_buttons.keys():
+            pressed.append({"type": button_type, "index": [rel_x, rel_y]})
+        return pressed
+
+    def is_button_pressed(self, button_type: ButtonType, coords: t.List[int]) -> bool:
+        """
+        Check if a specific button is currently pressed.
+
+        Args:
+            button_type: The type of button
+            coords: Relative coordinates [x, y]
+
+        Returns:
+            True if the button is currently pressed
+        """
+        if len(coords) < 2:
+            return False
+        button_key = (button_type, coords[0], coords[1])
+        return button_key in self._pressed_buttons
+
+    def clear_pressed_buttons(self) -> None:
+        """Clear all tracked pressed button states."""
+        self._pressed_buttons.clear()
 
 
 if __name__ == "__main__":
