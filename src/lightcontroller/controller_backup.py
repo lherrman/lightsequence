@@ -4,7 +4,7 @@ Core lighting controller with MIDI integration
 
 import logging
 import threading
-from typing import Optional
+from typing import Set, Optional
 from dataclasses import dataclass
 
 try:
@@ -26,7 +26,7 @@ except ImportError:
 
 from .config import Config, Scene, Preset
 from .launchpad import LaunchpadMK2, LaunchpadColor
-# Simulator removed - now using automatic scene system
+from .simulator import Simulator
 from .scene_manager import SceneManager
 from .preset_manager import PresetManager
 
