@@ -80,7 +80,9 @@ BUTTON_PRESETS_MAP = {
     (7, 8): 18,
 }
 
-preset_states = np.zeros((8, 3), dtype=bool)
+
+COLOR_PRESET_ON = [0.1, 1.0, 0.0]  # Yellow
+COLOR_PRESET_OFF = [0.0, 0.0, 0.0]  # Off
 
 
 def main():
@@ -89,28 +91,32 @@ def main():
     changes = midi_software.process_feedback()
 
     launchpad = LaunchpadMK2()
-
+    active_preset = None
     while True:
-        changes = launchpad.get_buttons()
-        if changes:
+        button_event = launchpad.get_button_events()
+        if button_event:
             # send to DasLight
-            x, y, state = changes
+            x, y = button_event["index"]
+            state = button_event["active"]
             note = BUTTON_SCENES_TO_NOTE.get((x, y))
             if note and state is True:
                 midi_software.send_scene_command(note)
 
-            preset_note = BUTTON_PRESETS_MAP.get((x, y))
-            if preset_note and state is True:
-                old_preset = np.argwhere(preset_states)
-                if len(old_preset) > 0:
-                    old_preset_x = old_preset[0][0]
-                    old_preset_y = old_preset[0][1]
-                    preset_states[old_preset_x, old_preset_y] = False
-                    launchpad.set_led(old_preset_x, old_preset_y, [0.0, 0.0, 0.0])
-                    print(f"Old preset: {old_preset}")
+            if (x, y) in BUTTON_PRESETS_MAP and state is True:
+                # show on Launchpad which preset is active
+                if active_preset:
+                    launchpad.set_led(
+                        active_preset[0], active_preset[1], COLOR_PRESET_OFF
+                    )
 
-                preset_states[x, y - 7] = True
-                launchpad.set_led(x, y, [0.0, 1.0, 0.0])
+                if active_preset == [x, y]:
+                    # deactivate if same preset button pressed again
+                    active_preset = None
+                    launchpad.set_led(x, y, COLOR_PRESET_OFF)
+                    continue
+
+                active_preset = [x, y]
+                launchpad.set_led(x, y, COLOR_PRESET_ON)
 
         # get feedback from DasLight
         changes = midi_software.process_feedback()
