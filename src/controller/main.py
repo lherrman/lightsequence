@@ -218,9 +218,25 @@ class LightController:
             self._save_preset(coords, active_scene_list)
             logger.info(f"Saved {len(active_scene_list)} scenes to preset {coords}")
 
+            # Exit save mode
             self.save_button_state = False
             SAVE_BUTTON = [0, 0]  # Example: top-left button as save button
             self.launchpad.set_button_led(ButtonType.TOP, SAVE_BUTTON, [0.0, 0.0, 0.0])
+
+            # Clear all preset LEDs first
+            for x in range(8):
+                for y in range(3):
+                    preset_coords = [x, y]
+                    self.launchpad.set_button_led(
+                        ButtonType.PRESET, preset_coords, self.COLOR_PRESET_OFF
+                    )
+
+            # Activate the newly saved preset
+            self.active_preset = coords.copy()
+            self.launchpad.set_button_led(
+                ButtonType.PRESET, coords, self.COLOR_PRESET_ON
+            )
+            logger.info(f"Activated saved preset {coords}")
             return
 
         # Normal preset activation/deactivation logic
@@ -269,30 +285,38 @@ class LightController:
         """Handle top button press - light up when pressed, turn off when released."""
 
         SAVE_BUTTON = [0, 0]  # Example: top-left button as save button
-        if coords == SAVE_BUTTON:
-            if is_pressed:
-                self.save_button_state = not self.save_button_state
-                color = [1.0, 0.0, 0.0] if self.save_button_state else [0.0, 0.0, 0.0]
-                self.launchpad.set_button_led(ButtonType.TOP, coords, color)
+        if (
+            coords == SAVE_BUTTON and is_pressed
+        ):  # Only handle press events, not release
+            self.save_button_state = not self.save_button_state
 
-                # Update preset LEDs based on save mode
-                if self.save_button_state:
-                    self._update_preset_leds_for_save_mode()
+            if self.save_button_state:
+                # Entering save mode - turn save button red and show preset buttons with presets in blue
+                self.launchpad.set_button_led(
+                    ButtonType.TOP, coords, [1.0, 0.0, 0.0]
+                )  # Red
+                self._update_preset_leds_for_save_mode()
+                logger.info("Entered save mode")
             else:
-                # Clear all preset LEDs when exiting save mode
+                # Exiting save mode - turn save button off and restore normal preset display
+                self.launchpad.set_button_led(
+                    ButtonType.TOP, coords, [0.0, 0.0, 0.0]
+                )  # Off
+
+                # Clear all preset LEDs first
                 for x in range(8):
                     for y in range(3):
                         preset_coords = [x, y]
-                        if self.active_preset == preset_coords:
-                            # Keep active preset lit
-                            self.launchpad.set_button_led(
-                                ButtonType.PRESET, preset_coords, self.COLOR_PRESET_ON
-                            )
-                        else:
-                            self.launchpad.set_button_led(
-                                ButtonType.PRESET, preset_coords, self.COLOR_PRESET_OFF
-                            )
-                self.save_button_state = False
+                        self.launchpad.set_button_led(
+                            ButtonType.PRESET, preset_coords, self.COLOR_PRESET_OFF
+                        )
+
+                # Show only the active preset if there is one
+                if self.active_preset:
+                    self.launchpad.set_button_led(
+                        ButtonType.PRESET, self.active_preset, self.COLOR_PRESET_ON
+                    )
+                logger.info("Exited save mode")
 
     def _process_button_event(self, button_event: t.Dict[str, t.Any]) -> None:
         """Process a button event based on its type."""
