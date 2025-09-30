@@ -29,7 +29,7 @@ class LaunchpadMK2:
 
     def connect(self) -> bool:
         """Connect to Launchpad MK2 hardware."""
-        self.device = lp.LaunchpadMk2()
+        self.device = lp.LaunchpadMk2()  # type: ignore
         if self.device.Open():
             self.device.Reset()  # Clear all LEDs
             self.is_connected = True
