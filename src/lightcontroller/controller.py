@@ -60,8 +60,8 @@ class LightController:
         self.midi_in = None  # pygame MIDI for DasLight feedback
         self.led_states = {}  # Track LED states for feedback
         
-        # Record Arm state
-        self.record_arm_pressed = False
+        # Record mode state (toggle-based)
+        self.record_mode_active = False
 
         # Automatic scene and preset management
         self.scene_manager = SceneManager(self._update_scene_button)
@@ -276,17 +276,19 @@ class LightController:
         else:
             logger.info(f"❓ UNKNOWN button type at ({x}, {y})")
 
-        # Handle Record Arm button
+        # Handle Record Arm button (toggle mode)
         if self.launchpad.is_record_arm_button(x, y):
-            self.record_arm_pressed = pressed
-            logger.info(f"🎙️ Record Arm button {'PRESSED' if pressed else 'RELEASED'}")
-            
-            if pressed:
-                # Light up Record Arm button and show visual feedback
-                self._show_record_mode_feedback()
-            else:
-                # Clear visual feedback and turn off Record Arm button
-                self._clear_record_mode_feedback()
+            if pressed:  # Only handle button press, not release
+                # Toggle record mode
+                self.record_mode_active = not self.record_mode_active
+                logger.info(f"🎙️ Record mode {'ACTIVATED' if self.record_mode_active else 'DEACTIVATED'}")
+                
+                if self.record_mode_active:
+                    # Enter record mode - light up button and show programmed presets
+                    self._show_record_mode_feedback()
+                else:
+                    # Exit record mode - clear visual feedback
+                    self._clear_record_mode_feedback()
             return
 
         if not pressed:  # Only handle button presses, not releases (except Record Arm)
@@ -321,32 +323,55 @@ class LightController:
             preset_idx = self.launchpad.get_preset_index(x, y)
             logger.info(f"Preset button pressed: idx={preset_idx}")
             if preset_idx is not None:
-                if self.record_arm_pressed:
+                if self.record_mode_active:
                     # Record mode: save current scene state to preset
+                    logger.info(f"🎙️ Recording to preset {preset_idx + 1} (record mode active)")
                     self._record_preset(preset_idx)
+                    # After recording, update the visual feedback to show this preset is now programmed
+                    self._show_record_mode_feedback()
                 else:
                     # Normal mode: activate preset
+                    logger.info(f"🎯 Activating preset {preset_idx + 1} (normal mode)")
                     self._activate_preset_by_index(preset_idx)
 
     def _activate_preset_by_index(self, preset_idx: int):
         """Activate preset by index."""
         preset = self.preset_manager.get_preset(preset_idx)
         if preset:
+            logger.info(f"🎯 Activating preset {preset_idx + 1} with {len(preset.scene_indices)} scenes")
+            
             if self.preset_manager.activate_preset(preset_idx):
-                # Preset was activated - activate its scenes
-                self.scene_manager.deactivate_all_scenes()  # Clear existing scenes
-                self.scene_manager.activate_scenes(preset.scene_indices)
-
-                # Send MIDI for each scene
-                for scene_idx in preset.scene_indices:
-                    self._send_scene_midi(scene_idx, True)
-            else:
-                # Preset was deactivated - deactivate all scenes
-                self.scene_manager.deactivate_all_scenes()
-                # Send MIDI to turn off all scenes
+                # Preset was activated - send MIDI commands to activate its scenes
+                logger.info(f"✅ Preset activated - sending MIDI for scenes: {preset.scene_indices}")
+                
+                # First, turn off all current scenes by sending toggle commands to active ones
                 for scene_idx in range(40):
-                    if self.scene_manager.is_scene_active(scene_idx):
-                        self._send_scene_midi(scene_idx, False)
+                    y = scene_idx // 8
+                    x = scene_idx % 8
+                    button_key = (x, y)
+                    if button_key in self.led_states and self.led_states[button_key]:
+                        # This scene is currently active, turn it off
+                        midi_note = self.launchpad.scene_midi_note_from_index(scene_idx)
+                        if midi_note is not None and self.midi_out:
+                            send_scene_command(self.midi_out, midi_note)
+                            logger.info(f"🔴 Turned off scene {scene_idx} (note {midi_note})")
+
+                # Then activate the preset's scenes
+                for scene_idx in preset.scene_indices:
+                    midi_note = self.launchpad.scene_midi_note_from_index(scene_idx)
+                    if midi_note is not None and self.midi_out:
+                        send_scene_command(self.midi_out, midi_note)
+                        logger.info(f"🟢 Activated scene {scene_idx} (note {midi_note})")
+            else:
+                # Preset was deactivated - turn off all scenes in the preset
+                logger.info(f"⚫ Preset deactivated - turning off scenes: {preset.scene_indices}")
+                for scene_idx in preset.scene_indices:
+                    midi_note = self.launchpad.scene_midi_note_from_index(scene_idx)
+                    if midi_note is not None and self.midi_out:
+                        send_scene_command(self.midi_out, midi_note)
+                        logger.info(f"🔴 Turned off scene {scene_idx} (note {midi_note})")
+        else:
+            logger.warning(f"❌ Preset {preset_idx} not found")
 
     def _get_preset_index(self, preset: Preset) -> Optional[int]:
         """Get preset index for button lighting."""
@@ -434,24 +459,28 @@ class LightController:
 
     def _record_preset(self, preset_idx: int):
         """Record current scene state to a preset."""
-        logger.info(f"🎙️ Recording preset {preset_idx}")
+        logger.info(f"🎙️ Recording preset {preset_idx} with current scene states")
         
-        # For now, we'll use a simple approach and record which scenes we think are active
-        # In a more sophisticated implementation, we'd parse DasLight feedback to know exact states
+        # Get currently active scenes by checking LED states
         active_scene_indices = []
         
-        # Check each scene to see if it might be active
-        # This is a placeholder implementation - ideally we'd track state from DasLight feedback
+        # Check each scene button to see if its LED is currently on
         for scene_idx in range(40):  # We have 40 scenes (8x5)
             scene = self.scene_manager.get_scene(scene_idx)
             if scene:
-                # Convert scene index to x,y coordinates (reverse of get_scene_index)
+                # Convert scene index to x,y coordinates 
                 y = scene_idx // 8
                 x = scene_idx % 8
                 
-                # For this initial implementation, we'll just record empty for now
-                # TODO: Implement proper active scene detection from DasLight LED feedback
-                pass
+                # Check if this scene's LED is currently lit
+                button_key = (x, y)
+                if button_key in self.led_states and self.led_states[button_key]:
+                    active_scene_indices.append(scene_idx)
+                    logger.info(f"  📍 Scene {scene_idx} ({x},{y}) is ACTIVE - including in preset")
+                else:
+                    logger.debug(f"  ⚫ Scene {scene_idx} ({x},{y}) is inactive")
+        
+        logger.info(f"🎯 Recording {len(active_scene_indices)} active scenes: {active_scene_indices}")
         
         # Record the preset using the preset index (0-based)
         success = self.preset_manager.record_preset(preset_idx, active_scene_indices)
@@ -463,12 +492,12 @@ class LightController:
             logger.error(f"❌ Failed to record preset {preset_idx}")
 
     def _show_record_mode_feedback(self):
-        """Show visual feedback when Record Arm is pressed - light up programmed presets and Record Arm button."""
-        logger.info("💡 Showing record mode feedback")
+        """Show visual feedback when in record mode - light up Record Arm button and programmed presets."""
+        logger.info("💡 Entering record mode - showing visual feedback")
         
-        # Light up Record Arm button
+        # Light up Record Arm button (stays lit in record mode)
         self.launchpad.light_record_arm_button()
-        logger.info("🔴 Record Arm button lit up")
+        logger.info("🔴 Record Arm button lit up (record mode active)")
         
         # Light up programmed presets
         programmed_indices = self.preset_manager.get_programmed_preset_indices()
@@ -476,19 +505,19 @@ class LightController:
             self.launchpad.light_programmed_presets(programmed_indices)
             logger.info(f"🟡 Lit up {len(programmed_indices)} programmed presets: {[i+1 for i in programmed_indices]}")
         else:
-            logger.info("No programmed presets to show")
+            logger.info("No programmed presets to show - all preset slots are available")
 
     def _clear_record_mode_feedback(self):
-        """Clear visual feedback when Record Arm is released."""
-        logger.info("💡 Clearing record mode feedback")
+        """Clear visual feedback when exiting record mode."""
+        logger.info("💡 Exiting record mode - clearing visual feedback")
         
         # Clear Record Arm button
         self.launchpad.clear_record_arm_button()
-        logger.info("Record Arm button cleared")
+        logger.info("🔴 Record Arm button cleared (record mode inactive)")
         
         # Clear preset buttons
         self.launchpad.clear_all_preset_buttons()
-        logger.info("All preset buttons cleared")
+        logger.info("🟡 All preset buttons cleared")
 
     def _find_scene_by_note(self, note: int) -> Optional[Scene]:
         """Find scene by MIDI note (button position)."""

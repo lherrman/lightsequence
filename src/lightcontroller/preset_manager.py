@@ -126,7 +126,40 @@ class PresetManager:
             preset.description = f"Empty user preset {preset_index+1}"
         
         logger.info(f"🎙️ Recorded preset {preset_index+1}: {len(active_scene_indices)} scenes")
+        
+        # Save to config file immediately
+        self._save_preset_to_config(preset_index, preset)
+        
         return True
+
+    def _save_preset_to_config(self, preset_index: int, preset: AutoPreset):
+        """Save a single preset to the config file."""
+        try:
+            from .config import load_config, save_config, Preset
+            import os
+            
+            # Load current config
+            config_path = os.path.join(os.getcwd(), "config.yaml")
+            config = load_config(config_path)
+            
+            # Convert scene indices to scene names (format: scene_X)
+            scene_names = [f"scene_{idx}" for idx in preset.scene_indices]
+            
+            # Create preset entry using proper Preset class
+            preset_name = f"preset_{preset_index}"
+            config.presets[preset_name] = Preset(
+                name=preset.name,
+                scenes=scene_names,
+                cycle_interval=preset.cycle_interval,
+                description=preset.description
+            )
+            
+            # Save config
+            save_config(config, config_path)
+            logger.info(f"💾 Saved preset {preset_index+1} to config file")
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to save preset {preset_index+1} to config: {e}")
 
     def is_preset_programmed(self, preset_index: int) -> bool:
         """Check if a preset has been programmed (has content)."""
