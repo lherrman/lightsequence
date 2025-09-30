@@ -97,48 +97,51 @@ class LaunchpadMK2:
         self.button_callback = callback
 
     def poll_buttons(self):
-        """Poll for button presses and call callback if set."""
+        """
+        Poll for button presses using MK2-specific pattern.
+        
+        MK2 ButtonStateRaw() returns integers with this pattern:
+        - Button press: note -> 127 (velocity confirmation)
+        - Button release: note -> 0 (release signal)
+        
+        We only send events for actual button presses, ignore releases.
+        """
         if not self.device or not self.is_connected or not self.button_callback:
             return
 
         try:
             buttons = self.device.ButtonStateRaw()
-            if buttons:
-                for button in buttons:
-                    note = None
-                    pressed = False
+            if not buttons:
+                return
+                
+            for button_data in buttons:
+                if not isinstance(button_data, int):
+                    continue
+                    
+                note = button_data
+                
+                # Filter based on MK2 event pattern from test_minimal.py:
+                # Press: note -> 127, Release: note -> 0
+                if note == 127:
+                    # Velocity confirmation event - ignore
+                    continue
+                elif note == 0:
+                    # Release signal - clear all button states
+                    self.button_states.clear()
+                    continue
+                elif 1 <= note <= 120:  # Valid button range
+                    # Convert MIDI note to grid coordinates
+                    x, y = self._midi_note_to_xy(note)
+                    if x is not None and y is not None:
+                        button_key = (x, y)
+                        if button_key not in self.button_states:
+                            # First press - send event
+                            self.button_states[button_key] = True
+                            logger.debug(f"Button PRESS: note {note} -> ({x}, {y})")
+                            self.button_callback(x, y, True)  # Always True for press
+                        # Ignore subsequent events for same button until release
+                # Ignore invalid notes
 
-                    if isinstance(button, (list, tuple)) and len(button) >= 2:
-                        # Format: [note, velocity]
-                        note, velocity = button[0], button[1]
-                        if isinstance(note, int) and isinstance(velocity, int):
-                            pressed = velocity > 0
-                    elif isinstance(button, int):
-                        # Format: just note (pressed buttons only)
-                        note = button
-                        pressed = True
-
-                    # Convert MIDI note to grid coordinates based on MK2 layout
-                    if isinstance(note, int):
-                        x, y = self._midi_note_to_xy(note)
-                        if x is not None and y is not None:
-                            # Check if button state has actually changed
-                            button_key = (x, y)
-                            previous_state = self.button_states.get(button_key, False)
-                            
-                            if pressed != previous_state:
-                                # State changed - update tracking and send event
-                                self.button_states[button_key] = pressed
-                                logger.debug(
-                                    f"MIDI note {note} -> ({x}, {y}) pressed={pressed} (state changed)"
-                                )
-                                self.button_callback(x, y, pressed)
-                            else:
-                                logger.debug(
-                                    f"MIDI note {note} -> ({x}, {y}) pressed={pressed} (no state change)"
-                                )
-                        else:
-                            logger.debug(f"MIDI note {note} not mapped to grid")
         except Exception as e:
             logger.error(f"Error polling buttons: {e}")
 

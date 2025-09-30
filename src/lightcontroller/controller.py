@@ -28,8 +28,7 @@ except ImportError:
 
 from .config import Config, Scene, Preset
 from .launchpad import LaunchpadMK2, LaunchpadColor
-
-# Simulator removed - now using automatic scene system
+from .daslight_midi import connect_daslight_midi, send_scene_command, process_daslight_feedback, close_daslight_midi
 from .scene_manager import SceneManager
 from .preset_manager import PresetManager
 
@@ -40,8 +39,11 @@ logger = logging.getLogger(__name__)
 class ControllerState:
     """Current controller state."""
 
-    blackout: bool = False
-    cycling: bool = False
+    def __init__(self):
+        self.blackout: bool = False
+        self.cycling: bool = False
+        self.active_scenes: set[str] = set()
+        self.active_preset: str | None = None
 
 
 class LightController:
@@ -54,12 +56,9 @@ class LightController:
 
         # Hardware and MIDI
         self.launchpad = LaunchpadMK2()  # Hardware abstraction
-        self.midi_out = None  # pygame MIDI for loopMIDI output
-        self.midi_in = None  # pygame MIDI for loopMIDI input (feedback)
-
-        # Simulator (mimics DasLight behavior)
-        from .simulator import Simulator
-        self.simulator = Simulator(midi_feedback_callback=self._simulate_midi_feedback)
+        self.midi_out = None  # pygame MIDI for DasLight output
+        self.midi_in = None  # pygame MIDI for DasLight feedback
+        self.led_states = {}  # Track LED states for feedback
 
         # Automatic scene and preset management
         self.scene_manager = SceneManager(self._update_scene_button)
@@ -84,6 +83,26 @@ class LightController:
             self.launchpad.light_preset_button(x, y, LaunchpadColor.AMBER_FULL)
         else:
             self.launchpad.light_preset_button(x, y, LaunchpadColor.OFF)
+            
+    def _update_launchpad_led(self, note: int, active: bool):
+        """Update Launchpad LED for a given MIDI note based on DasLight feedback."""
+        try:
+            # Convert MIDI note to x,y coordinates
+            x, y = self.launchpad._midi_note_to_xy(note)
+            if x is None or y is None:
+                return
+            
+            # Check if it's a scene button (main grid area)
+            scene_idx = self.launchpad.midi_note_to_scene_index(note)
+            if scene_idx is not None:
+                self._update_scene_button(x, y, active)
+            else:
+                # Could be a preset button or other control
+                preset_idx = self.launchpad.midi_note_to_preset_index(note) if hasattr(self.launchpad, 'midi_note_to_preset_index') else None
+                if preset_idx is not None:
+                    self._update_preset_button(x, y, active)
+        except Exception as e:
+            logger.debug(f"Could not update LED for note {note}: {e}")
 
     def start(self) -> bool:
         """Start the controller."""
@@ -101,52 +120,19 @@ class LightController:
         else:
             logger.warning("Could not connect to Launchpad - using simulator only")
 
-        # Try pygame MIDI for loopMIDI communication
+        # Connect to DasLight via loopMIDI using utility functions
         if PYGAME_AVAILABLE and pygame:
             try:
-                pygame.midi.init()
-                device_count = pygame.midi.get_count()
-                loopmidi_out_id = None
-
-                logger.info("Looking for loopMIDI devices:")
-                for i in range(device_count):
-                    info = pygame.midi.get_device_info(i)
-                    name = info[1].decode() if info[1] else "Unknown"
-                    is_output = info[3]
-                    if "loopmidi" in name.lower() and is_output:
-                        loopmidi_out_id = i
-                        logger.info(f"  Found loopMIDI: {name} (device {i})")
-
-                if loopmidi_out_id is not None:
-                    self.midi_out = pygame.midi.Output(loopmidi_out_id)
-                    logger.info("Connected to loopMIDI for DasLight communication")
-
-                    # Also set up MIDI input for feedback from DasLight
-                    loopmidi_in_id = None
-                    for i in range(device_count):
-                        info = pygame.midi.get_device_info(i)
-                        name = info[1].decode() if info[1] else "Unknown"
-                        is_input = info[2]
-                        if "loopmidi" in name.lower() and is_input:
-                            loopmidi_in_id = i
-                            logger.info(f"  Found loopMIDI input: {name} (device {i})")
-                            break
-
-                    if loopmidi_in_id is not None:
-                        self.midi_in = pygame.midi.Input(loopmidi_in_id)
-                        logger.info("Connected to loopMIDI for DasLight feedback")
-                        self._start_midi_feedback_polling()
-                    else:
-                        logger.warning("No loopMIDI input found - feedback disabled")
+                self.midi_out, self.midi_in = connect_daslight_midi()
+                if self.midi_out and self.midi_in:
+                    logger.info("✅ Connected to DasLight via loopMIDI")
+                    self._start_midi_feedback_polling()
                 else:
-                    logger.warning(
-                        "No loopMIDI found - DasLight communication disabled"
-                    )
-
+                    logger.warning("❌ DasLight connection failed")
             except Exception as e:
-                logger.warning(f"loopMIDI setup failed: {e}")
+                logger.warning(f"DasLight setup failed: {e}")
         else:
-            logger.info("pygame not available - loopMIDI disabled")
+            logger.info("pygame not available - DasLight communication disabled")
 
         self.running = True
         logger.info("Controller started")
@@ -232,21 +218,17 @@ class LightController:
             logger.info("MIDI feedback polling stopped")
 
     def _midi_feedback_worker(self):
-        """MIDI feedback polling worker thread."""
+        """MIDI feedback polling worker thread using utility functions."""
         while not self.midi_feedback_stop.is_set():
             try:
-                if self.midi_in and self.midi_in.poll():
-                    midi_events = self.midi_in.read(100)  # Read up to 100 events
-                    for event in midi_events:
-                        msg_data = event[0]
-                        if isinstance(msg_data, list) and len(msg_data) >= 3:
-                            status, note, velocity = (
-                                msg_data[0],
-                                msg_data[1],
-                                msg_data[2],
-                            )
-                            if status == 0x90:  # Note on message
-                                self._handle_midi_feedback(note, velocity)
+                if self.midi_in:
+                    # Use utility function to process feedback
+                    led_changes = process_daslight_feedback(self.midi_in, self.led_states)
+                    
+                    # Update Launchpad LEDs based on changes
+                    for note, active in led_changes.items():
+                        self._update_launchpad_led(note, active)
+                        
                 self.midi_feedback_stop.wait(0.01)  # Poll at 100Hz
             except Exception as e:
                 logger.error(f"MIDI feedback polling error: {e}")
@@ -293,14 +275,16 @@ class LightController:
                 
                 if midi_note is not None:
                     if self.midi_out:
-                        # Real DasLight/loopMIDI is connected - send MIDI
-                        was_active = self.scene_manager.is_scene_active(scene_idx)
-                        self._send_scene_midi(scene_idx, not was_active)
-                        logger.info(f"Sent MIDI to DasLight for scene {scene_idx}")
+                        # Send MIDI command to DasLight using utility function
+                        scene = self.scene_manager.get_scene(scene_idx)
+                        if scene:
+                            # Toggle scene state
+                            self._toggle_scene(scene.name)
+                            logger.info(f"Toggled scene {scene.name} (index {scene_idx})")
+                        else:
+                            logger.warning(f"Scene not found for index {scene_idx}")
                     else:
-                        # No DasLight - use simulator
-                        self.simulator.toggle_scene(scene_idx, midi_note)
-                        logger.info(f"Sent to simulator for scene {scene_idx}")
+                        logger.warning(f"No MIDI output connection available")
                 else:
                     logger.warning(f"Could not get MIDI note for scene {scene_idx}")
 
@@ -387,11 +371,27 @@ class LightController:
             self._start_cycling(preset)
 
     def _toggle_scene(self, scene_name: str):
-        """Toggle scene by name."""
-        if scene_name in self.state.active_scenes:
-            self._deactivate_scene(scene_name)
-        else:
-            self._activate_scene(scene_name)
+        """Toggle scene by name - send MIDI command and let DasLight feedback control LEDs."""
+        # Parse scene name to get index (format: "scene_X" where X is the index)
+        try:
+            if scene_name.startswith("scene_"):
+                scene_idx = int(scene_name.split('_')[1])
+                scene = self.scene_manager.get_scene(scene_idx)
+                if scene and self.midi_out:
+                    # Get MIDI note for this scene
+                    midi_note = self.launchpad.scene_midi_note_from_index(scene_idx)
+                    if midi_note is not None:
+                        # Send toggle command to DasLight - let DasLight decide activate/deactivate
+                        send_scene_command(self.midi_out, midi_note)
+                        logger.info(f"Sent toggle command for scene: {scene_name} (note {midi_note})")
+                    else:
+                        logger.warning(f"No MIDI note for scene {scene_idx}")
+                else:
+                    logger.warning(f"Scene not found or no MIDI output: {scene_name}")
+            else:
+                logger.warning(f"Invalid scene name format: {scene_name}")
+        except (ValueError, IndexError) as e:
+            logger.error(f"Error parsing scene name {scene_name}: {e}")
 
     def _toggle_scene_by_note(self, note: int):
         """Toggle scene by MIDI note."""
@@ -410,44 +410,66 @@ class LightController:
         return None
 
     def _activate_scene(self, scene_name: str):
-        """Activate a scene."""
-        if scene_name in self.config.scenes:
-            self.state.active_scenes.add(scene_name)
-            scene = self.config.scenes[scene_name]
-            self._send_scene_midi(scene, True)
-            logger.info(f"Activated scene: {scene_name}")
+        """Activate an automatic scene by name (for internal use only)."""
+        # Parse scene name to get index (format: "scene_X" where X is the index)
+        try:
+            if scene_name.startswith("scene_"):
+                scene_idx = int(scene_name.split('_')[1])
+                scene = self.scene_manager.get_scene(scene_idx)
+                if scene:
+                    # Only send MIDI, don't update internal state - let DasLight feedback control state
+                    self._send_scene_midi(scene_idx, True)
+                    logger.info(f"Activated scene: {scene_name} (index {scene_idx})")
+                else:
+                    logger.warning(f"Scene not found: {scene_name}")
+            else:
+                logger.warning(f"Invalid scene name format: {scene_name}")
+        except (ValueError, IndexError) as e:
+            logger.error(f"Error parsing scene name {scene_name}: {e}")
 
     def _deactivate_scene(self, scene_name: str):
-        """Deactivate a scene."""
-        self.state.active_scenes.discard(scene_name)
-        if scene_name in self.config.scenes:
-            scene = self.config.scenes[scene_name]
-            self._send_scene_midi(scene, False)
-            logger.info(f"Deactivated scene: {scene_name}")
+        """Deactivate an automatic scene by name (for internal use only)."""
+        # Parse scene name to get index (format: "scene_X" where X is the index)
+        try:
+            if scene_name.startswith("scene_"):
+                scene_idx = int(scene_name.split('_')[1])
+                scene = self.scene_manager.get_scene(scene_idx)
+                if scene:
+                    # Only send MIDI, don't update internal state - let DasLight feedback control state
+                    self._send_scene_midi(scene_idx, False)
+                    logger.info(f"Deactivated scene: {scene_name} (index {scene_idx})")
+                else:
+                    logger.warning(f"Scene not found: {scene_name}")
+            else:
+                logger.warning(f"Invalid scene name format: {scene_name}")
+        except (ValueError, IndexError) as e:
+            logger.error(f"Error parsing scene name {scene_name}: {e}")
 
     def _deactivate_all_scenes(self):
-        """Deactivate all scenes."""
-        for scene_name in list(self.state.active_scenes):
-            self._deactivate_scene(scene_name)
+        """Deactivate all scenes by checking DasLight state."""
+        # Check all 40 scenes and deactivate active ones
+        for scene_idx in range(40):
+            if self.scene_manager.is_scene_active(scene_idx):
+                scene = self.scene_manager.get_scene(scene_idx)
+                if scene:
+                    self._deactivate_scene(scene.name)
 
     def _send_scene_midi(self, scene_idx: int, active: bool):
-        """Send MIDI for scene activation to DasLight."""
+        """Send MIDI for scene activation to DasLight using utility functions."""
         # Get the scene from our automatic scene manager
         scene = self.scene_manager.get_scene(scene_idx)
         if not scene:
             return
 
-        # Send to DasLight via loopMIDI if available
-        if self.midi_out:
+        # Send to DasLight via loopMIDI using utility function
+        if self.midi_out and active:  # Only send activation commands
             try:
-                velocity = 127 if active else 0
+                # Get MIDI note for this scene
                 midi_note = self.launchpad.scene_midi_note_from_index(scene_idx)
-                # pygame.midi uses write() method with timestamp
-                timestamp = pygame.midi.time() if PYGAME_AVAILABLE and pygame else 0
-                self.midi_out.write([[[0x90, midi_note, velocity], timestamp]])
-                logger.debug(
-                    f"Sent to DasLight: Scene {scene_idx}, Note {midi_note}, Vel {velocity}"
-                )
+                if midi_note is not None:
+                    # Use utility function for sending scene command
+                    send_scene_command(self.midi_out, midi_note)
+                    logger.debug(f"Sent to DasLight: Scene {scene_idx}, Note {midi_note}")
             except Exception as e:
                 logger.error(f"MIDI send error: {e}")
 
