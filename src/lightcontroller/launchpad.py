@@ -119,25 +119,34 @@ class LaunchpadMK2:
                     continue
                     
                 note = button_data
+                logger.info(f"🎹 Raw MIDI event: {note}")
                 
                 # Filter based on MK2 event pattern from test_minimal.py:
                 # Press: note -> 127, Release: note -> 0
                 if note == 127:
                     # Velocity confirmation event - ignore
+                    logger.debug("Ignoring velocity confirmation (127)")
                     continue
                 elif note == 0:
-                    # Release signal - clear all button states
+                    # Release signal - send release events for all pressed buttons
+                    logger.info("🔄 Button release signal (0) - sending release events")
+                    if self.button_callback:
+                        for (x, y) in list(self.button_states.keys()):
+                            logger.info(f"🔻 Button RELEASE: ({x}, {y})")
+                            self.button_callback(x, y, False)
                     self.button_states.clear()
                     continue
-                elif 1 <= note <= 120:  # Valid button range
+                elif 1 <= note <= 120:  # Valid button range (includes Record Arm button 104)
                     # Convert MIDI note to grid coordinates
                     x, y = self._midi_note_to_xy(note)
+                    logger.info(f"🎯 MIDI note {note} -> coordinates ({x}, {y})")
+                    # Special handling for Record Arm button which maps to (-1, -1)
                     if x is not None and y is not None:
                         button_key = (x, y)
                         if button_key not in self.button_states:
                             # First press - send event
                             self.button_states[button_key] = True
-                            logger.debug(f"Button PRESS: note {note} -> ({x}, {y})")
+                            logger.info(f"✅ Button PRESS confirmed: note {note} -> ({x}, {y})")
                             self.button_callback(x, y, True)  # Always True for press
                         # Ignore subsequent events for same button until release
                 # Ignore invalid notes
@@ -171,8 +180,10 @@ class LaunchpadMK2:
         elif 81 <= note <= 88:  # Top row (y=0)
             return note - 81, 0
 
-        # Top row control buttons (scene launch)
-        elif note in [104, 105, 106, 107, 108, 109, 110, 111]:
+        # Top row control buttons
+        elif note == 104:  # Record Arm button
+            return -1, -1  # Special coordinates for Record Arm
+        elif note in [105, 106, 107, 108, 109, 110, 111]:
             # Map to top area outside main grid - we'll ignore these for now
             return None, None
 
@@ -267,6 +278,37 @@ class LaunchpadMK2:
                 self.device.Reset()
             except Exception as e:
                 logger.error(f"Error clearing display: {e}")
+
+    def light_programmed_presets(self, programmed_indices: List[int], color: LaunchpadColor = LaunchpadColor.YELLOW_FULL):
+        """Light up all programmed preset buttons."""
+        for preset_idx in programmed_indices:
+            if 0 <= preset_idx <= 23:  # 24 presets total (0-23)
+                # Convert preset index to x,y coordinates
+                x = preset_idx % 8
+                y = preset_idx // 8  # This gives 0-2 for the three preset rows
+                self.light_preset_button(x, y, color)
+                logger.debug(f"Lit preset button {preset_idx+1} at ({x}, {y})")
+
+    def clear_all_preset_buttons(self):
+        """Clear all preset buttons."""
+        for preset_idx in range(24):  # 24 presets total
+            x = preset_idx % 8
+            y = preset_idx // 8
+            self.clear_preset_button(x, y)
+
+    def light_record_arm_button(self, color: LaunchpadColor = LaunchpadColor.RED_FULL):
+        """Light up the Record Arm button."""
+        if self.device and self.is_connected:
+            try:
+                # Record Arm button is MIDI note 104
+                self.device.LedCtrlRaw(104, color.value, color.value)
+                logger.debug(f"Lit Record Arm button with color {color}")
+            except Exception as e:
+                logger.error(f"Error lighting Record Arm button: {e}")
+
+    def clear_record_arm_button(self):
+        """Clear the Record Arm button."""
+        self.light_record_arm_button(LaunchpadColor.OFF)
 
     def _set_led(self, x: int, y: int, color: LaunchpadColor):
         """Set LED at grid position."""
@@ -380,6 +422,10 @@ class LaunchpadMK2:
     def is_preset_button(self, x: int, y: int) -> bool:
         """Check if coordinates are for a preset button."""
         return 0 <= x <= 7 and 5 <= y <= 7
+        
+    def is_record_arm_button(self, x: int, y: int) -> bool:
+        """Check if coordinates are for the Record Arm button."""
+        return x == -1 and y == -1
 
     def get_scene_index(self, x: int, y: int) -> Optional[int]:
         """Get linear scene index from coordinates."""

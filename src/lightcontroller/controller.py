@@ -59,6 +59,9 @@ class LightController:
         self.midi_out = None  # pygame MIDI for DasLight output
         self.midi_in = None  # pygame MIDI for DasLight feedback
         self.led_states = {}  # Track LED states for feedback
+        
+        # Record Arm state
+        self.record_arm_pressed = False
 
         # Automatic scene and preset management
         self.scene_manager = SceneManager(self._update_scene_button)
@@ -259,9 +262,34 @@ class LightController:
 
     def _handle_button_press_xy(self, x: int, y: int, pressed: bool):
         """Handle button press with x,y coordinates."""
-        logger.info(f"Button event: ({x}, {y}) pressed={pressed}")
+        logger.info(f"🎯 Button event: ({x}, {y}) pressed={pressed}")
+        
+        # Debug: Show what type of button this is
+        if self.launchpad.is_scene_button(x, y):
+            scene_idx = self.launchpad.get_scene_index(x, y)
+            logger.info(f"🔹 SCENE button detected: index={scene_idx}")
+        elif self.launchpad.is_preset_button(x, y):
+            preset_idx = self.launchpad.get_preset_index(x, y)
+            logger.info(f"🔸 PRESET button detected: index={preset_idx}")
+        elif self.launchpad.is_record_arm_button(x, y):
+            logger.info(f"🎙️ RECORD ARM button detected")
+        else:
+            logger.info(f"❓ UNKNOWN button type at ({x}, {y})")
 
-        if not pressed:  # Only handle button presses, not releases
+        # Handle Record Arm button
+        if self.launchpad.is_record_arm_button(x, y):
+            self.record_arm_pressed = pressed
+            logger.info(f"🎙️ Record Arm button {'PRESSED' if pressed else 'RELEASED'}")
+            
+            if pressed:
+                # Light up Record Arm button and show visual feedback
+                self._show_record_mode_feedback()
+            else:
+                # Clear visual feedback and turn off Record Arm button
+                self._clear_record_mode_feedback()
+            return
+
+        if not pressed:  # Only handle button presses, not releases (except Record Arm)
             logger.debug(f"Ignoring button release at ({x}, {y})")
             return
 
@@ -289,11 +317,16 @@ class LightController:
                     logger.warning(f"Could not get MIDI note for scene {scene_idx}")
 
         elif self.launchpad.is_preset_button(x, y):
-            # Preset button pressed - activate preset
+            # Preset button pressed
             preset_idx = self.launchpad.get_preset_index(x, y)
             logger.info(f"Preset button pressed: idx={preset_idx}")
             if preset_idx is not None:
-                self._activate_preset_by_index(preset_idx)
+                if self.record_arm_pressed:
+                    # Record mode: save current scene state to preset
+                    self._record_preset(preset_idx)
+                else:
+                    # Normal mode: activate preset
+                    self._activate_preset_by_index(preset_idx)
 
     def _activate_preset_by_index(self, preset_idx: int):
         """Activate preset by index."""
@@ -398,6 +431,64 @@ class LightController:
         scene = self._find_scene_by_note(note)
         if scene:
             self._toggle_scene(scene.name)
+
+    def _record_preset(self, preset_idx: int):
+        """Record current scene state to a preset."""
+        logger.info(f"🎙️ Recording preset {preset_idx}")
+        
+        # For now, we'll use a simple approach and record which scenes we think are active
+        # In a more sophisticated implementation, we'd parse DasLight feedback to know exact states
+        active_scene_indices = []
+        
+        # Check each scene to see if it might be active
+        # This is a placeholder implementation - ideally we'd track state from DasLight feedback
+        for scene_idx in range(40):  # We have 40 scenes (8x5)
+            scene = self.scene_manager.get_scene(scene_idx)
+            if scene:
+                # Convert scene index to x,y coordinates (reverse of get_scene_index)
+                y = scene_idx // 8
+                x = scene_idx % 8
+                
+                # For this initial implementation, we'll just record empty for now
+                # TODO: Implement proper active scene detection from DasLight LED feedback
+                pass
+        
+        # Record the preset using the preset index (0-based)
+        success = self.preset_manager.record_preset(preset_idx, active_scene_indices)
+        
+        if success:
+            preset_name = f"User Preset {preset_idx + 1}"
+            logger.info(f"✅ Preset '{preset_name}' recorded with {len(active_scene_indices)} active scenes")
+        else:
+            logger.error(f"❌ Failed to record preset {preset_idx}")
+
+    def _show_record_mode_feedback(self):
+        """Show visual feedback when Record Arm is pressed - light up programmed presets and Record Arm button."""
+        logger.info("💡 Showing record mode feedback")
+        
+        # Light up Record Arm button
+        self.launchpad.light_record_arm_button()
+        logger.info("🔴 Record Arm button lit up")
+        
+        # Light up programmed presets
+        programmed_indices = self.preset_manager.get_programmed_preset_indices()
+        if programmed_indices:
+            self.launchpad.light_programmed_presets(programmed_indices)
+            logger.info(f"🟡 Lit up {len(programmed_indices)} programmed presets: {[i+1 for i in programmed_indices]}")
+        else:
+            logger.info("No programmed presets to show")
+
+    def _clear_record_mode_feedback(self):
+        """Clear visual feedback when Record Arm is released."""
+        logger.info("💡 Clearing record mode feedback")
+        
+        # Clear Record Arm button
+        self.launchpad.clear_record_arm_button()
+        logger.info("Record Arm button cleared")
+        
+        # Clear preset buttons
+        self.launchpad.clear_all_preset_buttons()
+        logger.info("All preset buttons cleared")
 
     def _find_scene_by_note(self, note: int) -> Optional[Scene]:
         """Find scene by MIDI note (button position)."""

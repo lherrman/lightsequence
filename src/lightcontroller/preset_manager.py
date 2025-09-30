@@ -46,124 +46,9 @@ class PresetManager:
         logger.info(f"Initialized {len(self.presets)} presets")
 
     def _create_default_presets(self):
-        """Create some default presets."""
-        default_presets = [
-            # Row 0 (y=5 in grid coordinates)
-            {"name": "Full Wash", "desc": "All scenes", "scenes": list(range(40))},
-            {"name": "Front Row", "desc": "First row only", "scenes": list(range(8))},
-            {
-                "name": "Back Row",
-                "desc": "Last row only",
-                "scenes": list(range(32, 40)),
-            },
-            {
-                "name": "Alternating",
-                "desc": "Every other scene",
-                "scenes": [i for i in range(40) if i % 2 == 0],
-            },
-            {
-                "name": "Center",
-                "desc": "Center scenes",
-                "scenes": [18, 19, 20, 21, 26, 27, 28, 29],
-            },
-            {"name": "Corners", "desc": "Corner scenes", "scenes": [0, 7, 32, 39]},
-            {
-                "name": "Cross",
-                "desc": "Cross pattern",
-                "scenes": [3, 4, 11, 12, 19, 20, 27, 28, 35, 36],
-            },
-            {"name": "Blackout", "desc": "All off", "scenes": []},
-            # Row 1 (y=6 in grid coordinates)
-            {
-                "name": "Rows 1&3",
-                "desc": "First and third rows",
-                "scenes": list(range(8)) + list(range(16, 24)),
-            },
-            {
-                "name": "Rows 2&4",
-                "desc": "Second and fourth rows",
-                "scenes": list(range(8, 16)) + list(range(24, 32)),
-            },
-            {
-                "name": "Left Half",
-                "desc": "Left columns",
-                "scenes": [i for i in range(40) if i % 8 < 4],
-            },
-            {
-                "name": "Right Half",
-                "desc": "Right columns",
-                "scenes": [i for i in range(40) if i % 8 >= 4],
-            },
-            {
-                "name": "Checkerboard",
-                "desc": "Checkerboard pattern",
-                "scenes": [i for i in range(40) if (i % 8 + i // 8) % 2 == 0],
-            },
-            {
-                "name": "Border",
-                "desc": "Border only",
-                "scenes": [
-                    0,
-                    1,
-                    2,
-                    3,
-                    4,
-                    5,
-                    6,
-                    7,
-                    8,
-                    15,
-                    16,
-                    23,
-                    24,
-                    31,
-                    32,
-                    33,
-                    34,
-                    35,
-                    36,
-                    37,
-                    38,
-                    39,
-                ],
-            },
-            {
-                "name": "Inside",
-                "desc": "Inside only",
-                "scenes": [
-                    9,
-                    10,
-                    11,
-                    12,
-                    13,
-                    14,
-                    17,
-                    18,
-                    19,
-                    20,
-                    21,
-                    22,
-                    25,
-                    26,
-                    27,
-                    28,
-                    29,
-                    30,
-                ],
-            },
-            {"name": "Custom 1", "desc": "Custom preset 1", "scenes": []},
-            # Row 2 (y=7 in grid coordinates)
-            {"name": "Custom 2", "desc": "Custom preset 2", "scenes": []},
-            {"name": "Custom 3", "desc": "Custom preset 3", "scenes": []},
-            {"name": "Custom 4", "desc": "Custom preset 4", "scenes": []},
-            {"name": "Custom 5", "desc": "Custom preset 5", "scenes": []},
-            {"name": "Custom 6", "desc": "Custom preset 6", "scenes": []},
-            {"name": "Custom 7", "desc": "Custom preset 7", "scenes": []},
-            {"name": "Custom 8", "desc": "Custom preset 8", "scenes": []},
-            {"name": "Emergency", "desc": "Emergency blackout", "scenes": []},
-        ]
-
-        for index, preset_data in enumerate(default_presets[:24]):  # Max 24 presets
+        """Create empty presets - they will be recorded by the user."""
+        # Create 24 empty presets for the 24 preset buttons (8x3 grid)
+        for index in range(24):
             x = index % 8
             y = (index // 8) + 5  # Preset area starts at y=5
 
@@ -171,9 +56,9 @@ class PresetManager:
                 index=index,
                 x=x,
                 y=y,
-                name=preset_data["name"],
-                description=preset_data["desc"],
-                scene_indices=preset_data["scenes"],
+                name=f"Preset {index+1}",
+                description=f"User preset {index+1}",
+                scene_indices=[],  # Start empty
             )
 
     def activate_preset(self, preset_index: int) -> bool:
@@ -213,6 +98,45 @@ class PresetManager:
             self.feedback_callback(preset.x, preset_y, True)
 
         return True
+
+    def record_preset(self, preset_index: int, active_scene_indices: List[int]) -> bool:
+        """
+        Record a preset with the current scene state.
+        
+        Args:
+            preset_index: Preset index (0-23)
+            active_scene_indices: List of currently active scene indices
+            
+        Returns:
+            True if preset was recorded successfully
+        """
+        if preset_index not in self.presets:
+            logger.warning(f"Invalid preset index: {preset_index}")
+            return False
+
+        preset = self.presets[preset_index]
+        preset.scene_indices = active_scene_indices.copy()
+        
+        # Update name to indicate it has content
+        if active_scene_indices:
+            preset.name = f"Preset {preset_index+1} ({len(active_scene_indices)} scenes)"
+            preset.description = f"User recorded preset with {len(active_scene_indices)} scenes"
+        else:
+            preset.name = f"Preset {preset_index+1} (Empty)"
+            preset.description = f"Empty user preset {preset_index+1}"
+        
+        logger.info(f"🎙️ Recorded preset {preset_index+1}: {len(active_scene_indices)} scenes")
+        return True
+
+    def is_preset_programmed(self, preset_index: int) -> bool:
+        """Check if a preset has been programmed (has content)."""
+        if preset_index not in self.presets:
+            return False
+        return len(self.presets[preset_index].scene_indices) > 0
+
+    def get_programmed_preset_indices(self) -> List[int]:
+        """Get list of preset indices that have been programmed."""
+        return [idx for idx in self.presets.keys() if self.is_preset_programmed(idx)]
 
     def deactivate_current_preset(self):
         """Deactivate the currently active preset."""
