@@ -9,6 +9,7 @@ from enum import IntEnum
 
 try:
     import launchpad_py as lp
+
     LAUNCHPAD_AVAILABLE = True
 except ImportError:
     LAUNCHPAD_AVAILABLE = False
@@ -20,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 class LaunchpadColor(IntEnum):
     """Launchpad color values."""
+
     OFF = 0
     RED_LOW = 1
     RED_MID = 2
@@ -38,23 +40,23 @@ class LaunchpadColor(IntEnum):
 class LaunchpadMK2:
     """
     Abstraction layer for Novation Launchpad MK2
-    
+
     Layout:
     - 8x5 Scene buttons (rows 0-4, y=1 to y=5 in launchpad coordinates)
     - 8x3 Preset buttons (rows 5-7, y=6 to y=8 in launchpad coordinates)
     """
-    
+
     def __init__(self):
         self.device = None
         self.button_callback: Optional[Callable[[int, int, bool], None]] = None
         self.is_connected = False
-        
+
     def connect(self) -> bool:
         """Connect to Launchpad MK2 hardware."""
         if not LAUNCHPAD_AVAILABLE:
             logger.warning("launchpad_py not available")
             return False
-            
+
         try:
             self.device = lp.LaunchpadMk2()
             if self.device.Open():
@@ -68,7 +70,7 @@ class LaunchpadMK2:
         except Exception as e:
             logger.error(f"Launchpad connection failed: {e}")
             return False
-    
+
     def disconnect(self):
         """Disconnect from Launchpad."""
         if self.device:
@@ -81,30 +83,30 @@ class LaunchpadMK2:
                 self.device = None
                 self.is_connected = False
                 logger.info("Disconnected from Launchpad")
-    
+
     def set_button_callback(self, callback: Callable[[int, int, bool], None]):
         """
         Set callback for button presses.
-        
+
         Args:
             callback: Function(x, y, pressed) where:
                 - x, y: Button coordinates (0-7)
                 - pressed: True if pressed, False if released
         """
         self.button_callback = callback
-    
+
     def poll_buttons(self):
         """Poll for button presses and call callback if set."""
         if not self.device or not self.is_connected or not self.button_callback:
             return
-            
+
         try:
             buttons = self.device.ButtonStateRaw()
             if buttons:
                 for button in buttons:
                     note = None
                     pressed = False
-                    
+
                     if isinstance(button, (list, tuple)) and len(button) >= 2:
                         # Format: [note, velocity]
                         note, velocity = button[0], button[1]
@@ -114,22 +116,24 @@ class LaunchpadMK2:
                         # Format: just note (pressed buttons only)
                         note = button
                         pressed = True
-                    
+
                     # Convert MIDI note to grid coordinates based on MK2 layout
                     if isinstance(note, int):
                         x, y = self._midi_note_to_xy(note)
                         if x is not None and y is not None:
-                            logger.debug(f"MIDI note {note} -> ({x}, {y}) pressed={pressed}")
+                            logger.debug(
+                                f"MIDI note {note} -> ({x}, {y}) pressed={pressed}"
+                            )
                             self.button_callback(x, y, pressed)
                         else:
                             logger.debug(f"MIDI note {note} not mapped to grid")
         except Exception as e:
             logger.error(f"Error polling buttons: {e}")
-    
+
     def _midi_note_to_xy(self, note: int) -> Tuple[Optional[int], Optional[int]]:
         """
         Convert MIDI note to grid coordinates based on MK2 layout.
-        
+
         MK2 Layout (RAW mode):
         - Main 8x8 grid: rows 11-18, 21-28, 31-38, 41-48, 51-58, 61-68, 71-78, 81-88
         - Y coordinate 0 = bottom row (11-18), Y coordinate 7 = top row (81-88)
@@ -151,30 +155,30 @@ class LaunchpadMK2:
             return note - 71, 1
         elif 81 <= note <= 88:  # Top row (y=0)
             return note - 81, 0
-        
+
         # Top row control buttons (scene launch)
         elif note in [104, 105, 106, 107, 108, 109, 110, 111]:
             # Map to top area outside main grid - we'll ignore these for now
             return None, None
-        
-        # Right column control buttons (track control) 
+
+        # Right column control buttons (track control)
         elif note in [89, 79, 69, 59, 49, 39, 29, 19]:
             # Map to right area outside main grid - we'll ignore these for now
             return None, None
-        
+
         return None, None
-    
+
     def _xy_to_midi_note(self, x: int, y: int) -> Optional[int]:
         """
         Convert grid coordinates to MIDI note based on MK2 layout.
-        
+
         Args:
             x: Column (0-7)
             y: Row (0-7, where 0=top, 7=bottom in visual representation)
         """
         if not (0 <= x <= 7 and 0 <= y <= 7):
             return None
-            
+
         # Map our visual coordinates to MIDI notes
         # y=0 (top visual) = note 81+x (top physical row)
         # y=7 (bottom visual) = note 11+x (bottom physical row)
@@ -194,13 +198,15 @@ class LaunchpadMK2:
             return 21 + x
         elif y == 7:  # Bottom row
             return 11 + x
-        
+
         return None
-    
-    def light_scene_button(self, x: int, y: int, color: LaunchpadColor = LaunchpadColor.GREEN_FULL):
+
+    def light_scene_button(
+        self, x: int, y: int, color: LaunchpadColor = LaunchpadColor.GREEN_FULL
+    ):
         """
         Light up a scene button (rows 0-4).
-        
+
         Args:
             x: Column (0-7)
             y: Row (0-4 for scenes)
@@ -209,13 +215,15 @@ class LaunchpadMK2:
         if not (0 <= x <= 7 and 0 <= y <= 4):
             logger.warning(f"Invalid scene button coordinates: ({x}, {y})")
             return
-            
+
         self._set_led(x, y, color)
-    
-    def light_preset_button(self, x: int, y: int, color: LaunchpadColor = LaunchpadColor.AMBER_FULL):
+
+    def light_preset_button(
+        self, x: int, y: int, color: LaunchpadColor = LaunchpadColor.AMBER_FULL
+    ):
         """
         Light up a preset button (rows 5-7).
-        
+
         Args:
             x: Column (0-7)
             y: Row (5-7 for presets, but pass 0-2 here)
@@ -224,19 +232,19 @@ class LaunchpadMK2:
         if not (0 <= x <= 7 and 0 <= y <= 2):
             logger.warning(f"Invalid preset button coordinates: ({x}, {y})")
             return
-            
+
         # Map to actual preset rows (5-7)
         actual_y = y + 5
         self._set_led(x, actual_y, color)
-    
+
     def clear_scene_button(self, x: int, y: int):
         """Clear a scene button."""
         self.light_scene_button(x, y, LaunchpadColor.OFF)
-    
+
     def clear_preset_button(self, x: int, y: int):
         """Clear a preset button."""
         self.light_preset_button(x, y, LaunchpadColor.OFF)
-    
+
     def clear_all(self):
         """Clear all buttons."""
         if self.device and self.is_connected:
@@ -244,26 +252,26 @@ class LaunchpadMK2:
                 self.device.Reset()
             except Exception as e:
                 logger.error(f"Error clearing display: {e}")
-    
+
     def _set_led(self, x: int, y: int, color: LaunchpadColor):
         """Set LED at grid position."""
         if not self.device or not self.is_connected:
             return
-            
+
         try:
             # Convert grid coordinates to MIDI note using proper mapping
             note = self._xy_to_midi_note(x, y)
             if note is None:
                 logger.warning(f"Invalid coordinates for LED: ({x}, {y})")
                 return
-                
-            # Use RGB LED control for MK2 (more accurate colors)  
+
+            # Use RGB LED control for MK2 (more accurate colors)
             # Convert LaunchpadColor to RGB values
             r, g, b = self._color_to_rgb(color)
             self.device.LedCtrlRaw(note, r, g, b)
         except Exception as e:
             logger.error(f"Error setting LED at ({x}, {y}): {e}")
-    
+
     def _color_to_rgb(self, color: LaunchpadColor) -> Tuple[int, int, int]:
         """Convert LaunchpadColor to RGB values (0-63 range for MK2)."""
         if color == LaunchpadColor.OFF:
@@ -294,17 +302,17 @@ class LaunchpadMK2:
             return 63, 63, 0
         else:
             return 31, 31, 31  # Default to dim white
-    
+
     def set_grid_rgb(self, grid: List[List[Tuple[int, int, int]]]):
         """
         Set entire 8x8 grid with RGB colors.
-        
+
         Args:
             grid: 8x8 list of (r, g, b) tuples, values 0-255
         """
         if not self.device or not self.is_connected:
             return
-            
+
         try:
             # Set each LED using direct RGB values
             for y in range(8):
@@ -315,34 +323,34 @@ class LaunchpadMK2:
                         r_scaled = int(r * 63 / 255)
                         g_scaled = int(g * 63 / 255)
                         b_scaled = int(b * 63 / 255)
-                        
+
                         note = self._xy_to_midi_note(x, y)
                         if note is not None:
                             self.device.LedCtrlRaw(note, r_scaled, g_scaled, b_scaled)
         except Exception as e:
             logger.error(f"Error setting RGB grid: {e}")
-    
+
     def scene_midi_note_from_index(self, index: int) -> Optional[int]:
         """Get MIDI note for scene index."""
         coords = self.scene_coords_from_index(index)
         if coords:
             return self._xy_to_midi_note(coords[0], coords[1])
         return None
-    
+
     def preset_midi_note_from_index(self, index: int) -> Optional[int]:
         """Get MIDI note for preset index."""
         coords = self.preset_coords_from_index(index)
         if coords:
             return self._xy_to_midi_note(coords[0], coords[1])
         return None
-    
+
     def midi_note_to_scene_index(self, note: int) -> Optional[int]:
         """Convert MIDI note to scene index."""
         x, y = self._midi_note_to_xy(note)
         if x is not None and y is not None and self.is_scene_button(x, y):
             return self.get_scene_index(x, y)
         return None
-    
+
     def midi_note_to_preset_index(self, note: int) -> Optional[int]:
         """Convert MIDI note to preset index."""
         x, y = self._midi_note_to_xy(note)
@@ -353,23 +361,23 @@ class LaunchpadMK2:
     def is_scene_button(self, x: int, y: int) -> bool:
         """Check if coordinates are for a scene button."""
         return 0 <= x <= 7 and 0 <= y <= 4
-    
+
     def is_preset_button(self, x: int, y: int) -> bool:
         """Check if coordinates are for a preset button."""
         return 0 <= x <= 7 and 5 <= y <= 7
-    
+
     def get_scene_index(self, x: int, y: int) -> Optional[int]:
         """Get linear scene index from coordinates."""
         if self.is_scene_button(x, y):
             return y * 8 + x
         return None
-    
+
     def get_preset_index(self, x: int, y: int) -> Optional[int]:
         """Get linear preset index from coordinates."""
         if self.is_preset_button(x, y):
             return (y - 5) * 8 + x
         return None
-    
+
     def scene_coords_from_index(self, index: int) -> Optional[Tuple[int, int]]:
         """Get scene coordinates from linear index."""
         if 0 <= index < 40:  # 8x5 = 40 scene buttons
@@ -377,7 +385,7 @@ class LaunchpadMK2:
             x = index % 8
             return (x, y)
         return None
-    
+
     def preset_coords_from_index(self, index: int) -> Optional[Tuple[int, int]]:
         """Get preset coordinates from linear index."""
         if 0 <= index < 24:  # 8x3 = 24 preset buttons
@@ -385,26 +393,26 @@ class LaunchpadMK2:
             x = index % 8
             return (x, y)
         return None
-    
+
     def play_rgb_effect(self, effect_name: str = "wave", duration: float = 2.0):
         """
         Play RGB effects on the Launchpad.
-        
+
         Args:
             effect_name: Name of effect ("wave", "pulse", "rainbow", "chase")
             duration: Duration in seconds
         """
         if not self.is_connected:
             return
-            
+
         import time
         import math
-        
+
         steps = int(duration * 20)  # 20 FPS
-        
+
         for step in range(steps):
             grid = []
-            
+
             for y in range(8):
                 row = []
                 for x in range(8):
@@ -417,7 +425,7 @@ class LaunchpadMK2:
                     elif effect_name == "pulse":
                         # Pulsing from center
                         center_x, center_y = 3.5, 3.5
-                        dist = math.sqrt((x - center_x)**2 + (y - center_y)**2)
+                        dist = math.sqrt((x - center_x) ** 2 + (y - center_y) ** 2)
                         phase = dist - step * 0.3
                         intensity = int(127 + 127 * math.sin(phase))
                         r = intensity if step % 60 < 20 else 0
@@ -450,12 +458,12 @@ class LaunchpadMK2:
                             r, g, b = 0, 0, 0
                     else:
                         r, g, b = 0, 0, 0
-                    
+
                     row.append((r, g, b))
                 grid.append(row)
-            
+
             self.set_grid_rgb(grid)
             time.sleep(0.05)  # 20 FPS
-        
+
         # Clear at the end
         self.clear_all()

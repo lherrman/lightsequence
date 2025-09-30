@@ -10,6 +10,7 @@ from dataclasses import dataclass
 try:
     import pygame
     import pygame.midi
+
     PYGAME_AVAILABLE = True
 except ImportError:
     PYGAME_AVAILABLE = False
@@ -18,6 +19,7 @@ except ImportError:
 
 try:
     import launchpad_py as launchpad
+
     LAUNCHPAD_AVAILABLE = True
 except ImportError:
     LAUNCHPAD_AVAILABLE = False
@@ -26,6 +28,7 @@ except ImportError:
 
 from .config import Config, Scene, Preset
 from .launchpad import LaunchpadMK2, LaunchpadColor
+
 # Simulator removed - now using automatic scene system
 from .scene_manager import SceneManager
 from .preset_manager import PresetManager
@@ -36,7 +39,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ControllerState:
     """Current controller state."""
-    
+
     blackout: bool = False
     cycling: bool = False
 
@@ -51,8 +54,9 @@ class LightController:
 
         # Hardware and MIDI
         self.launchpad = LaunchpadMK2()  # Hardware abstraction
-        self.midi_out = None  # pygame MIDI for loopMIDI
-        
+        self.midi_out = None  # pygame MIDI for loopMIDI output
+        self.midi_in = None   # pygame MIDI for loopMIDI input (feedback)
+
         # Automatic scene and preset management
         self.scene_manager = SceneManager(self._update_scene_button)
         self.preset_manager = PresetManager(self._update_preset_button)
@@ -71,7 +75,7 @@ class LightController:
             self.launchpad.light_scene_button(x, y, LaunchpadColor.OFF)
 
     def _update_preset_button(self, x: int, y: int, active: bool):
-        """Update preset button on Launchpad.""" 
+        """Update preset button on Launchpad."""
         if active:
             self.launchpad.light_preset_button(x, y, LaunchpadColor.AMBER_FULL)
         else:
@@ -87,7 +91,7 @@ class LightController:
         if self.launchpad.connect():
             self.launchpad.set_button_callback(self._handle_button_press_xy)
             logger.info("Launchpad connected successfully")
-            
+
             # Start input polling thread
             self._start_input_polling()
         else:
@@ -112,8 +116,28 @@ class LightController:
                 if loopmidi_out_id is not None:
                     self.midi_out = pygame.midi.Output(loopmidi_out_id)
                     logger.info("Connected to loopMIDI for DasLight communication")
+                    
+                    # Also set up MIDI input for feedback from DasLight
+                    loopmidi_in_id = None
+                    for i in range(device_count):
+                        info = pygame.midi.get_device_info(i)
+                        name = info[1].decode() if info[1] else "Unknown"
+                        is_input = info[2]
+                        if "loopmidi" in name.lower() and is_input:
+                            loopmidi_in_id = i
+                            logger.info(f"  Found loopMIDI input: {name} (device {i})")
+                            break
+                    
+                    if loopmidi_in_id is not None:
+                        self.midi_in = pygame.midi.Input(loopmidi_in_id)
+                        logger.info("Connected to loopMIDI for DasLight feedback")
+                        self._start_midi_feedback_polling()
+                    else:
+                        logger.warning("No loopMIDI input found - feedback disabled")
                 else:
-                    logger.warning("No loopMIDI found - DasLight communication disabled")
+                    logger.warning(
+                        "No loopMIDI found - DasLight communication disabled"
+                    )
 
             except Exception as e:
                 logger.warning(f"loopMIDI setup failed: {e}")
@@ -129,11 +153,14 @@ class LightController:
         self.running = False
         self._stop_cycling()
         self._stop_input_polling()
+        self._stop_midi_feedback_polling()
 
         # Close MIDI connections
         if self.midi_out:
             self.midi_out.close()
-        
+        if self.midi_in:
+            self.midi_in.close()
+
         # Disconnect launchpad
         if self.launchpad:
             self.launchpad.disconnect()
@@ -147,19 +174,21 @@ class LightController:
         """Start input polling thread."""
         if self.input_thread and self.input_thread.is_alive():
             return
-            
+
         self.input_stop.clear()
-        self.input_thread = threading.Thread(target=self._input_poll_worker, daemon=True)
+        self.input_thread = threading.Thread(
+            target=self._input_poll_worker, daemon=True
+        )
         self.input_thread.start()
         logger.info("Input polling started")
-    
+
     def _stop_input_polling(self):
         """Stop input polling thread."""
         if self.input_thread and self.input_thread.is_alive():
             self.input_stop.set()
             self.input_thread.join(timeout=1.0)
             logger.info("Input polling stopped")
-    
+
     def _input_poll_worker(self):
         """Input polling worker thread."""
         while not self.input_stop.is_set():
@@ -171,13 +200,67 @@ class LightController:
                 logger.error(f"Input polling error: {e}")
                 self.input_stop.wait(0.1)
 
+    def _start_midi_feedback_polling(self):
+        """Start MIDI feedback polling thread."""
+        if not hasattr(self, 'midi_feedback_thread'):
+            self.midi_feedback_thread = None
+            self.midi_feedback_stop = threading.Event()
+        
+        if self.midi_feedback_thread and self.midi_feedback_thread.is_alive():
+            return
+        
+        self.midi_feedback_stop.clear()
+        self.midi_feedback_thread = threading.Thread(
+            target=self._midi_feedback_worker, daemon=True
+        )
+        self.midi_feedback_thread.start()
+        logger.info("MIDI feedback polling started")
+
+    def _stop_midi_feedback_polling(self):
+        """Stop MIDI feedback polling thread."""
+        if hasattr(self, 'midi_feedback_thread') and self.midi_feedback_thread and self.midi_feedback_thread.is_alive():
+            self.midi_feedback_stop.set()
+            self.midi_feedback_thread.join(timeout=1.0)
+            logger.info("MIDI feedback polling stopped")
+
+    def _midi_feedback_worker(self):
+        """MIDI feedback polling worker thread."""
+        while not self.midi_feedback_stop.is_set():
+            try:
+                if self.midi_in and self.midi_in.poll():
+                    midi_events = self.midi_in.read(100)  # Read up to 100 events
+                    for event in midi_events:
+                        msg_data = event[0]
+                        if isinstance(msg_data, list) and len(msg_data) >= 3:
+                            status, note, velocity = msg_data[0], msg_data[1], msg_data[2]
+                            if status == 0x90:  # Note on message
+                                self._handle_midi_feedback(note, velocity)
+                self.midi_feedback_stop.wait(0.01)  # Poll at 100Hz
+            except Exception as e:
+                logger.error(f"MIDI feedback polling error: {e}")
+                self.midi_feedback_stop.wait(0.1)
+
+    def _handle_midi_feedback(self, note: int, velocity: int):
+        """Handle MIDI feedback from DasLight/simulator."""
+        try:
+            # Convert MIDI note to scene index
+            scene_idx = self.launchpad.midi_note_to_scene_index(note)
+            if scene_idx is not None:
+                active = velocity > 0  # 127 = on, 0 = off
+                logger.debug(f"MIDI feedback: Scene {scene_idx} -> {'ON' if active else 'OFF'} (note={note}, vel={velocity})")
+                
+                # Update scene manager state based on feedback
+                self.scene_manager.handle_midi_feedback(scene_idx, active)
+        except Exception as e:
+            logger.error(f"Error handling MIDI feedback: {e}")
+
     def _handle_button_press_xy(self, x: int, y: int, pressed: bool):
         """Handle button press with x,y coordinates."""
         logger.info(f"Button press detected: ({x}, {y}) pressed={pressed}")
-        
+
         if not pressed:  # Only handle button presses, not releases
             return
-            
+
         if self.launchpad.is_scene_button(x, y):
             # Scene button pressed - toggle scene
             scene_idx = self.launchpad.get_scene_index(x, y)
@@ -185,8 +268,10 @@ class LightController:
             if scene_idx is not None:
                 self.scene_manager.toggle_scene(scene_idx)
                 # Send MIDI for DasLight
-                self._send_scene_midi(scene_idx, self.scene_manager.is_scene_active(scene_idx))
-                
+                self._send_scene_midi(
+                    scene_idx, self.scene_manager.is_scene_active(scene_idx)
+                )
+
         elif self.launchpad.is_preset_button(x, y):
             # Preset button pressed - activate preset
             preset_idx = self.launchpad.get_preset_index(x, y)
@@ -202,7 +287,7 @@ class LightController:
                 # Preset was activated - activate its scenes
                 self.scene_manager.deactivate_all_scenes()  # Clear existing scenes
                 self.scene_manager.activate_scenes(preset.scene_indices)
-                
+
                 # Send MIDI for each scene
                 for scene_idx in preset.scene_indices:
                     self._send_scene_midi(scene_idx, True)
@@ -231,11 +316,11 @@ class LightController:
         if active_preset is not None:
             logger.info(f"Deactivating preset: {active_preset}")
             self._stop_cycling()
-            
+
             # Deactivate preset and all its scenes
             self.preset_manager.deactivate_current_preset()
-            self.scene_manager.deactivate_all_scenes() 
-            
+            self.scene_manager.deactivate_all_scenes()
+
             # Send MIDI to turn off all scenes
             for scene_idx in range(40):
                 self._send_scene_midi(scene_idx, False)
@@ -319,7 +404,7 @@ class LightController:
         scene = self.scene_manager.get_scene(scene_idx)
         if not scene:
             return
-            
+
         # Send to DasLight via loopMIDI if available
         if self.midi_out:
             try:
@@ -333,15 +418,15 @@ class LightController:
                 )
             except Exception as e:
                 logger.error(f"MIDI send error: {e}")
-        
+
         # Light up the corresponding scene button on Launchpad
         self._update_scene_button_light(scene_idx, active)
-    
+
     def _update_scene_button_light(self, scene_idx: int, active: bool):
-        """Update scene button lighting on Launchpad.""" 
+        """Update scene button lighting on Launchpad."""
         if not self.launchpad or not self.launchpad.is_connected:
             return
-            
+
         coords = self.launchpad.scene_coords_from_index(scene_idx)
         if coords:
             x, y = coords
@@ -409,7 +494,7 @@ class LightController:
     def _light_launchpad_button(self, note: int, on: bool):
         """Light up button on Launchpad based on MIDI note."""
         logger.debug(f"Button light request: note {note}, on={on}")
-        
+
         # Convert MIDI note to x,y coordinates for our abstraction
         x, y = self.launchpad._midi_note_to_xy(note)
         if x is not None and y is not None:
@@ -422,7 +507,9 @@ class LightController:
                 preset_y = y - 5  # Convert to preset coordinate system
                 color = LaunchpadColor.AMBER_FULL if on else LaunchpadColor.OFF
                 self.launchpad.light_preset_button(x, preset_y, color)
-                logger.debug(f"Preset button ({x}, {preset_y}) -> {'ON' if on else 'OFF'}")
+                logger.debug(
+                    f"Preset button ({x}, {preset_y}) -> {'ON' if on else 'OFF'}"
+                )
         else:
             logger.warning(f"Could not map MIDI note {note} to grid coordinates")
 
@@ -443,9 +530,11 @@ class LightController:
 
     def get_status(self) -> dict:
         """Get controller status."""
-        active_scenes = [idx for idx in range(40) if self.scene_manager.is_scene_active(idx)]
+        active_scenes = [
+            idx for idx in range(40) if self.scene_manager.is_scene_active(idx)
+        ]
         active_preset = self.preset_manager.active_preset
-        
+
         return {
             "running": self.running,
             "active_scenes": active_scenes,
