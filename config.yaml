@@ -1,0 +1,69 @@
+presets:
+  blackout:
+    button_x: 7
+    button_y: 7
+    color: '#00FF00'
+    cycle_interval: 2.0
+    cycle_mode: false
+    description: Emergency blackout
+    scenes: []
+  preset_1:
+    button_x: 5
+    button_y: 0
+    color: '#00FF00'
+    cycle_interval: 2.0
+    cycle_mode: false
+    description: Single wash
+    scenes:
+    - scene_1
+  preset_2:
+    button_x: 5
+    button_y: 1
+    color: '#00FF00'
+    cycle_interval: 2.0
+    cycle_mode: true
+    description: Cycle effects
+    scenes:
+    - scene_2
+    - scene_3
+  preset_3:
+    button_x: 5
+    button_y: 2
+    color: '#00FF00'
+    cycle_interval: 2.0
+    cycle_mode: false
+    description: Ambient
+    scenes:
+    - scene_4
+scenes:
+  scene_1:
+    color: '#FFFFFF'
+    description: Basic wash
+    midi_channel: 1
+    midi_note: 60
+  scene_2:
+    color: '#FFFFFF'
+    description: Strobe effect
+    midi_channel: 1
+    midi_note: 61
+  scene_3:
+    color: '#FFFFFF'
+    description: Color chase
+    midi_channel: 1
+    midi_note: 62
+  scene_4:
+    color: '#FFFFFF'
+    description: Slow fade
+    midi_channel: 1
+    midi_note: 63
+  scene_5:
+    color: '#FFFFFF'
+    description: Fast pulse
+    midi_channel: 1
+    midi_note: 64
+system:
+  blackout_channel: 1
+  blackout_note: 127
+  default_cycle_interval: 2.0
+  gui_theme: dark
+  midi_device: default
