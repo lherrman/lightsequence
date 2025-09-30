@@ -55,7 +55,7 @@ class LightController:
         # Hardware and MIDI
         self.launchpad = LaunchpadMK2()  # Hardware abstraction
         self.midi_out = None  # pygame MIDI for loopMIDI output
-        self.midi_in = None   # pygame MIDI for loopMIDI input (feedback)
+        self.midi_in = None  # pygame MIDI for loopMIDI input (feedback)
 
         # Automatic scene and preset management
         self.scene_manager = SceneManager(self._update_scene_button)
@@ -116,7 +116,7 @@ class LightController:
                 if loopmidi_out_id is not None:
                     self.midi_out = pygame.midi.Output(loopmidi_out_id)
                     logger.info("Connected to loopMIDI for DasLight communication")
-                    
+
                     # Also set up MIDI input for feedback from DasLight
                     loopmidi_in_id = None
                     for i in range(device_count):
@@ -127,7 +127,7 @@ class LightController:
                             loopmidi_in_id = i
                             logger.info(f"  Found loopMIDI input: {name} (device {i})")
                             break
-                    
+
                     if loopmidi_in_id is not None:
                         self.midi_in = pygame.midi.Input(loopmidi_in_id)
                         logger.info("Connected to loopMIDI for DasLight feedback")
@@ -202,13 +202,13 @@ class LightController:
 
     def _start_midi_feedback_polling(self):
         """Start MIDI feedback polling thread."""
-        if not hasattr(self, 'midi_feedback_thread'):
+        if not hasattr(self, "midi_feedback_thread"):
             self.midi_feedback_thread = None
             self.midi_feedback_stop = threading.Event()
-        
+
         if self.midi_feedback_thread and self.midi_feedback_thread.is_alive():
             return
-        
+
         self.midi_feedback_stop.clear()
         self.midi_feedback_thread = threading.Thread(
             target=self._midi_feedback_worker, daemon=True
@@ -218,7 +218,11 @@ class LightController:
 
     def _stop_midi_feedback_polling(self):
         """Stop MIDI feedback polling thread."""
-        if hasattr(self, 'midi_feedback_thread') and self.midi_feedback_thread and self.midi_feedback_thread.is_alive():
+        if (
+            hasattr(self, "midi_feedback_thread")
+            and self.midi_feedback_thread
+            and self.midi_feedback_thread.is_alive()
+        ):
             self.midi_feedback_stop.set()
             self.midi_feedback_thread.join(timeout=1.0)
             logger.info("MIDI feedback polling stopped")
@@ -232,7 +236,11 @@ class LightController:
                     for event in midi_events:
                         msg_data = event[0]
                         if isinstance(msg_data, list) and len(msg_data) >= 3:
-                            status, note, velocity = msg_data[0], msg_data[1], msg_data[2]
+                            status, note, velocity = (
+                                msg_data[0],
+                                msg_data[1],
+                                msg_data[2],
+                            )
                             if status == 0x90:  # Note on message
                                 self._handle_midi_feedback(note, velocity)
                 self.midi_feedback_stop.wait(0.01)  # Poll at 100Hz
@@ -247,8 +255,10 @@ class LightController:
             scene_idx = self.launchpad.midi_note_to_scene_index(note)
             if scene_idx is not None:
                 active = velocity > 0  # 127 = on, 0 = off
-                logger.debug(f"MIDI feedback: Scene {scene_idx} -> {'ON' if active else 'OFF'} (note={note}, vel={velocity})")
-                
+                logger.debug(
+                    f"MIDI feedback: Scene {scene_idx} -> {'ON' if active else 'OFF'} (note={note}, vel={velocity})"
+                )
+
                 # Update scene manager state based on feedback
                 self.scene_manager.handle_midi_feedback(scene_idx, active)
         except Exception as e:

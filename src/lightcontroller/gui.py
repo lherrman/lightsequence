@@ -189,10 +189,10 @@ class ControlPanel(QFrame):
         # Scene controls (simplified - no scene list, scenes are automatic)
         scene_group = QGroupBox("Scene Controls")
         scene_layout = QHBoxLayout()
-        
+
         self.blackout_btn = QPushButton("Blackout")
         scene_layout.addWidget(self.blackout_btn)
-        
+
         scene_group.setLayout(scene_layout)
         layout.addWidget(scene_group)
 
