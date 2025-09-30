@@ -6,18 +6,54 @@ Based on working patterns from test_minimal.py
 """
 
 import logging
-from typing import Optional, Dict, Any, Tuple
+import typing as t
 import pygame.midi
 
 logger = logging.getLogger(__name__)
 
 
 class Daslight:
-    def __init__(self): ...
+    def __init__(self):
+        # Scene mapping: relative coordinates (x, y) to MIDI notes
+        self._scene_to_note_map = self._build_scene_note_mapping()
+
+        # Preset mapping: relative coordinates (x, y) to MIDI notes
+        self._preset_to_note_map = self._build_preset_note_mapping()
+
+        # Reverse mapping for feedback processing
+        self._note_to_scene_map = {v: k for k, v in self._scene_to_note_map.items()}
+
+        # MIDI connection variables
+        self.midi_out = None
+        self.midi_in = None
+
+    def _build_scene_note_mapping(self) -> t.Dict[t.Tuple[int, int], int]:
+        """Build mapping from scene button coordinates to MIDI notes."""
+        scene_map = {}
+        base_notes = [81, 71, 61, 51, 41]  # Column base notes (y=0 to y=4)
+
+        for x in range(8):  # 8 columns
+            for y in range(5):  # 5 rows (y=0 to y=4 relative to scene area)
+                note = base_notes[y] + x
+                scene_map[(x, y)] = note
+
+        return scene_map
+
+    def _build_preset_note_mapping(self) -> t.Dict[t.Tuple[int, int], int]:
+        """Build mapping from preset button coordinates to MIDI notes."""
+        preset_map = {}
+        base_notes = [31, 21, 11]  # Row base notes (y=0 to y=2)
+
+        for x in range(8):  # 8 columns
+            for y in range(3):  # 3 rows (y=0 to y=2 relative to preset area)
+                note = base_notes[y] + x
+                preset_map[(x, y)] = note
+
+        return preset_map
 
     def connect_midi(
         self,
-    ) -> Tuple[Optional[pygame.midi.Output], Optional[pygame.midi.Input]]:
+    ) -> t.Tuple[t.Optional[pygame.midi.Output], t.Optional[pygame.midi.Input]]:
         """
         Connect to DasLight via loopMIDI ports.
 
@@ -57,22 +93,43 @@ class Daslight:
             logger.error(f"DasLight MIDI connection failed: {e}")
             return None, None
 
-    def send_scene_command(self, scene_note: int) -> None:
+    def send_scene_command(self, scene_index: t.Tuple[int, int]) -> None:
         """
         Send scene activation command to DasLight.
 
         Args:
-            midi_out: MIDI output device
-            scene_note: MIDI note number for the scene
+            scene_index: Tuple of (x, y) coordinates relative to scene area
         """
-        if self.midi_out:
-            try:
-                self.midi_out.write([[[0x90, scene_note, 127], pygame.midi.time()]])
-                logger.debug(f"Sent to DasLight: Scene note {scene_note}")
-            except Exception as e:
-                logger.error(f"MIDI send error: {e}")
+        if not self.midi_out:
+            logger.warning("MIDI output not connected")
+            return
 
-    def process_feedback(self) -> Dict[int, bool]:
+        scene_note = self._scene_to_note_map.get(scene_index)
+        if not scene_note:
+            logger.warning(f"No MIDI note mapped for scene coordinates {scene_index}")
+            return
+
+        try:
+            self.midi_out.write([[[0x90, scene_note, 127], pygame.midi.time()]])
+            logger.debug(f"Sent to DasLight: Scene {scene_index} -> note {scene_note}")
+        except Exception as e:
+            logger.error(f"MIDI send error: {e}")
+
+    def get_scene_coordinates_for_note(
+        self, note: int
+    ) -> t.Optional[t.Tuple[int, int]]:
+        """
+        Get scene coordinates for a given MIDI note.
+
+        Args:
+            note: MIDI note number
+
+        Returns:
+            Tuple of (x, y) coordinates or None if not found
+        """
+        return self._note_to_scene_map.get(note)
+
+    def process_feedback(self) -> t.Dict[int, bool]:
         """
         Process MIDI feedback from DasLight and return LED state changes.
 

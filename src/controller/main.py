@@ -1,132 +1,136 @@
 import logging
 import time
-import numpy as np
+import typing as t
 
 from controller.daslight import Daslight
-from controller.launchpad import LaunchpadMK2
+from controller.launchpad import LaunchpadMK2, ButtonType
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-scene_states = np.zeros((8, 8), dtype=bool)
 
-BUTTON_SCENES_TO_NOTE = {
-    (0, 1): 81,
-    (0, 2): 71,
-    (0, 3): 61,
-    (0, 4): 51,
-    (0, 5): 41,
-    (1, 1): 82,
-    (1, 2): 72,
-    (1, 3): 62,
-    (1, 4): 52,
-    (1, 5): 42,
-    (2, 1): 83,
-    (2, 2): 73,
-    (2, 3): 63,
-    (2, 4): 53,
-    (2, 5): 43,
-    (3, 1): 84,
-    (3, 2): 74,
-    (3, 3): 64,
-    (3, 4): 54,
-    (3, 5): 44,
-    (4, 1): 85,
-    (4, 2): 75,
-    (4, 3): 65,
-    (4, 4): 55,
-    (4, 5): 45,
-    (5, 1): 86,
-    (5, 2): 76,
-    (5, 3): 66,
-    (5, 4): 56,
-    (5, 5): 46,
-    (6, 1): 87,
-    (6, 2): 77,
-    (6, 3): 67,
-    (6, 4): 57,
-    (6, 5): 47,
-    (7, 1): 88,
-    (7, 2): 78,
-    (7, 3): 68,
-    (7, 4): 58,
-    (7, 5): 48,
-}
+class LightController:
+    """Main controller class that handles communication between Launchpad and DasLight."""
 
-BUTTON_PRESETS_MAP = {
-    (0, 6): 31,
-    (0, 7): 21,
-    (0, 8): 11,
-    (1, 6): 32,
-    (1, 7): 22,
-    (1, 8): 12,
-    (2, 6): 33,
-    (2, 7): 23,
-    (2, 8): 13,
-    (3, 6): 34,
-    (3, 7): 24,
-    (3, 8): 14,
-    (4, 6): 35,
-    (4, 7): 25,
-    (4, 8): 15,
-    (5, 6): 36,
-    (5, 7): 26,
-    (5, 8): 16,
-    (6, 6): 37,
-    (6, 7): 27,
-    (6, 8): 17,
-    (7, 6): 38,
-    (7, 7): 28,
-    (7, 8): 18,
-}
+    # Color definitions
+    COLOR_SCENE_ON = [0.0, 1.0, 0.0]  # Green
+    COLOR_SCENE_OFF = [0.0, 0.0, 0.0]  # Off
+    COLOR_PRESET_ON = [1.0, 1.0, 0.0]  # Yellow
+    COLOR_PRESET_OFF = [0.0, 0.0, 0.0]  # Off
 
+    def __init__(self):
+        """Initialize the light controller with DasLight and Launchpad connections."""
+        self.midi_software = Daslight()
+        self.launchpad = LaunchpadMK2()
+        self.active_preset: t.Optional[t.List[int]] = None
 
-COLOR_PRESET_ON = [0.1, 1.0, 0.0]  # Yellow
-COLOR_PRESET_OFF = [0.0, 0.0, 0.0]  # Off
+    def connect(self) -> bool:
+        """Connect to both MIDI and Launchpad devices."""
+        midi_connected = self.midi_software.connect_midi()
+        if midi_connected:
+            # Process initial feedback to get current state
+            self.midi_software.process_feedback()
+            logger.info("Successfully connected to DasLight")
+        else:
+            logger.error("Failed to connect to DasLight")
+
+        return midi_connected and self.launchpad.is_connected
+
+    def _handle_scene_button(self, coords: t.List[int], active: bool) -> None:
+        """Handle scene button press."""
+        if len(coords) >= 2 and active:
+            coord_tuple = (coords[0], coords[1])
+            logger.debug(f"Scene button {coords} pressed")
+            self.midi_software.send_scene_command(coord_tuple)
+
+    def _handle_preset_button(self, coords: t.List[int], active: bool) -> None:
+        """Handle preset button press with toggle functionality."""
+        if not active:
+            return
+
+        # Clear previous preset LED
+        if self.active_preset:
+            # Convert back to absolute coordinates for LED control
+            abs_x = self.active_preset[0]
+            abs_y = self.active_preset[1] + 6  # Preset area starts at y=6
+            self.launchpad.set_led(abs_x, abs_y, self.COLOR_PRESET_OFF)
+
+        # Toggle preset if same button pressed again
+        if self.active_preset == coords:
+            self.active_preset = None
+            abs_x = coords[0]
+            abs_y = coords[1] + 6
+            self.launchpad.set_led(abs_x, abs_y, self.COLOR_PRESET_OFF)
+            logger.debug(f"Preset {coords} deactivated")
+            return
+
+        # Activate new preset
+        self.active_preset = coords.copy()
+        abs_x = coords[0]
+        abs_y = coords[1] + 6
+        self.launchpad.set_led(abs_x, abs_y, self.COLOR_PRESET_ON)
+        logger.debug(f"Preset {coords} activated")
+
+    def _process_button_event(self, button_event: t.Dict[str, t.Any]) -> None:
+        """Process a button event based on its type."""
+        button_type = button_event["type"]
+        coords = button_event["index"]
+        active = button_event["active"]
+
+        if button_type == ButtonType.SCENE:
+            self._handle_scene_button(coords, active)
+        elif button_type == ButtonType.PRESET:
+            self._handle_preset_button(coords, active)
+        # Add handlers for TOP and RIGHT buttons if needed
+
+    def _process_midi_feedback(self) -> None:
+        """Process feedback from MIDI software and update Launchpad LEDs."""
+        changes = self.midi_software.process_feedback()
+
+        for note, state in changes.items():
+            scene_coords = self.midi_software.get_scene_coordinates_for_note(note)
+            if scene_coords:
+                # Convert relative coordinates back to absolute for LED control
+                abs_x = scene_coords[0]
+                abs_y = scene_coords[1] + 1  # Scene area starts at y=1
+                color = self.COLOR_SCENE_ON if state else self.COLOR_SCENE_OFF
+                self.launchpad.set_led(abs_x, abs_y, color)
+
+    def run(self) -> None:
+        """Main control loop."""
+        if not self.connect():
+            logger.error("Failed to connect to devices")
+            return
+
+        logger.info("Light controller started. Press Ctrl+C to exit.")
+
+        try:
+            while True:
+                # Handle button events
+                button_event = self.launchpad.get_button_events()
+                if button_event:
+                    self._process_button_event(button_event)
+
+                # Process MIDI feedback
+                self._process_midi_feedback()
+
+                time.sleep(0.01)  # Small delay to prevent excessive CPU usage
+
+        except KeyboardInterrupt:
+            logger.info("Shutting down light controller...")
+        finally:
+            self.cleanup()
+
+    def cleanup(self) -> None:
+        """Clean up resources."""
+        self.launchpad.close()
+        logger.info("Light controller stopped")
 
 
 def main():
-    midi_software = Daslight()
-    midi_software.connect_midi()
-    changes = midi_software.process_feedback()
-
-    launchpad = LaunchpadMK2()
-    active_preset = None
-    while True:
-        button_event = launchpad.get_button_events()
-        if button_event:
-            # send to DasLight
-            x, y = button_event["index"]
-            state = button_event["active"]
-            note = BUTTON_SCENES_TO_NOTE.get((x, y))
-            if note and state is True:
-                midi_software.send_scene_command(note)
-
-            if (x, y) in BUTTON_PRESETS_MAP and state is True:
-                # show on Launchpad which preset is active
-                if active_preset:
-                    launchpad.set_led(
-                        active_preset[0], active_preset[1], COLOR_PRESET_OFF
-                    )
-
-                if active_preset == [x, y]:
-                    # deactivate if same preset button pressed again
-                    active_preset = None
-                    launchpad.set_led(x, y, COLOR_PRESET_OFF)
-                    continue
-
-                active_preset = [x, y]
-                launchpad.set_led(x, y, COLOR_PRESET_ON)
-
-        # get feedback from DasLight
-        changes = midi_software.process_feedback()
-        for note, state in changes.items():
-            button_mapped = [k for k, v in BUTTON_SCENES_TO_NOTE.items() if v == note]
-            if button_mapped:
-                x, y = button_mapped[0]
-                color = [0.0, 1.0, 0.0] if state else [0.0, 0.0, 0.0]
-                launchpad.set_led(x, y, color)
-        time.sleep(0.1)
+    """Main entry point."""
+    controller = LightController()
+    controller.run()
 
 
 if __name__ == "__main__":
