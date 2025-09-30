@@ -50,26 +50,31 @@ class LightController:
 
         # Clear previous preset LED
         if self.active_preset:
-            # Convert back to absolute coordinates for LED control
-            abs_x = self.active_preset[0]
-            abs_y = self.active_preset[1] + 6  # Preset area starts at y=6
-            self.launchpad.set_led(abs_x, abs_y, self.COLOR_PRESET_OFF)
+            self.launchpad.set_button_led(
+                ButtonType.PRESET, self.active_preset, self.COLOR_PRESET_OFF
+            )
 
         # Toggle preset if same button pressed again
         if self.active_preset == coords:
             self.active_preset = None
-            abs_x = coords[0]
-            abs_y = coords[1] + 6
-            self.launchpad.set_led(abs_x, abs_y, self.COLOR_PRESET_OFF)
+            self.launchpad.set_button_led(
+                ButtonType.PRESET, coords, self.COLOR_PRESET_OFF
+            )
             logger.debug(f"Preset {coords} deactivated")
             return
 
         # Activate new preset
         self.active_preset = coords.copy()
-        abs_x = coords[0]
-        abs_y = coords[1] + 6
-        self.launchpad.set_led(abs_x, abs_y, self.COLOR_PRESET_ON)
+        self.launchpad.set_button_led(ButtonType.PRESET, coords, self.COLOR_PRESET_ON)
         logger.debug(f"Preset {coords} activated")
+
+    def _handle_top_button(self, coords: t.List[int], active: bool) -> None:
+        """make pressed button stay lit"""
+        if len(coords) >= 2 and active:
+            logger.debug(f"Top button {coords} pressed")
+            self.launchpad.set_button_led(
+                ButtonType.TOP, coords, [0.0, 0.0, 1.0]
+            )  # Blue
 
     def _process_button_event(self, button_event: t.Dict[str, t.Any]) -> None:
         """Process a button event based on its type."""
@@ -81,7 +86,8 @@ class LightController:
             self._handle_scene_button(coords, active)
         elif button_type == ButtonType.PRESET:
             self._handle_preset_button(coords, active)
-        # Add handlers for TOP and RIGHT buttons if needed
+        elif button_type == ButtonType.TOP:
+            self._handle_top_button(coords, active)
 
     def _process_midi_feedback(self) -> None:
         """Process feedback from MIDI software and update Launchpad LEDs."""
@@ -90,11 +96,10 @@ class LightController:
         for note, state in changes.items():
             scene_coords = self.midi_software.get_scene_coordinates_for_note(note)
             if scene_coords:
-                # Convert relative coordinates back to absolute for LED control
-                abs_x = scene_coords[0]
-                abs_y = scene_coords[1] + 1  # Scene area starts at y=1
+                # Use abstracted LED control with relative coordinates
                 color = self.COLOR_SCENE_ON if state else self.COLOR_SCENE_OFF
-                self.launchpad.set_led(abs_x, abs_y, color)
+                coords_list = [scene_coords[0], scene_coords[1]]
+                self.launchpad.set_button_led(ButtonType.SCENE, coords_list, color)
 
     def run(self) -> None:
         """Main control loop."""

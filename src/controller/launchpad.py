@@ -17,6 +17,10 @@ class ButtonType(Enum):
 
 class LaunchpadMK2:
     def __init__(self):
+        self.BOUNDS_SCENES = np.array([[0, 1], [7, 5]])
+        self.BOUNDS_PRESETS = np.array([[0, 6], [7, 8]])
+        self.BOUNDS_TOP = np.array([[0, 0], [7, 0]])
+        self.BOUNDS_RIGHT = np.array([[8, 1], [8, 8]])
         self.connect()
 
     def connect(self) -> bool:
@@ -32,13 +36,63 @@ class LaunchpadMK2:
             return False
 
     def set_led(self, x: int, y: int, color: t.List[float]) -> None:
-        """Set LED at (x, y) to specified color. rgb values float 0-1.0"""
-
+        """Set LED at absolute (x, y) coordinates to specified color. rgb values float 0-1.0"""
         if not self.is_connected:
             return
 
         color = [int(c * 63) for c in color]  # Scale to 0-127
         self.device.LedCtrlXY(x, y, *color)
+
+    def set_button_led(
+        self,
+        button_type: ButtonType,
+        relative_coords: t.List[int],
+        color: t.List[float],
+    ) -> None:
+        """Set LED using button type and relative coordinates."""
+        if not self.is_connected:
+            return
+
+        if len(relative_coords) < 2:
+            logger.warning(f"Invalid coordinates {relative_coords}")
+            return
+
+        # Convert relative coordinates to absolute coordinates
+        abs_x, abs_y = self._relative_to_absolute_coords(button_type, relative_coords)
+        if abs_x is not None and abs_y is not None:
+            self.set_led(abs_x, abs_y, color)
+        else:
+            logger.warning(
+                f"Could not convert coordinates for {button_type}: {relative_coords}"
+            )
+
+    def _relative_to_absolute_coords(
+        self, button_type: ButtonType, relative_coords: t.List[int]
+    ) -> t.Tuple[t.Optional[int], t.Optional[int]]:
+        """Convert relative coordinates to absolute coordinates based on button type."""
+        rel_x, rel_y = relative_coords[0], relative_coords[1]
+
+        if button_type == ButtonType.SCENE:
+            abs_x = self.BOUNDS_SCENES[0][0] + rel_x
+            abs_y = self.BOUNDS_SCENES[0][1] + rel_y
+            return abs_x, abs_y
+
+        elif button_type == ButtonType.PRESET:
+            abs_x = self.BOUNDS_PRESETS[0][0] + rel_x
+            abs_y = self.BOUNDS_PRESETS[0][1] + rel_y
+            return abs_x, abs_y
+
+        elif button_type == ButtonType.TOP:
+            abs_x = self.BOUNDS_TOP[0][0] + rel_x
+            abs_y = self.BOUNDS_TOP[0][1] + rel_y
+            return abs_x, abs_y
+
+        elif button_type == ButtonType.RIGHT:
+            abs_x = self.BOUNDS_RIGHT[0][0] + rel_x
+            abs_y = self.BOUNDS_RIGHT[0][1] + rel_y
+            return abs_x, abs_y
+
+        return None, None
 
     def clear_leds(self) -> None:
         """Clear all LEDs on the Launchpad."""
@@ -59,12 +113,6 @@ class LaunchpadMK2:
         if not self.is_connected:
             return None
 
-        # Define button regions (format: [[min_x, min_y], [max_x, max_y]])
-        BOUNDS_SCENES = np.array([[0, 1], [7, 5]])
-        BOUNDS_PRESETS = np.array([[0, 6], [7, 8]])
-        BOUNDS_TOP = np.array([[0, 0], [7, 0]])
-        BOUNDS_RIGHT = np.array([[8, 1], [8, 8]])
-
         button = self.device.ButtonStateXY()
         if button:
             x, y, state = button
@@ -76,35 +124,44 @@ class LaunchpadMK2:
 
             # Check if button is in scenes area
             if (
-                BOUNDS_SCENES[0][0] <= x <= BOUNDS_SCENES[1][0]
-                and BOUNDS_SCENES[0][1] <= y <= BOUNDS_SCENES[1][1]
+                self.BOUNDS_SCENES[0][0] <= x <= self.BOUNDS_SCENES[1][0]
+                and self.BOUNDS_SCENES[0][1] <= y <= self.BOUNDS_SCENES[1][1]
             ):
                 button_type = ButtonType.SCENE
-                relative_coords = [x - BOUNDS_SCENES[0][0], y - BOUNDS_SCENES[0][1]]
+                relative_coords = [
+                    x - self.BOUNDS_SCENES[0][0],
+                    y - self.BOUNDS_SCENES[0][1],
+                ]
 
             # Check if button is in presets area
             elif (
-                BOUNDS_PRESETS[0][0] <= x <= BOUNDS_PRESETS[1][0]
-                and BOUNDS_PRESETS[0][1] <= y <= BOUNDS_PRESETS[1][1]
+                self.BOUNDS_PRESETS[0][0] <= x <= self.BOUNDS_PRESETS[1][0]
+                and self.BOUNDS_PRESETS[0][1] <= y <= self.BOUNDS_PRESETS[1][1]
             ):
                 button_type = ButtonType.PRESET
-                relative_coords = [x - BOUNDS_PRESETS[0][0], y - BOUNDS_PRESETS[0][1]]
+                relative_coords = [
+                    x - self.BOUNDS_PRESETS[0][0],
+                    y - self.BOUNDS_PRESETS[0][1],
+                ]
 
             # Check if button is in top area
             elif (
-                BOUNDS_TOP[0][0] <= x <= BOUNDS_TOP[1][0]
-                and BOUNDS_TOP[0][1] <= y <= BOUNDS_TOP[1][1]
+                self.BOUNDS_TOP[0][0] <= x <= self.BOUNDS_TOP[1][0]
+                and self.BOUNDS_TOP[0][1] <= y <= self.BOUNDS_TOP[1][1]
             ):
                 button_type = ButtonType.TOP
-                relative_coords = [x - BOUNDS_TOP[0][0], y - BOUNDS_TOP[0][1]]
+                relative_coords = [x - self.BOUNDS_TOP[0][0], y - self.BOUNDS_TOP[0][1]]
 
             # Check if button is in right area
             elif (
-                BOUNDS_RIGHT[0][0] <= x <= BOUNDS_RIGHT[1][0]
-                and BOUNDS_RIGHT[0][1] <= y <= BOUNDS_RIGHT[1][1]
+                self.BOUNDS_RIGHT[0][0] <= x <= self.BOUNDS_RIGHT[1][0]
+                and self.BOUNDS_RIGHT[0][1] <= y <= self.BOUNDS_RIGHT[1][1]
             ):
                 button_type = ButtonType.RIGHT
-                relative_coords = [x - BOUNDS_RIGHT[0][0], y - BOUNDS_RIGHT[0][1]]
+                relative_coords = [
+                    x - self.BOUNDS_RIGHT[0][0],
+                    y - self.BOUNDS_RIGHT[0][1],
+                ]
 
             return {"type": button_type, "index": relative_coords, "active": state}
 
