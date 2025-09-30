@@ -24,6 +24,8 @@ class LightController:
         self.launchpad = LaunchpadMK2()
         self.active_preset: t.Optional[t.List[int]] = None
 
+        self.save_button_state = False  # Track save button state
+
     def connect(self) -> bool:
         """Connect to both MIDI and Launchpad devices."""
         midi_connected = self.midi_software.connect_midi()
@@ -68,30 +70,26 @@ class LightController:
         self.launchpad.set_button_led(ButtonType.PRESET, coords, self.COLOR_PRESET_ON)
         logger.debug(f"Preset {coords} activated")
 
-    def _handle_top_button(self, coords: t.List[int], active: bool) -> None:
+    def _handle_top_button(self, coords: t.List[int], is_pressed: bool) -> None:
         """Handle top button press - light up when pressed, turn off when released."""
-        if len(coords) >= 2:
-            if active:
-                logger.debug(f"Top button {coords} pressed")
-                # Light up blue when pressed
-                self.launchpad.set_button_led(ButtonType.TOP, coords, [0.0, 0.0, 1.0])
-            else:
-                logger.debug(f"Top button {coords} released")
-                # Turn off when released
-                self.launchpad.set_button_led(ButtonType.TOP, coords, [0.0, 0.0, 0.0])
+        SAVE_BUTTON = [0, 0]  # Example: top-left button as save button
+        if coords == SAVE_BUTTON and is_pressed:
+            self.save_button_state = not self.save_button_state
+            color = [1.0, 0.0, 0.0] if self.save_button_state else [0.0, 0.0, 0.0]
+            self.launchpad.set_button_led(ButtonType.TOP, coords, color)
 
     def _process_button_event(self, button_event: t.Dict[str, t.Any]) -> None:
         """Process a button event based on its type."""
         button_type = button_event["type"]
         coords = button_event["index"]
-        active = button_event["active"]
+        is_pressed = button_event["active"]
 
         if button_type == ButtonType.SCENE:
-            self._handle_scene_button(coords, active)
+            self._handle_scene_button(coords, is_pressed)
         elif button_type == ButtonType.PRESET:
-            self._handle_preset_button(coords, active)
+            self._handle_preset_button(coords, is_pressed)
         elif button_type == ButtonType.TOP:
-            self._handle_top_button(coords, active)
+            self._handle_top_button(coords, is_pressed)
 
     def _process_midi_feedback(self) -> None:
         """Process feedback from MIDI software and update Launchpad LEDs."""
