@@ -57,6 +57,10 @@ class LightController:
         self.midi_out = None  # pygame MIDI for loopMIDI output
         self.midi_in = None  # pygame MIDI for loopMIDI input (feedback)
 
+        # Simulator (mimics DasLight behavior)
+        from .simulator import Simulator
+        self.simulator = Simulator(midi_feedback_callback=self._simulate_midi_feedback)
+
         # Automatic scene and preset management
         self.scene_manager = SceneManager(self._update_scene_button)
         self.preset_manager = PresetManager(self._update_preset_button)
@@ -264,23 +268,41 @@ class LightController:
         except Exception as e:
             logger.error(f"Error handling MIDI feedback: {e}")
 
+    def _simulate_midi_feedback(self, midi_note: int, velocity: int):
+        """Simulate MIDI feedback from DasLight/simulator."""
+        logger.debug(f"🎵 Simulated MIDI feedback: note={midi_note}, velocity={velocity}")
+        
+        # Process the feedback just like real MIDI feedback
+        self._handle_midi_feedback(midi_note, velocity)
+
     def _handle_button_press_xy(self, x: int, y: int, pressed: bool):
         """Handle button press with x,y coordinates."""
-        logger.info(f"Button press detected: ({x}, {y}) pressed={pressed}")
+        logger.info(f"Button event: ({x}, {y}) pressed={pressed}")
 
         if not pressed:  # Only handle button presses, not releases
+            logger.debug(f"Ignoring button release at ({x}, {y})")
             return
 
         if self.launchpad.is_scene_button(x, y):
-            # Scene button pressed - toggle scene
+            # Scene button pressed - send to simulator (which will send feedback)
             scene_idx = self.launchpad.get_scene_index(x, y)
-            logger.info(f"Scene button pressed: idx={scene_idx}")
+            logger.info(f"🎯 Scene button PRESSED: idx={scene_idx} at ({x}, {y})")
             if scene_idx is not None:
-                self.scene_manager.toggle_scene(scene_idx)
-                # Send MIDI for DasLight
-                self._send_scene_midi(
-                    scene_idx, self.scene_manager.is_scene_active(scene_idx)
-                )
+                # Get MIDI note for this scene
+                midi_note = self.launchpad.scene_midi_note_from_index(scene_idx)
+                
+                if midi_note is not None:
+                    if self.midi_out:
+                        # Real DasLight/loopMIDI is connected - send MIDI
+                        was_active = self.scene_manager.is_scene_active(scene_idx)
+                        self._send_scene_midi(scene_idx, not was_active)
+                        logger.info(f"Sent MIDI to DasLight for scene {scene_idx}")
+                    else:
+                        # No DasLight - use simulator
+                        self.simulator.toggle_scene(scene_idx, midi_note)
+                        logger.info(f"Sent to simulator for scene {scene_idx}")
+                else:
+                    logger.warning(f"Could not get MIDI note for scene {scene_idx}")
 
         elif self.launchpad.is_preset_button(x, y):
             # Preset button pressed - activate preset

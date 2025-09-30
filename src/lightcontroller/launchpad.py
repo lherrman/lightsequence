@@ -50,6 +50,7 @@ class LaunchpadMK2:
         self.device = None
         self.button_callback: Optional[Callable[[int, int, bool], None]] = None
         self.is_connected = False
+        self.button_states = {}  # Track current button states to prevent duplicate events
 
     def connect(self) -> bool:
         """Connect to Launchpad MK2 hardware."""
@@ -121,10 +122,21 @@ class LaunchpadMK2:
                     if isinstance(note, int):
                         x, y = self._midi_note_to_xy(note)
                         if x is not None and y is not None:
-                            logger.debug(
-                                f"MIDI note {note} -> ({x}, {y}) pressed={pressed}"
-                            )
-                            self.button_callback(x, y, pressed)
+                            # Check if button state has actually changed
+                            button_key = (x, y)
+                            previous_state = self.button_states.get(button_key, False)
+                            
+                            if pressed != previous_state:
+                                # State changed - update tracking and send event
+                                self.button_states[button_key] = pressed
+                                logger.debug(
+                                    f"MIDI note {note} -> ({x}, {y}) pressed={pressed} (state changed)"
+                                )
+                                self.button_callback(x, y, pressed)
+                            else:
+                                logger.debug(
+                                    f"MIDI note {note} -> ({x}, {y}) pressed={pressed} (no state change)"
+                                )
                         else:
                             logger.debug(f"MIDI note {note} not mapped to grid")
         except Exception as e:
