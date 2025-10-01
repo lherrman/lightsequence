@@ -1,6 +1,6 @@
 # LightSequence
 
-A Python-based lighting controller for DasLight systems with Launchpad MK2 hardware integration.
+A Python-based lighting controller and sequencer for DasLight 4 with Launchpad MK2 hardware integration.
 
 ## Features
 
