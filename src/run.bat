@@ -1,0 +1,1 @@
+uv run controller\main.py

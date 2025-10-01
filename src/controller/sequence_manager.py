@@ -77,7 +77,7 @@ class SequenceManager:
         self.sequence_thread = threading.Thread(target=self._sequence_loop, daemon=True)
         self.sequence_thread.start()
 
-        logger.info(f"Started sequence for preset {preset_index}")
+        logger.debug(f"Started sequence for preset {preset_index}")
         return True
 
     def stop_sequence(self) -> None:
@@ -91,19 +91,19 @@ class SequenceManager:
 
             self.current_sequence = None
             self.current_step_index = 0
-            logger.info("Sequence stopped")
+            logger.debug("Sequence stopped")
 
     def pause_sequence(self) -> None:
         """Pause the current sequence."""
         if self.sequence_state == SequenceState.PLAYING:
             self.sequence_state = SequenceState.PAUSED
-            logger.info("Sequence paused")
+            logger.debug("Sequence paused")
 
     def resume_sequence(self) -> None:
         """Resume the paused sequence."""
         if self.sequence_state == SequenceState.PAUSED:
             self.sequence_state = SequenceState.PLAYING
-            logger.info("Sequence resumed")
+            logger.debug("Sequence resumed")
 
     def next_step(self) -> bool:
         """Jump to the next step in the current sequence."""
@@ -117,7 +117,7 @@ class SequenceManager:
 
         sequence = self.sequences[self.current_sequence]
         if len(sequence) <= 1:
-            logger.info("Sequence has only one step, cannot advance")
+            logger.debug("Sequence has only one step, cannot advance")
             return False
 
         # Advance to next step
@@ -129,7 +129,7 @@ class SequenceManager:
             current_step = sequence[self.current_step_index]
             self.on_step_change(current_step.scenes)
 
-        logger.info(f"Advanced to step {self.current_step_index + 1}/{len(sequence)}")
+        logger.debug(f"Advanced to step {self.current_step_index + 1}/{len(sequence)}")
         return True
 
     def get_current_step_info(self) -> t.Optional[t.Dict[str, t.Any]]:
@@ -225,7 +225,7 @@ class SequenceManager:
                         self.current_step_index = 0  # Reset to first step
                         continue
                     else:
-                        logger.info(
+                        logger.debug(
                             f"Sequence for preset {self.current_sequence} completed (no loop)"
                         )
 
@@ -256,7 +256,7 @@ class SequenceManager:
                 self.stop_sequence()
 
             del self.sequences[preset_index]
-            logger.info(f"Removed sequence for preset {preset_index}")
+            logger.debug(f"Removed sequence for preset {preset_index}")
             return True
         return False
 
