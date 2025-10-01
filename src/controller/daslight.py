@@ -23,6 +23,13 @@ class Daslight:
         self.midi_out = None
         self.midi_in = None
 
+        # Connection monitoring
+        self.connection_good = False
+        self.last_ping_time = 0.0
+        self.last_ping_response_time = 0.0
+        self.ping_interval = 2.5  # seconds
+        self.ping_timeout = 3.0  # seconds without response = bad connection
+
     def _build_scene_note_mapping(self) -> t.Dict[t.Tuple[int, int], int]:
         """Build mapping from scene button coordinates to MIDI notes."""
         scene_map = {}
@@ -71,10 +78,20 @@ class Daslight:
             if not self.midi_in:
                 logger.error("❌ No Daylight_out MIDI input found")
 
+            # Initialize connection monitoring if successful
+            if self.midi_out and self.midi_in:
+                import time
+
+                self.connection_good = True
+                self.last_ping_response_time = time.time()
+            else:
+                self.connection_good = False
+
             return self.midi_out, self.midi_in
 
         except Exception as e:
             logger.error(f"DasLight MIDI connection failed: {e}")
+            self.connection_good = False
             return None, None
 
     def send_scene_command(self, scene_index: t.Tuple[int, int]) -> None:
@@ -98,6 +115,71 @@ class Daslight:
             logger.debug(f"Sent to DasLight: Scene {scene_index} -> note {scene_note}")
         except Exception as e:
             logger.error(f"MIDI send error: {e}")
+
+    def send_ping(self) -> bool:
+        """
+        Send a ping to DasLight on note 127 to check connection status.
+
+        Returns:
+            True if ping was sent successfully, False otherwise
+        """
+        if not self.midi_out:
+            return False
+
+        try:
+            self.midi_out.write([[[0x90, 127, 127], pygame.midi.time()]])
+            logger.debug("Sent ping to DasLight on note 127")
+            return True
+        except Exception as e:
+            logger.error(f"MIDI ping error: {e}")
+            return False
+
+    def check_connection_status(self) -> bool:
+        """
+        Check connection status and send pings as needed.
+
+        Returns:
+            True if connection is good, False otherwise
+        """
+        import time
+
+        current_time = time.time()
+
+        # Check if it's time to send a ping
+        if current_time - self.last_ping_time >= self.ping_interval:
+            if self.send_ping():
+                self.last_ping_time = current_time
+            else:
+                # Failed to send ping - try to reconnect
+                logger.warning("Failed to send ping - attempting reconnection")
+                self.attempt_reconnection()
+
+        # Check if we've lost connection (no response to ping)
+        if current_time - self.last_ping_response_time > self.ping_timeout:
+            if self.connection_good:
+                self.connection_good = False
+                logger.warning("DasLight connection lost")
+
+        return self.connection_good
+
+    def attempt_reconnection(self) -> bool:
+        """
+        Attempt to reconnect to DasLight.
+
+        Returns:
+            True if reconnection successful, False otherwise
+        """
+        logger.info("Attempting to reconnect to DasLight...")
+        if self.connect_midi():
+            import time
+
+            self.connection_good = True
+            self.last_ping_response_time = time.time()
+            logger.info("Successfully reconnected to DasLight")
+            return True
+        else:
+            self.connection_good = False
+            return False
 
     def get_scene_coordinates_for_note(
         self, note: int
@@ -133,6 +215,15 @@ class Daslight:
                     status, note, velocity = msg_data[0], msg_data[1], msg_data[2]
 
                     if status == 0x90:  # Note on message
+                        # Check if this is a ping response (note 127)
+                        if note == 127 and velocity > 0:
+                            import time
+
+                            self.last_ping_response_time = time.time()
+                            if not self.connection_good:
+                                self.connection_good = True
+                                logger.info("DasLight connection restored")
+
                         # Only track changes, not repeated states
                         changes[note] = velocity > 0
 

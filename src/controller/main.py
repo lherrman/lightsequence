@@ -20,6 +20,7 @@ SAVE_SHIFT_BUTTON = [1, 0]
 BACKGROUND_BUTTON = [7, 0]
 PLAYBACK_TOGGLE_BUTTON = [0, 5]  # Right bar button for play/pause
 NEXT_STEP_BUTTON = [0, 6]  # Right bar button for next step
+CONNECTION_STATUS_BUTTON = [0, 7]  # Bottom right button for connection status
 
 
 class AppState(str, Enum):
@@ -47,6 +48,8 @@ class Colors:
     PLAYBACK_PLAYING = [0.0, 1.0, 0.0]  # Green for playing
     PLAYBACK_PAUSED = [1.0, 0.5, 0.0]  # Orange for paused
     NEXT_STEP = [0.0, 0.5, 1.0]  # Blue for next step button
+    CONNECTION_GOOD = [0.0, 0.3, 0.0]  # Dark green for good connection
+    CONNECTION_BAD = [1.0, 0.0, 0.0]  # Red for bad connection
 
 
 class LightController:
@@ -96,6 +99,7 @@ class LightController:
                 logger.info(f"Found {len(self.active_scenes)} active scenes on startup")
         else:
             logger.error("Failed to connect to DasLight")
+
         return midi_connected and self.launchpad.is_connected
 
     def run(self) -> None:
@@ -112,9 +116,13 @@ class LightController:
         # Initialize playback control buttons
         self._update_playback_buttons()
 
+        # Initialize connection status
+        self._update_connection_status()
+
         try:
             while True:
                 self._process_events()
+                self._update_connection_status_from_daslight()
                 time.sleep(0.02)
         except KeyboardInterrupt:
             logger.info("Shutting down light controller...")
@@ -536,6 +544,10 @@ class LightController:
         changes = self.midi_software.process_feedback()
 
         for note, state in changes.items():
+            # Skip ping responses (note 127) - handled by Daslight class
+            if note == 127:
+                continue
+
             scene_coords = self.midi_software.get_scene_coordinates_for_note(note)
             if scene_coords:
                 if state:
@@ -621,6 +633,26 @@ class LightController:
         self.sequence_manager.cleanup()
         self.launchpad.close()
         logger.info("Light controller stopped")
+
+    def _update_connection_status_from_daslight(self) -> None:
+        """Update connection status from DasLight and update LED."""
+        current_status = self.midi_software.check_connection_status()
+        color = (
+            self.colors.CONNECTION_GOOD
+            if current_status
+            else self.colors.CONNECTION_BAD
+        )
+        self.launchpad.set_button_led(ButtonType.RIGHT, CONNECTION_STATUS_BUTTON, color)
+
+    def _update_connection_status(self) -> None:
+        """Update the connection status LED using current DasLight status."""
+        current_status = self.midi_software.connection_good
+        color = (
+            self.colors.CONNECTION_GOOD
+            if current_status
+            else self.colors.CONNECTION_BAD
+        )
+        self.launchpad.set_button_led(ButtonType.RIGHT, CONNECTION_STATUS_BUTTON, color)
 
 
 def main():

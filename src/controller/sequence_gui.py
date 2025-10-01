@@ -59,9 +59,8 @@ class ControllerThread(QThread):
                         if button_event:
                             self.controller._process_button_event(button_event)
 
-                        # Send connection ping and update status
-                        self.controller.midi_software.send_connection_ping()
-                        self.controller._update_connection_status()
+                        # Update connection status from DasLight monitoring
+                        self.controller._update_connection_status_from_daslight()
 
                         # Process MIDI feedback
                         self.controller._process_midi_feedback()
