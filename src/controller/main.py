@@ -68,9 +68,9 @@ class LightController:
         if not self.active_preset:
             return
 
-        # Clear all scene LEDs first
+        # Clear all scene LEDs first (avoid overlap with preset buttons)
         for x in range(8):
-            for y in range(1, 6):  # Scene rows 1-5
+            for y in range(1, 5):  # Scene rows 1-4 only (row 5 overlaps with presets)
                 self.launchpad.set_button_led(ButtonType.SCENE, [x, y], self.COLOR_OFF)
 
         # Clear active scenes tracking
@@ -81,12 +81,6 @@ class LightController:
 
         # Activate new scenes using helper method
         self._activate_scenes(scenes)
-
-        # Ensure active preset LED stays on (might get cleared by some operations)
-        if self.active_preset:
-            self.launchpad.set_button_led(
-                ButtonType.PRESET, self.active_preset, self.COLOR_PRESET_ON
-            )
 
         logger.debug(f"Sequence step changed to {len(scenes)} scenes")
 
