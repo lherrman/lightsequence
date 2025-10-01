@@ -18,6 +18,8 @@ logger = logging.getLogger(__name__)
 SAVE_BUTTON = [0, 0]
 SAVE_SHIFT_BUTTON = [1, 0]
 BACKGROUND_BUTTON = [7, 0]
+PLAYBACK_TOGGLE_BUTTON = [0, 5]  # Right bar button for play/pause
+NEXT_STEP_BUTTON = [0, 6]        # Right bar button for next step
 
 
 class AppState(str, Enum):
@@ -42,6 +44,9 @@ class Colors:
     BACKGROUND_CYCLE = [0.0, 1.0, 0.0]
     SUCCESS_FLASH = [0.0, 1.0, 0.0]
     YELLOW_BRIGHT = [1.0, 1.0, 0.0]
+    PLAYBACK_PLAYING = [0.0, 1.0, 0.0]     # Green for playing
+    PLAYBACK_PAUSED = [1.0, 0.5, 0.0]      # Orange for paused
+    NEXT_STEP = [0.0, 0.5, 1.0]            # Blue for next step button
 
 
 class LightController:
@@ -62,6 +67,7 @@ class LightController:
         self.app_state = AppState.NORMAL
         self.active_preset: t.Optional[t.List[int]] = None
         self.active_scenes: t.Set[t.Tuple[int, int]] = set()
+        self.playback_enabled = True  # Default to playback enabled
 
         # Colors
         self.colors = Colors()
@@ -94,6 +100,9 @@ class LightController:
         self.launchpad.set_button_led(
             ButtonType.TOP, SAVE_BUTTON, self.colors.SAVE_MODE_OFF
         )
+        
+        # Initialize playback control buttons
+        self._update_playback_buttons()
 
         try:
             while True:
@@ -125,7 +134,7 @@ class LightController:
         """Route button events based on type."""
         handlers = {
             ButtonType.SCENE: self._handle_scene_button,
-            ButtonType.RIGHT: self._handle_scene_button,
+            ButtonType.RIGHT: self._handle_right_button,
             ButtonType.PRESET: self._handle_preset_button,
             ButtonType.TOP: self._handle_top_button,
         }
@@ -200,6 +209,19 @@ class LightController:
         elif coords == BACKGROUND_BUTTON:
             self._cycle_background()
 
+    def _handle_right_button(self, coords: t.List[int], active: bool) -> None:
+        """Handle right bar buttons (playback controls and scenes)."""
+        if not active:
+            return
+
+        if coords == PLAYBACK_TOGGLE_BUTTON:
+            self._toggle_playback()
+        elif coords == NEXT_STEP_BUTTON:
+            self._next_step()
+        else:
+            # Treat other right buttons as scene buttons
+            self._handle_scene_button(coords, active)
+
     def _toggle_save_mode(self) -> None:
         """Toggle save mode state."""
         if self.app_state == AppState.NORMAL:
@@ -267,6 +289,75 @@ class LightController:
         """Cycle background animation."""
         self.background_manager.cycle_background()
 
+    def _toggle_playback(self) -> None:
+        """Toggle sequence playback (play/pause)."""
+        if not self.active_preset:
+            logger.info("No active preset - playback toggle has no effect")
+            return
+
+        if not self.preset_manager.has_sequence(self.active_preset):
+            logger.info("Active preset is not a sequence - playback toggle has no effect")
+            return
+
+        current_state = self.sequence_manager.sequence_state
+        
+        if current_state == SequenceState.PLAYING:
+            self.sequence_manager.pause_sequence()
+            self.playback_enabled = False
+            logger.info("Sequence playback paused")
+        elif current_state == SequenceState.PAUSED:
+            self.sequence_manager.resume_sequence()
+            self.playback_enabled = True
+            logger.info("Sequence playback resumed")
+        else:
+            logger.info("No sequence currently playing to pause/resume")
+            return
+
+        self._update_playback_buttons()
+
+    def _next_step(self) -> None:
+        """Jump to next step in current sequence."""
+        if not self.active_preset:
+            logger.info("No active preset - cannot advance step")
+            return
+
+        if not self.preset_manager.has_sequence(self.active_preset):
+            logger.info("Active preset is not a sequence - cannot advance step")
+            return
+
+        if self.sequence_manager.next_step():
+            # Flash the next step button to indicate success
+            self.launchpad.set_button_led(ButtonType.RIGHT, NEXT_STEP_BUTTON, self.colors.SUCCESS_FLASH)
+            time.sleep(0.1)
+            self._update_playback_buttons()
+
+    def _update_playback_buttons(self) -> None:
+        """Update the playback control button LEDs."""
+        # Update playback toggle button based on current state
+        if not self.active_preset or not self.preset_manager.has_sequence(self.active_preset):
+            # No sequence active - turn off playback buttons
+            self.launchpad.set_button_led(ButtonType.RIGHT, PLAYBACK_TOGGLE_BUTTON, self.colors.OFF)
+            self.launchpad.set_button_led(ButtonType.RIGHT, NEXT_STEP_BUTTON, self.colors.OFF)
+            return
+
+        current_state = self.sequence_manager.sequence_state
+        
+        if current_state == SequenceState.PLAYING:
+            # Green for playing
+            self.launchpad.set_button_led(ButtonType.RIGHT, PLAYBACK_TOGGLE_BUTTON, self.colors.PLAYBACK_PLAYING)
+        elif current_state == SequenceState.PAUSED:
+            # Orange for paused
+            self.launchpad.set_button_led(ButtonType.RIGHT, PLAYBACK_TOGGLE_BUTTON, self.colors.PLAYBACK_PAUSED)
+        else:
+            # Off for stopped
+            self.launchpad.set_button_led(ButtonType.RIGHT, PLAYBACK_TOGGLE_BUTTON, self.colors.OFF)
+
+        # Next step button - blue when sequence is active (playing or paused)
+        if current_state in [SequenceState.PLAYING, SequenceState.PAUSED]:
+            self.launchpad.set_button_led(ButtonType.RIGHT, NEXT_STEP_BUTTON, self.colors.NEXT_STEP)
+        else:
+            self.launchpad.set_button_led(ButtonType.RIGHT, NEXT_STEP_BUTTON, self.colors.OFF)
+
     def _activate_preset(self, coords: t.List[int]) -> None:
         """Activate a preset (simple or sequence)."""
         if self.active_preset:
@@ -281,9 +372,13 @@ class LightController:
         self.midi_software.send_scene_command((8, 0))  # Blackout
 
         if self._handle_sequence_preset(coords):
+            # Update playback buttons for sequence presets
+            self._update_playback_buttons()
             return
-
+            
         self._handle_simple_preset(coords)
+        # Update playback buttons (will turn them off for simple presets)
+        self._update_playback_buttons()
 
     def _handle_sequence_preset(self, coords: t.List[int]) -> bool:
         """Handle sequence preset activation. Returns True if sequence was started."""
@@ -337,6 +432,9 @@ class LightController:
         self.active_preset = None
         if self.on_preset_changed:
             self.on_preset_changed(None)
+        
+        # Update playback buttons (will turn them off)
+        self._update_playback_buttons()
 
     def _activate_scenes(self, scenes: t.List[t.List[int]]) -> None:
         """Activate scenes and update LEDs."""

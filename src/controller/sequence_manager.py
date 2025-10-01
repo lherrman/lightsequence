@@ -105,6 +105,33 @@ class SequenceManager:
             self.sequence_state = SequenceState.PLAYING
             logger.info("Sequence resumed")
 
+    def next_step(self) -> bool:
+        """Jump to the next step in the current sequence."""
+        if not self.current_sequence or self.current_sequence not in self.sequences:
+            logger.warning("No active sequence to advance")
+            return False
+
+        if self.sequence_state == SequenceState.STOPPED:
+            logger.warning("Cannot advance stopped sequence")
+            return False
+
+        sequence = self.sequences[self.current_sequence]
+        if len(sequence) <= 1:
+            logger.info("Sequence has only one step, cannot advance")
+            return False
+
+        # Advance to next step
+        self.current_step_index = (self.current_step_index + 1) % len(sequence)
+        self.step_start_time = time.time()
+
+        # Trigger step change callback immediately
+        if self.on_step_change:
+            current_step = sequence[self.current_step_index]
+            self.on_step_change(current_step.scenes)
+
+        logger.info(f"Advanced to step {self.current_step_index + 1}/{len(sequence)}")
+        return True
+
     def get_current_step_info(self) -> t.Optional[t.Dict[str, t.Any]]:
         """Get information about the current step."""
         if not self.current_sequence or self.current_sequence not in self.sequences:
