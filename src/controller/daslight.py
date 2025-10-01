@@ -17,12 +17,8 @@ class Daslight:
         # Scene mapping: relative coordinates (x, y) to MIDI notes
         self._scene_to_note_map = self._build_scene_note_mapping()
 
-        # Preset mapping: relative coordinates (x, y) to MIDI notes
-        self._preset_to_note_map = self._build_preset_note_mapping()
-
         # Reverse mapping for feedback processing
         self._note_to_scene_map = {v: k for k, v in self._scene_to_note_map.items()}
-
         # MIDI connection variables
         self.midi_out = None
         self.midi_in = None
@@ -30,26 +26,14 @@ class Daslight:
     def _build_scene_note_mapping(self) -> t.Dict[t.Tuple[int, int], int]:
         """Build mapping from scene button coordinates to MIDI notes."""
         scene_map = {}
-        base_notes = [81, 71, 61, 51, 41]  # Column base notes (y=0 to y=4)
+        base_notes = [81, 71, 61, 51, 41]  # y=0 to y=5
 
-        for x in range(8):  # 8 columns
+        for x in range(9):  # 9 columns
             for y in range(5):  # 5 rows (y=0 to y=4 relative to scene area)
                 note = base_notes[y] + x
                 scene_map[(x, y)] = note
 
         return scene_map
-
-    def _build_preset_note_mapping(self) -> t.Dict[t.Tuple[int, int], int]:
-        """Build mapping from preset button coordinates to MIDI notes."""
-        preset_map = {}
-        base_notes = [31, 21, 11]  # Row base notes (y=0 to y=2)
-
-        for x in range(8):  # 8 columns
-            for y in range(3):  # 3 rows (y=0 to y=2 relative to preset area)
-                note = base_notes[y] + x
-                preset_map[(x, y)] = note
-
-        return preset_map
 
     def connect_midi(
         self,

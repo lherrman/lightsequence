@@ -11,15 +11,21 @@ from background_animator import BackgroundManager
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+SAVE_BUTTON = [0, 0]
+BACKGROUND_BUTTON = [7, 0]
+
 
 class LightController:
     """Main controller class that handles communication between Launchpad and DasLight."""
 
     # Color definitions
-    COLOR_SCENE_ON = [0.0, 1.0, 0.0]  # Green
-    COLOR_SCENE_OFF = [0.0, 0.0, 0.0]  # Off
-    COLOR_PRESET_ON = [1.0, 1.0, 0.0]  # Yellow
-    COLOR_PRESET_OFF = [0.0, 0.0, 0.0]  # Off
+    COLOR_SCENE_ON = [0.0, 1.0, 0.0]
+    COLOR_OFF = [0.0, 0.0, 0.0]
+    COLOR_PRESET_ON = [1.0, 0.0, 5.0]
+    COLOR_PRESET_SAVE_MODE = [1.0, 0.0, 0.5]
+    COLOR_SAVE_MODE_ON = [1.0, 0.0, 0.5]
+    COLOR_SAVE_MODE_OFF = [0.0, 1.0, 0.0]
+    COLOR_BACKGROUND_CYCLE = [0.0, 1.0, 0.0]
 
     def __init__(self):
         """Initialize the light controller with DasLight and Launchpad connections."""
@@ -55,12 +61,12 @@ class LightController:
                 if tuple(coords) in preset_indices:
                     # Preset exists - make it glow
                     self.launchpad.set_button_led(
-                        ButtonType.PRESET, coords, [1.0, 0.0, 0.5]
-                    )  # Magenta
+                        ButtonType.PRESET, coords, self.COLOR_PRESET_SAVE_MODE
+                    )
                 else:
                     # No preset - turn off
                     self.launchpad.set_button_led(
-                        ButtonType.PRESET, coords, self.COLOR_PRESET_OFF
+                        ButtonType.PRESET, coords, self.COLOR_OFF
                     )
 
     def connect(self) -> bool:
@@ -95,15 +101,17 @@ class LightController:
 
             # Exit save mode
             self.save_button_state = False
-            SAVE_BUTTON = [0, 0]  # Example: top-left button as save button
-            self.launchpad.set_button_led(ButtonType.TOP, SAVE_BUTTON, [0.0, 0.0, 0.0])
+
+            self.launchpad.set_button_led(
+                ButtonType.TOP, SAVE_BUTTON, self.COLOR_SAVE_MODE_OFF
+            )
 
             # Clear all preset LEDs first
             for x in range(8):
                 for y in range(3):
                     preset_coords = [x, y]
                     self.launchpad.set_button_led(
-                        ButtonType.PRESET, preset_coords, self.COLOR_PRESET_OFF
+                        ButtonType.PRESET, preset_coords, self.COLOR_OFF
                     )
 
             # Activate the newly saved preset
@@ -118,24 +126,22 @@ class LightController:
         # Clear previous preset LED
         if self.active_preset:
             self.launchpad.set_button_led(
-                ButtonType.PRESET, self.active_preset, self.COLOR_PRESET_OFF
+                ButtonType.PRESET, self.active_preset, self.COLOR_OFF
             )
 
         # Toggle preset if same button pressed again
         if self.active_preset == coords:
             self.active_preset = None
-            self.launchpad.set_button_led(
-                ButtonType.PRESET, coords, self.COLOR_PRESET_OFF
-            )
-            self.midi_software.send_scene_command((7, 0))
+            self.launchpad.set_button_led(ButtonType.PRESET, coords, self.COLOR_OFF)
+            self.midi_software.send_scene_command((8, 0))
             logger.debug(f"Preset {coords} deactivated")
             return
 
         # Activate new preset
         self.active_preset = coords.copy()
 
-        # send blackout (7,0)
-        self.midi_software.send_scene_command((7, 0))
+        # send blackout (8,0)
+        self.midi_software.send_scene_command((8, 0))
         self.launchpad.set_button_led(ButtonType.PRESET, coords, self.COLOR_PRESET_ON)
 
         # Load and activate scenes from the preset
@@ -159,9 +165,6 @@ class LightController:
     def _handle_top_button(self, coords: t.List[int], is_pressed: bool) -> None:
         """Handle top button press - light up when pressed, turn off when released."""
 
-        SAVE_BUTTON = [0, 0]  # Top-left button as save button
-        BACKGROUND_BUTTON = [1, 0]  # Second button from left as background cycle button
-
         if (
             coords == SAVE_BUTTON and is_pressed
         ):  # Only handle press events, not release
@@ -170,14 +173,14 @@ class LightController:
             if self.save_button_state:
                 # Entering save mode - turn save button red and show preset buttons with presets in blue
                 self.launchpad.set_button_led(
-                    ButtonType.TOP, coords, [1.0, 0.0, 0.0]
+                    ButtonType.TOP, coords, self.COLOR_SAVE_MODE_ON
                 )  # Red
                 self._update_preset_leds_for_save_mode()
                 logger.info("Entered save mode")
             else:
                 # Exiting save mode - turn save button off and restore normal preset display
                 self.launchpad.set_button_led(
-                    ButtonType.TOP, coords, [0.0, 0.0, 0.0]
+                    ButtonType.TOP, coords, self.COLOR_SAVE_MODE_OFF
                 )  # Off
 
                 # Clear all preset LEDs first
@@ -185,7 +188,7 @@ class LightController:
                     for y in range(3):
                         preset_coords = [x, y]
                         self.launchpad.set_button_led(
-                            ButtonType.PRESET, preset_coords, self.COLOR_PRESET_OFF
+                            ButtonType.PRESET, preset_coords, self.COLOR_OFF
                         )
 
                 # Show only the active preset if there is one
@@ -199,11 +202,11 @@ class LightController:
             if is_pressed:
                 self._cycle_background()
                 self.launchpad.set_button_led(
-                    ButtonType.TOP, coords, [0.0, 1.0, 1.0]
+                    ButtonType.TOP, coords, self.COLOR_BACKGROUND_CYCLE
                 )  # Cyan
             else:
                 self.launchpad.set_button_led(
-                    ButtonType.TOP, coords, [0.0, 0.0, 0.0]
+                    ButtonType.TOP, coords, self.COLOR_OFF
                 )  # Off
 
     def _process_button_event(self, button_event: t.Dict[str, t.Any]) -> None:
@@ -214,6 +217,9 @@ class LightController:
 
         if button_type == ButtonType.SCENE:
             self._handle_scene_button(coords, is_pressed)
+        if button_type == ButtonType.RIGHT:
+            self._handle_scene_button(coords, is_pressed)
+
         elif button_type == ButtonType.PRESET:
             self._handle_preset_button(coords, is_pressed)
         elif button_type == ButtonType.TOP:
@@ -233,7 +239,7 @@ class LightController:
                     self.active_scenes.discard(scene_coords)
 
                 # Use abstracted LED control with relative coordinates
-                color = self.COLOR_SCENE_ON if state else self.COLOR_SCENE_OFF
+                color = self.COLOR_SCENE_ON if state else self.COLOR_OFF
                 coords_list = [scene_coords[0], scene_coords[1]]
                 self.launchpad.set_button_led(ButtonType.SCENE, coords_list, color)
 
@@ -244,6 +250,12 @@ class LightController:
             return
 
         logger.info("Light controller started. Press Ctrl+C to exit.")
+
+        # turn on save button LED to indicate ready state
+        self.launchpad.set_button_led(
+            ButtonType.TOP, SAVE_BUTTON, self.COLOR_SAVE_MODE_OFF
+        )
+
         i = 0
         try:
             while True:

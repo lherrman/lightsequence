@@ -8,11 +8,11 @@ logger = logging.getLogger(__name__)
 
 class PresetManager:
     """Manages saving and loading of presets to/from JSON file."""
-    
+
     def __init__(self, preset_file_path: Path):
         """Initialize the preset manager with a file path."""
         self.preset_file = preset_file_path
-    
+
     def load_presets(self) -> t.Dict[str, t.Any]:
         """Load presets from JSON file."""
         try:
@@ -89,9 +89,7 @@ class PresetManager:
                 except Exception:
                     pass
 
-    def get_preset_by_index(
-        self, index: t.List[int]
-    ) -> t.Optional[t.Dict[str, t.Any]]:
+    def get_preset_by_index(self, index: t.List[int]) -> t.Optional[t.Dict[str, t.Any]]:
         """Get preset by index coordinates."""
         presets_data = self.load_presets()
         for preset in presets_data.get("presets", []):

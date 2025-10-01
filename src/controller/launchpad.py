@@ -18,7 +18,7 @@ class ButtonType(str, Enum):
 
 class LaunchpadMK2:
     def __init__(self):
-        self.BOUNDS_SCENES = np.array([[0, 1], [7, 5]])
+        self.BOUNDS_SCENES = np.array([[0, 1], [8, 5]])
         self.BOUNDS_PRESETS = np.array([[0, 6], [7, 8]])
         self.BOUNDS_TOP = np.array([[0, 0], [7, 0]])
         self.BOUNDS_RIGHT = np.array([[8, 1], [8, 8]])
@@ -115,6 +115,7 @@ class LaunchpadMK2:
     def close(self) -> None:
         """Close connection to Launchpad MK2."""
         if self.is_connected:
+            self.device.Reset()
             self.device.Close()
             self.is_connected = False
             logger.info("Disconnected from Launchpad MK2")
