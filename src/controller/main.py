@@ -33,6 +33,20 @@ class LightController:
         self.save_button_state = False  # Track save button state
         self.preset_file = Path(__file__).parent / "presets.json"
 
+        # Background cycling functionality
+        self.background_animations = [
+            "expanding_waves",
+            "ripple_effect",
+            "ocean_waves",
+            "pulse_gradient",
+            "spiral_waves",
+            "breathing",
+        ]
+        self.current_background_index = 2  # Start with "ocean_waves"
+        self.current_background = self.background_animations[
+            self.current_background_index
+        ]
+
     def _load_presets(self) -> t.Dict[str, t.Any]:
         """Load presets from JSON file."""
         try:
@@ -163,6 +177,16 @@ class LightController:
         except Exception as e:
             logger.error(f"Error in _save_preset: {e}")
 
+    def _cycle_background(self) -> None:
+        """Cycle to the next background animation."""
+        self.current_background_index = (self.current_background_index + 1) % len(
+            self.background_animations
+        )
+        self.current_background = self.background_animations[
+            self.current_background_index
+        ]
+        logger.info(f"Switched to background: {self.current_background}")
+
     def _update_preset_leds_for_save_mode(self) -> None:
         """Update preset button LEDs when in save mode to show which have presets."""
         if not self.save_button_state:
@@ -284,7 +308,9 @@ class LightController:
     def _handle_top_button(self, coords: t.List[int], is_pressed: bool) -> None:
         """Handle top button press - light up when pressed, turn off when released."""
 
-        SAVE_BUTTON = [0, 0]  # Example: top-left button as save button
+        SAVE_BUTTON = [0, 0]  # Top-left button as save button
+        BACKGROUND_BUTTON = [1, 0]  # Second button from left as background cycle button
+
         if (
             coords == SAVE_BUTTON and is_pressed
         ):  # Only handle press events, not release
@@ -317,6 +343,14 @@ class LightController:
                         ButtonType.PRESET, self.active_preset, self.COLOR_PRESET_ON
                     )
                 logger.info("Exited save mode")
+
+        elif coords == BACKGROUND_BUTTON and is_pressed:  # Background cycling button
+            self._cycle_background()
+            # Briefly light up the button to show it was pressed
+            self.launchpad.set_button_led(
+                ButtonType.TOP, coords, [0.0, 1.0, 1.0]
+            )  # Cyan
+            # Note: The button will turn off in the next cycle when draw_background overwrites it
 
     def _process_button_event(self, button_event: t.Dict[str, t.Any]) -> None:
         """Process a button event based on its type."""
@@ -356,7 +390,7 @@ class LightController:
             return
 
         logger.info("Light controller started. Press Ctrl+C to exit.")
-
+        i = 0
         try:
             while True:
                 # Handle button events
@@ -367,8 +401,10 @@ class LightController:
                 # Process MIDI feedback
                 self._process_midi_feedback()
 
-                time.sleep(0.01)  # Small delay to prevent excessive CPU usage
+                self.launchpad.draw_background(self.current_background)
 
+                time.sleep(0.02)  # Small delay to prevent excessive CPU usage
+                i += 1
         except KeyboardInterrupt:
             logger.info("Shutting down light controller...")
         finally:
