@@ -172,7 +172,7 @@ class SequenceStepWidget(QFrame):
     def setup_ui(self):
         # Main horizontal layout - scenes on left, parameters on right
         main_layout = QHBoxLayout(self)
-        
+
         # Left side: Scene grid (more compact)
         scenes_group = QGroupBox(f"Step {self.step_index + 1} - Scenes")
         scenes_group.setFont(QFont("Arial", 9, QFont.Weight.Bold))
@@ -206,27 +206,29 @@ class SequenceStepWidget(QFrame):
         # Duration with +/- buttons
         duration_layout = QHBoxLayout()
         duration_layout.addWidget(QLabel("Duration:"))
-        
+
         # Minus button
         minus_btn = QPushButton("-")
         minus_btn.setFixedSize(30, 25)
         minus_btn.setStyleSheet("font-weight: bold; font-size: 14px;")
         minus_btn.clicked.connect(self.decrease_duration)
         duration_layout.addWidget(minus_btn)
-        
+
         # Duration display (read-only label)
         self.duration_label = QLabel("1.0 sec")
-        self.duration_label.setStyleSheet("border: 1px solid #555; padding: 3px; background: #1e1e1e; min-width: 60px;")
+        self.duration_label.setStyleSheet(
+            "border: 1px solid #555; padding: 3px; background: #1e1e1e; min-width: 60px;"
+        )
         self.duration_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         duration_layout.addWidget(self.duration_label)
-        
+
         # Plus button
         plus_btn = QPushButton("+")
         plus_btn.setFixedSize(30, 25)
         plus_btn.setStyleSheet("font-weight: bold; font-size: 14px;")
         plus_btn.clicked.connect(self.increase_duration)
         duration_layout.addWidget(plus_btn)
-        
+
         duration_layout.addStretch()
         controls_layout.addLayout(duration_layout)
 
@@ -234,7 +236,7 @@ class SequenceStepWidget(QFrame):
 
         # Bottom: Move and remove buttons
         button_layout = QHBoxLayout()
-        
+
         # Move buttons (larger and more visible)
         self.move_up_btn = QPushButton("↑")
         self.move_up_btn.setFixedSize(40, 35)
@@ -252,14 +254,16 @@ class SequenceStepWidget(QFrame):
 
         # Remove button
         remove_btn = QPushButton("Remove")
-        remove_btn.setStyleSheet("background-color: #cc4444; color: white; font-weight: bold;")
+        remove_btn.setStyleSheet(
+            "background-color: #cc4444; color: white; font-weight: bold;"
+        )
         remove_btn.clicked.connect(lambda: self.remove_step.emit(self))
         button_layout.addWidget(remove_btn)
 
         controls_layout.addLayout(button_layout)
-        
+
         main_layout.addWidget(controls_widget)
-        
+
         # Set proportional sizes - scenes get more space
         main_layout.setStretch(0, 2)  # Scenes
         main_layout.setStretch(1, 1)  # Controls
