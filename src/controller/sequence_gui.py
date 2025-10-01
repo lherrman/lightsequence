@@ -8,8 +8,6 @@ from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
     QHBoxLayout,
-    QTreeWidget,
-    QTreeWidgetItem,
     QPushButton,
     QLineEdit,
     QLabel,
@@ -141,6 +139,86 @@ class SceneButton(QPushButton):
             """)
 
 
+class PresetButton(QPushButton):
+    """Custom button for preset grid."""
+
+    preset_selected = Signal(int, int)
+
+    def __init__(self, x: int, y: int):
+        super().__init__()
+        self.coord_x = x
+        self.coord_y = y
+        self.preset_coords = [x, y]
+        self.has_preset = False
+        self.has_sequence = False
+        self.is_active_preset = False
+        
+        self.setFixedHeight(32)  # Fixed height only, let width stretch
+        self.setMinimumWidth(55)  # Minimum width to prevent too small buttons
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)  # Expand horizontally
+        self.setCheckable(True)
+        self.clicked.connect(self._on_preset_clicked)
+        self.update_appearance()
+
+    def _on_preset_clicked(self):
+        """Handle button click."""
+        self.preset_selected.emit(self.coord_x, self.coord_y)
+
+    def set_preset_info(self, has_preset: bool, has_sequence: bool = False):
+        """Update preset information."""
+        self.has_preset = has_preset
+        self.has_sequence = has_sequence
+        self.update_appearance()
+
+    def set_active_preset(self, is_active: bool):
+        """Set whether this preset is currently active."""
+        self.is_active_preset = is_active
+        self.setChecked(is_active)
+        self.update_appearance()
+
+    def update_appearance(self):
+        """Update button appearance based on state."""
+        if not self.has_preset:
+            self.setText(f"{self.coord_x},{self.coord_y}")
+            self.setStyleSheet("""
+                QPushButton {
+                    background-color: #3c3c3c;
+                    color: #666666;
+                    border: 1px solid #555555;
+                    border-radius: 3px;
+                    font-size: 10px;
+                }
+                QPushButton:hover {
+                    background-color: #4a4a4a;
+                }
+            """)
+        else:
+            # Show preset type indicator
+            if self.has_sequence:
+                self.setText(f"SEQ\n{self.coord_x},{self.coord_y}")
+                base_color = "#0066cc" if not self.is_active_preset else "#0088ff"
+            else:
+                self.setText(f"SIMPLE\n{self.coord_x},{self.coord_y}")
+                base_color = "#cc6600" if not self.is_active_preset else "#ff8800"
+            
+            self.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {base_color};
+                    color: #ffffff;
+                    border: 2px solid #{"ffffff" if self.is_active_preset else "666666"};
+                    border-radius: 3px;
+                    font-size: 9px;
+                    font-weight: bold;
+                }}
+                QPushButton:hover {{
+                    background-color: {base_color.replace("cc", "dd").replace("66", "88")};
+                }}
+                QPushButton:checked {{
+                    border: 2px solid #ffffff;
+                }}
+            """)
+
+
 class SequenceStepWidget(QFrame):
     """Widget for editing a single sequence step."""
 
@@ -160,11 +238,12 @@ class SequenceStepWidget(QFrame):
             QFrame {
                 background-color: #2d2d2d;
                 border: 1px solid #555555;
-                border-radius: 5px;
-                margin: 2px;
-                padding: 5px;
+                border-radius: 3px;
+                margin: 1px;
+                padding: 3px;
             }
         """)
+        self.setMaximumHeight(120)  # Limit height for compactness
 
         self.setup_ui()
         self.update_from_step()
@@ -173,89 +252,100 @@ class SequenceStepWidget(QFrame):
         # Main horizontal layout - scenes on left, parameters on right
         main_layout = QHBoxLayout(self)
 
-        # Left side: Scene grid (more compact)
-        scenes_group = QGroupBox(f"Step {self.step_index + 1} - Scenes")
+        # Left side: Scene grid (compact, fixed size)
+        scenes_group = QGroupBox(f"Step {self.step_index + 1}")
         scenes_group.setFont(QFont("Arial", 9, QFont.Weight.Bold))
+        scenes_group.setFixedWidth(200)  # Fixed width to prevent stretching
         scenes_layout = QGridLayout(scenes_group)
-        scenes_layout.setSpacing(2)  # Tighter spacing for compactness
+        scenes_layout.setSpacing(2)
+        scenes_layout.setContentsMargins(5, 15, 5, 5)  # Compact margins
 
-        # Create 8x5 grid of scene buttons (smaller size)
+        # Create 8x5 grid of scene buttons (compact size)
         for y in range(5):
             for x in range(8):
                 btn = SceneButton(x, y)
-                btn.setFixedSize(20, 20)  # Smaller buttons
+                btn.setFixedSize(18, 18)  # Even smaller buttons for compactness
                 btn.scene_toggled.connect(self.on_scene_toggled)
                 self.scene_buttons[(x, y)] = btn
                 scenes_layout.addWidget(btn, y, x)
 
         main_layout.addWidget(scenes_group)
 
-        # Right side: Parameters and controls
+        # Right side: Parameters and controls (compact)
         controls_widget = QWidget()
         controls_layout = QVBoxLayout(controls_widget)
-        controls_layout.setContentsMargins(10, 5, 5, 5)
+        controls_layout.setContentsMargins(8, 5, 5, 5)
+        controls_layout.setSpacing(4)  # Tighter spacing
 
-        # Step name
+        # Step name (more compact)
         name_layout = QHBoxLayout()
-        name_layout.addWidget(QLabel("Name:"))
+        name_layout.setSpacing(5)
+        name_label = QLabel("Name:")
+        name_label.setFixedWidth(40)  # Fixed width for alignment
+        name_layout.addWidget(name_label)
         self.name_edit = QLineEdit()
+        self.name_edit.setMaximumHeight(22)  # Shorter input field
         self.name_edit.textChanged.connect(self.on_step_changed)
         name_layout.addWidget(self.name_edit)
         controls_layout.addLayout(name_layout)
 
         # Duration with +/- buttons
         duration_layout = QHBoxLayout()
-        duration_layout.addWidget(QLabel("Duration:"))
+        duration_layout.setSpacing(5)
+        duration_label = QLabel("Duration:")
+        duration_label.setFixedWidth(50)  # Fixed width for alignment
+        duration_layout.addWidget(duration_label)
 
         # Minus button
         minus_btn = QPushButton("-")
-        minus_btn.setFixedSize(30, 25)
-        minus_btn.setStyleSheet("font-weight: bold; font-size: 14px;")
+        minus_btn.setFixedSize(22, 22)  # Smaller buttons
+        minus_btn.setStyleSheet("font-weight: bold; font-size: 12px;")
         minus_btn.clicked.connect(self.decrease_duration)
         duration_layout.addWidget(minus_btn)
 
-        # Duration display (read-only label)
+        # Duration display (more compact)
         self.duration_label = QLabel("1.0 sec")
         self.duration_label.setStyleSheet(
-            "border: 1px solid #555; padding: 3px; background: #1e1e1e; min-width: 60px;"
+            "border: 1px solid #555; padding: 2px; background: #1e1e1e; min-width: 50px;"
         )
         self.duration_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.duration_label.setMaximumHeight(22)
         duration_layout.addWidget(self.duration_label)
 
         # Plus button
         plus_btn = QPushButton("+")
-        plus_btn.setFixedSize(30, 25)
-        plus_btn.setStyleSheet("font-weight: bold; font-size: 14px;")
+        plus_btn.setFixedSize(22, 22)  # Smaller buttons
+        plus_btn.setStyleSheet("font-weight: bold; font-size: 12px;")
         plus_btn.clicked.connect(self.increase_duration)
         duration_layout.addWidget(plus_btn)
 
         duration_layout.addStretch()
         controls_layout.addLayout(duration_layout)
 
-        controls_layout.addStretch()
-
-        # Bottom: Move and remove buttons
+        # Bottom: Move and remove buttons (compact)
         button_layout = QHBoxLayout()
+        button_layout.setSpacing(3)
 
-        # Move buttons (larger and more visible)
+        # Move buttons (smaller and more compact)
         self.move_up_btn = QPushButton("↑")
-        self.move_up_btn.setFixedSize(40, 35)
-        self.move_up_btn.setStyleSheet("font-size: 16px; font-weight: bold;")
+        self.move_up_btn.setFixedSize(28, 25)
+        self.move_up_btn.setStyleSheet("font-size: 14px; font-weight: bold;")
         self.move_up_btn.clicked.connect(lambda: self.move_up.emit(self))
         button_layout.addWidget(self.move_up_btn)
 
         self.move_down_btn = QPushButton("↓")
-        self.move_down_btn.setFixedSize(40, 35)
-        self.move_down_btn.setStyleSheet("font-size: 16px; font-weight: bold;")
+        self.move_down_btn.setFixedSize(28, 25)
+        self.move_down_btn.setStyleSheet("font-size: 14px; font-weight: bold;")
         self.move_down_btn.clicked.connect(lambda: self.move_down.emit(self))
         button_layout.addWidget(self.move_down_btn)
 
         button_layout.addStretch()
 
-        # Remove button
+        # Remove button (more compact)
         remove_btn = QPushButton("Remove")
+        remove_btn.setFixedHeight(25)
         remove_btn.setStyleSheet(
-            "background-color: #cc4444; color: white; font-weight: bold;"
+            "background-color: #cc4444; color: white; font-weight: bold; font-size: 11px;"
         )
         remove_btn.clicked.connect(lambda: self.remove_step.emit(self))
         button_layout.addWidget(remove_btn)
@@ -586,41 +676,89 @@ class LightSequenceGUI(QMainWindow):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
 
-        layout = QHBoxLayout(central_widget)
+        # Main vertical layout - sequence editor on top, preset grid on bottom
+        main_layout = QVBoxLayout(central_widget)
 
-        # Left panel - Preset list
-        left_panel = QWidget()
-        left_panel.setMaximumWidth(300)
-        left_layout = QVBoxLayout(left_panel)
-
-        # Preset list
-        left_layout.addWidget(QLabel("Presets:"))
-
-        self.preset_tree = QTreeWidget()
-        self.preset_tree.setHeaderLabels(["Preset", "Type"])
-        self.preset_tree.itemClicked.connect(self.on_preset_selected)
-        left_layout.addWidget(self.preset_tree)
-
-        # Refresh button
-        refresh_btn = QPushButton("Refresh Presets")
-        refresh_btn.clicked.connect(self.refresh_presets)
-        left_layout.addWidget(refresh_btn)
-
-        layout.addWidget(left_panel)
-
-        # Right panel - Sequence editor
+        # Top area - Sequence editor (takes most space)
         self.editor_stack = QWidget()
         self.editor_layout = QVBoxLayout(self.editor_stack)
 
         # Default message
         self.default_label = QLabel(
-            "Select a preset from the list to edit its sequence."
+            "Select a preset from the grid below to edit its sequence."
         )
         self.default_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.default_label.setStyleSheet("color: #888888; font-size: 14px;")
         self.editor_layout.addWidget(self.default_label)
 
-        layout.addWidget(self.editor_stack)
+        main_layout.addWidget(self.editor_stack, 3)  # Give most space to editor
+
+        # Bottom area - Preset grid (3 rows x 8 columns) - more compact
+        preset_panel = QWidget()  # Use plain widget instead of GroupBox
+        preset_panel.setMaximumHeight(125)  # Slightly more height for better spacing
+        preset_panel.setStyleSheet("""
+            QWidget {
+                background-color: #2d2d2d;
+                border: 1px solid #555555;
+                border-radius: 3px;
+            }
+        """)
+        preset_layout = QVBoxLayout(preset_panel)
+        preset_layout.setContentsMargins(3, 3, 3, 3)  # Very tight margins
+        preset_layout.setSpacing(2)
+
+        # Header with title and refresh button in one line
+        header_layout = QHBoxLayout()
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(5)
+        
+        # Title label
+        title_label = QLabel("Presets")
+        title_label.setStyleSheet("color: #cccccc; font-weight: bold; font-size: 11px;")
+        header_layout.addWidget(title_label)
+        
+        header_layout.addStretch()  # Push refresh button to right
+        
+        # Small refresh icon button in corner
+        refresh_btn = QPushButton("🔄")
+        refresh_btn.clicked.connect(self.refresh_presets)
+        refresh_btn.setFixedSize(18, 18)
+        refresh_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #555555;
+                border: 1px solid #666666;
+                border-radius: 9px;
+                font-size: 10px;
+                padding: 0px;
+            }
+            QPushButton:hover {
+                background-color: #666666;
+            }
+        """)
+        header_layout.addWidget(refresh_btn)
+        preset_layout.addLayout(header_layout)
+
+        # Preset grid
+        self.preset_grid_widget = QWidget()
+        preset_grid_layout = QGridLayout(self.preset_grid_widget)
+        preset_grid_layout.setHorizontalSpacing(3)  # Horizontal spacing between columns
+        preset_grid_layout.setVerticalSpacing(6)    # More vertical spacing between rows
+        preset_grid_layout.setContentsMargins(0, 2, 0, 2)  # Small top/bottom margins
+        
+        # Create 3x8 grid of preset buttons
+        self.preset_buttons: t.Dict[t.Tuple[int, int], PresetButton] = {}
+        for y in range(3):  # 3 rows
+            for x in range(8):  # 8 columns
+                btn = PresetButton(x, y)
+                btn.preset_selected.connect(self.on_preset_button_selected)
+                self.preset_buttons[(x, y)] = btn
+                preset_grid_layout.addWidget(btn, y, x)
+                
+                # Make columns stretch equally to use full width
+                preset_grid_layout.setColumnStretch(x, 1)
+
+        preset_layout.addWidget(self.preset_grid_widget)
+        main_layout.addWidget(preset_panel, 1)  # Give less space to preset grid
 
         # Status bar
         self.statusBar().showMessage("Starting controller...")
@@ -715,34 +853,44 @@ class LightSequenceGUI(QMainWindow):
         self.refresh_presets()
 
     def refresh_presets(self):
-        """Refresh the preset list."""
-        self.preset_tree.clear()
-
+        """Refresh the preset grid."""
         if not self.controller:
             return
 
+        # Get all preset indices
         preset_indices = self.controller.preset_manager.get_all_preset_indices()
 
-        for preset_tuple in preset_indices.keys():
-            preset_list = list(preset_tuple)
-            has_sequence = self.controller.preset_manager.has_sequence(preset_list)
+        # Update all preset buttons
+        for (x, y), btn in self.preset_buttons.items():
+            preset_tuple = (x, y)
+            if preset_tuple in preset_indices:
+                preset_list = [x, y]
+                has_sequence = self.controller.preset_manager.has_sequence(preset_list)
+                btn.set_preset_info(True, has_sequence)
+            else:
+                btn.set_preset_info(False, False)
 
-            item = QTreeWidgetItem(self.preset_tree)
-            item.setText(0, f"[{preset_tuple[0]}, {preset_tuple[1]}]")
-            item.setText(1, "Sequence" if has_sequence else "Simple")
-            item.setData(0, Qt.ItemDataRole.UserRole, preset_tuple)
+    def on_preset_button_selected(self, x: int, y: int):
+        """Handle preset button selection."""
+        if not self.controller:
+            return
 
-        # Update icons after creating all items
+        preset_coords = [x, y]
+        preset_tuple = (x, y)
+        
+        # Show sequence editor for this preset
+        self.show_sequence_editor(preset_tuple)
 
-    def on_preset_selected(self, item: QTreeWidgetItem, column: int):
-        """Called when a preset is selected."""
-        preset_tuple = item.data(0, Qt.ItemDataRole.UserRole)
-        if preset_tuple and self.controller:
-            # Only activate on launchpad if we're not updating from launchpad
-            if not self._updating_from_launchpad:
-                self.select_preset_on_launchpad(list(preset_tuple))
-            # Show editor
-            self.show_sequence_editor(preset_tuple)
+        # Update button states - clear all first
+        for btn in self.preset_buttons.values():
+            btn.set_active_preset(False)
+        
+        # Set selected button as active
+        if (x, y) in self.preset_buttons:
+            self.preset_buttons[(x, y)].set_active_preset(True)
+
+        # Also activate on the launchpad
+        self.select_preset_on_launchpad(preset_coords)
 
     def show_sequence_editor(self, preset_index: t.Tuple[int, int]):
         """Show sequence editor for the selected preset."""
@@ -767,25 +915,24 @@ class LightSequenceGUI(QMainWindow):
         """Update preset selection from launchpad (runs on GUI thread)."""
         self._updating_from_launchpad = True
         try:
+            # Clear all preset button selections first
+            for btn in self.preset_buttons.values():
+                btn.set_active_preset(False)
+
             if preset_coords is None:
-                # No preset selected - clear selection in GUI
-                self.preset_tree.clearSelection()
-                # Hide editor and show default message
+                # No preset selected - hide editor and show default message
                 if self.current_editor:
                     self.current_editor.deleteLater()
                     self.current_editor = None
                 self.default_label.show()
                 return
 
-            # Find and select the matching preset in the tree
+            # Select the matching preset button
             preset_tuple = (preset_coords[0], preset_coords[1])
-            for i in range(self.preset_tree.topLevelItemCount()):
-                item = self.preset_tree.topLevelItem(i)
-                if item and item.data(0, Qt.ItemDataRole.UserRole) == preset_tuple:
-                    self.preset_tree.setCurrentItem(item)
-                    # Also show the editor for this preset
-                    self.show_sequence_editor(preset_tuple)
-                    break
+            if preset_tuple in self.preset_buttons:
+                self.preset_buttons[preset_tuple].set_active_preset(True)
+                # Also show the editor for this preset
+                self.show_sequence_editor(preset_tuple)
         finally:
             self._updating_from_launchpad = False
 
