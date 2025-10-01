@@ -124,7 +124,13 @@ class PresetManager:
             preset_found = False
             for preset in presets_data["presets"]:
                 if preset["index"] == index:
+                    # Overwrite with simple preset - remove sequence data if it exists
                     preset["scenes"] = valid_scenes
+                    if "sequence" in preset:
+                        del preset["sequence"]
+                        logger.info(f"Converted sequence preset {index} to simple preset")
+                    if "loop" in preset:
+                        del preset["loop"]
                     preset_found = True
                     logger.info(f"Updated existing preset {index}")
                     break
@@ -279,3 +285,46 @@ class PresetManager:
                 "loop", True
             )  # Default to True for backward compatibility
         return True
+
+    def add_step_to_preset(
+        self, index: t.List[int], scenes: t.List[t.List[int]]
+    ) -> None:
+        """Add a new step to an existing preset or create a sequence if it doesn't exist."""
+        try:
+            # Check if preset already has a sequence
+            if self.has_sequence(index):
+                # Add step to existing sequence
+                sequence = self.get_sequence(index)
+                if sequence is not None:
+                    new_step = SequenceStep(
+                        scenes=scenes,
+                        duration=1.0,  # Default 1 second duration
+                        name=f"Step {len(sequence) + 1}",
+                    )
+                    sequence.append(new_step)
+                    self.save_sequence(index, sequence, loop=True)
+                    logger.info(
+                        f"Added step to existing sequence for preset {index} (now {len(sequence)} steps)"
+                    )
+                else:
+                    logger.error("Failed to get existing sequence")
+            else:
+                # Create new sequence - first check if preset exists as simple preset
+                existing_preset = self.get_preset_by_index(index)
+                if existing_preset and "scenes" in existing_preset:
+                    # Convert existing simple preset to sequence and add new step
+                    step1 = SequenceStep(
+                        scenes=existing_preset["scenes"], duration=1.0, name="Step 1"
+                    )
+                    step2 = SequenceStep(scenes=scenes, duration=1.0, name="Step 2")
+                    self.save_sequence(index, [step1, step2], loop=True)
+                    logger.info(
+                        f"Converted preset {index} to sequence and added step (now 2 steps)"
+                    )
+                else:
+                    # Create completely new sequence
+                    new_step = SequenceStep(scenes=scenes, duration=1.0, name="Step 1")
+                    self.save_sequence(index, [new_step], loop=True)
+                    logger.info(f"Created new sequence for preset {index} with 1 step")
+        except Exception as e:
+            logger.error(f"Error adding step to preset {index}: {e}")

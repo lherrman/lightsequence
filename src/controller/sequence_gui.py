@@ -11,11 +11,9 @@ from PySide6.QtWidgets import (
     QTreeWidget,
     QTreeWidgetItem,
     QPushButton,
-    QDoubleSpinBox,
     QLineEdit,
     QLabel,
     QGroupBox,
-    QFormLayout,
     QMessageBox,
     QFrame,
     QScrollArea,
@@ -172,81 +170,104 @@ class SequenceStepWidget(QFrame):
         self.update_from_step()
 
     def setup_ui(self):
-        layout = QVBoxLayout(self)
-
-        # Header with step info and controls
-        header_layout = QHBoxLayout()
-
-        self.step_label = QLabel(f"Step {self.step_index + 1}")
-        self.step_label.setFont(QFont("Arial", 10, QFont.Weight.Bold))
-        header_layout.addWidget(self.step_label)
-
-        header_layout.addStretch()
-
-        # Move buttons
-        self.move_up_btn = QPushButton("↑")
-        self.move_up_btn.setFixedSize(25, 25)
-        self.move_up_btn.clicked.connect(lambda: self.move_up.emit(self))
-        header_layout.addWidget(self.move_up_btn)
-
-        self.move_down_btn = QPushButton("↓")
-        self.move_down_btn.setFixedSize(25, 25)
-        self.move_down_btn.clicked.connect(lambda: self.move_down.emit(self))
-        header_layout.addWidget(self.move_down_btn)
-
-        # Remove button
-        remove_btn = QPushButton("×")
-        remove_btn.setFixedSize(25, 25)
-        remove_btn.setStyleSheet(
-            "background-color: #cc4444; color: white; font-weight: bold;"
-        )
-        remove_btn.clicked.connect(lambda: self.remove_step.emit(self))
-        header_layout.addWidget(remove_btn)
-
-        layout.addLayout(header_layout)
-
-        # Step details
-        details_layout = QFormLayout()
-
-        self.name_edit = QLineEdit()
-        self.name_edit.textChanged.connect(self.on_step_changed)
-        details_layout.addRow("Name:", self.name_edit)
-
-        self.duration_spin = QDoubleSpinBox()
-        self.duration_spin.setRange(0.5, 3600.0)
-        self.duration_spin.setSingleStep(0.5)
-        self.duration_spin.setValue(1.0)  # Default 1 second
-        self.duration_spin.setSuffix(" sec")
-        self.duration_spin.valueChanged.connect(self.on_step_changed)
-        details_layout.addRow("Duration:", self.duration_spin)
-
-        layout.addLayout(details_layout)
-
-        # Scene grid
-        scenes_group = QGroupBox("Scenes")
+        # Main horizontal layout - scenes on left, parameters on right
+        main_layout = QHBoxLayout(self)
+        
+        # Left side: Scene grid (more compact)
+        scenes_group = QGroupBox(f"Step {self.step_index + 1} - Scenes")
+        scenes_group.setFont(QFont("Arial", 9, QFont.Weight.Bold))
         scenes_layout = QGridLayout(scenes_group)
-        scenes_layout.setSpacing(4)  # Equal spacing between buttons
+        scenes_layout.setSpacing(2)  # Tighter spacing for compactness
 
-        # Create 8x5 grid of scene buttons (matching the launchpad scene area)
+        # Create 8x5 grid of scene buttons (smaller size)
         for y in range(5):
             for x in range(8):
-                btn = SceneButton(x, y)  # Scene coordinates start at (0,0)
+                btn = SceneButton(x, y)
+                btn.setFixedSize(20, 20)  # Smaller buttons
                 btn.scene_toggled.connect(self.on_scene_toggled)
                 self.scene_buttons[(x, y)] = btn
                 scenes_layout.addWidget(btn, y, x)
 
-        # Make all columns and rows have equal stretch
-        for i in range(8):
-            scenes_layout.setColumnStretch(i, 1)
-        for i in range(5):
-            scenes_layout.setRowStretch(i, 1)
+        main_layout.addWidget(scenes_group)
 
-        layout.addWidget(scenes_group)
+        # Right side: Parameters and controls
+        controls_widget = QWidget()
+        controls_layout = QVBoxLayout(controls_widget)
+        controls_layout.setContentsMargins(10, 5, 5, 5)
+
+        # Step name
+        name_layout = QHBoxLayout()
+        name_layout.addWidget(QLabel("Name:"))
+        self.name_edit = QLineEdit()
+        self.name_edit.textChanged.connect(self.on_step_changed)
+        name_layout.addWidget(self.name_edit)
+        controls_layout.addLayout(name_layout)
+
+        # Duration with +/- buttons
+        duration_layout = QHBoxLayout()
+        duration_layout.addWidget(QLabel("Duration:"))
+        
+        # Minus button
+        minus_btn = QPushButton("-")
+        minus_btn.setFixedSize(30, 25)
+        minus_btn.setStyleSheet("font-weight: bold; font-size: 14px;")
+        minus_btn.clicked.connect(self.decrease_duration)
+        duration_layout.addWidget(minus_btn)
+        
+        # Duration display (read-only label)
+        self.duration_label = QLabel("1.0 sec")
+        self.duration_label.setStyleSheet("border: 1px solid #555; padding: 3px; background: #1e1e1e; min-width: 60px;")
+        self.duration_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        duration_layout.addWidget(self.duration_label)
+        
+        # Plus button
+        plus_btn = QPushButton("+")
+        plus_btn.setFixedSize(30, 25)
+        plus_btn.setStyleSheet("font-weight: bold; font-size: 14px;")
+        plus_btn.clicked.connect(self.increase_duration)
+        duration_layout.addWidget(plus_btn)
+        
+        duration_layout.addStretch()
+        controls_layout.addLayout(duration_layout)
+
+        controls_layout.addStretch()
+
+        # Bottom: Move and remove buttons
+        button_layout = QHBoxLayout()
+        
+        # Move buttons (larger and more visible)
+        self.move_up_btn = QPushButton("↑")
+        self.move_up_btn.setFixedSize(40, 35)
+        self.move_up_btn.setStyleSheet("font-size: 16px; font-weight: bold;")
+        self.move_up_btn.clicked.connect(lambda: self.move_up.emit(self))
+        button_layout.addWidget(self.move_up_btn)
+
+        self.move_down_btn = QPushButton("↓")
+        self.move_down_btn.setFixedSize(40, 35)
+        self.move_down_btn.setStyleSheet("font-size: 16px; font-weight: bold;")
+        self.move_down_btn.clicked.connect(lambda: self.move_down.emit(self))
+        button_layout.addWidget(self.move_down_btn)
+
+        button_layout.addStretch()
+
+        # Remove button
+        remove_btn = QPushButton("Remove")
+        remove_btn.setStyleSheet("background-color: #cc4444; color: white; font-weight: bold;")
+        remove_btn.clicked.connect(lambda: self.remove_step.emit(self))
+        button_layout.addWidget(remove_btn)
+
+        controls_layout.addLayout(button_layout)
+        
+        main_layout.addWidget(controls_widget)
+        
+        # Set proportional sizes - scenes get more space
+        main_layout.setStretch(0, 2)  # Scenes
+        main_layout.setStretch(1, 1)  # Controls
 
     def update_from_step(self):
         """Update widget from step data."""
         self.name_edit.setText(self.step.name)
-        self.duration_spin.setValue(self.step.duration)
+        self.duration_label.setText(f"{self.step.duration:.1f} sec")
 
         # Clear all scene buttons first
         for btn in self.scene_buttons.values():
@@ -262,12 +283,31 @@ class SequenceStepWidget(QFrame):
     def update_step_index(self, new_index: int):
         """Update the step index display."""
         self.step_index = new_index
-        self.step_label.setText(f"Step {new_index + 1}")
+        # Update the scenes group title instead
+        for child in self.findChildren(QGroupBox):
+            if "Step" in child.title():
+                child.setTitle(f"Step {new_index + 1} - Scenes")
+                break
+
+    def decrease_duration(self):
+        """Decrease duration by 0.5 seconds."""
+        current = self.step.duration
+        new_value = max(0.5, current - 0.5)
+        self.step.duration = new_value
+        self.duration_label.setText(f"{new_value:.1f} sec")
+        self.step_changed.emit()
+
+    def increase_duration(self):
+        """Increase duration by 0.5 seconds."""
+        current = self.step.duration
+        new_value = min(3600.0, current + 0.5)
+        self.step.duration = new_value
+        self.duration_label.setText(f"{new_value:.1f} sec")
+        self.step_changed.emit()
 
     def on_step_changed(self):
         """Called when step details change."""
         self.step.name = self.name_edit.text()
-        self.step.duration = self.duration_spin.value()
         self.step_changed.emit()
 
     def on_scene_toggled(self, x: int, y: int, active: bool):
@@ -527,7 +567,7 @@ class LightSequenceGUI(QMainWindow):
         self.controller_thread: t.Optional[ControllerThread] = None
         self.current_editor: t.Optional[PresetSequenceEditor] = None
         self._updating_from_launchpad = False  # Flag to prevent infinite loops
-        
+
         # Connect the signal to the slot
         self.preset_changed_signal.connect(self._update_preset_from_launchpad)
 
@@ -651,9 +691,10 @@ class LightSequenceGUI(QMainWindow):
         """Called when controller is ready."""
         if self.controller_thread:
             self.controller = self.controller_thread.controller
-            # Set up callback for preset changes from launchpad
+            # Set up callbacks for preset changes and saves
             if self.controller:
                 self.controller.on_preset_changed = self.on_launchpad_preset_changed
+                self.controller.on_preset_saved = self.on_preset_saved
             self.statusBar().showMessage("Controller connected successfully")
             self.refresh_presets()
 
@@ -663,6 +704,11 @@ class LightSequenceGUI(QMainWindow):
         QMessageBox.critical(
             self, "Controller Error", f"Failed to start light controller:\n{error}"
         )
+
+    def on_preset_saved(self):
+        """Called when a preset is saved from the launchpad."""
+        # Refresh presets list to show the new/updated preset
+        self.refresh_presets()
 
     def refresh_presets(self):
         """Refresh the preset list."""
@@ -684,7 +730,6 @@ class LightSequenceGUI(QMainWindow):
 
         # Update icons after creating all items
 
-
     def on_preset_selected(self, item: QTreeWidgetItem, column: int):
         """Called when a preset is selected."""
         preset_tuple = item.data(0, Qt.ItemDataRole.UserRole)
@@ -697,31 +742,25 @@ class LightSequenceGUI(QMainWindow):
 
     def show_sequence_editor(self, preset_index: t.Tuple[int, int]):
         """Show sequence editor for the selected preset."""
-        print(f"DEBUG: show_sequence_editor called for preset {preset_index}")
-        
         # Clear current editor
         if self.current_editor:
-            print("DEBUG: Clearing existing editor")
             self.current_editor.deleteLater()
             self.current_editor = None
 
         # Hide default label
         self.default_label.hide()
-        print("DEBUG: Hidden default label")
 
         # Create new editor
-        print("DEBUG: Creating new PresetSequenceEditor")
         self.current_editor = PresetSequenceEditor(preset_index, self.controller)
         self.editor_layout.addWidget(self.current_editor)
-        print("DEBUG: Added editor to layout")
-    
+
     def on_launchpad_preset_changed(self, preset_coords: t.Optional[t.List[int]]):
         """Called when preset selection changes on the launchpad."""
         # Emit signal to handle on GUI thread
         self.preset_changed_signal.emit(preset_coords)
-    
+
     def _update_preset_from_launchpad(self, preset_coords: t.Optional[t.List[int]]):
-        """Update preset selection from launchpad (runs on GUI thread).""" 
+        """Update preset selection from launchpad (runs on GUI thread)."""
         self._updating_from_launchpad = True
         try:
             if preset_coords is None:
@@ -733,23 +772,19 @@ class LightSequenceGUI(QMainWindow):
                     self.current_editor = None
                 self.default_label.show()
                 return
-            
+
             # Find and select the matching preset in the tree
             preset_tuple = (preset_coords[0], preset_coords[1])
-            print(f"DEBUG: Looking for preset {preset_tuple} in tree")
             for i in range(self.preset_tree.topLevelItemCount()):
                 item = self.preset_tree.topLevelItem(i)
                 if item and item.data(0, Qt.ItemDataRole.UserRole) == preset_tuple:
-                    print(f"DEBUG: Found preset {preset_tuple}, setting current item and showing editor")
                     self.preset_tree.setCurrentItem(item)
                     # Also show the editor for this preset
                     self.show_sequence_editor(preset_tuple)
                     break
-            else:
-                print(f"DEBUG: Preset {preset_tuple} not found in tree")
         finally:
             self._updating_from_launchpad = False
-    
+
     def select_preset_on_launchpad(self, preset_coords: t.List[int]):
         """Programmatically select a preset on the launchpad (called from GUI)."""
         if self.controller and self.controller.active_preset != preset_coords:

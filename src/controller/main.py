@@ -7,12 +7,13 @@ from daslight import Daslight
 from launchpad import LaunchpadMK2, ButtonType
 from preset_manager import PresetManager
 from background_animator import BackgroundManager
-from sequence_manager import SequenceManager
+from sequence_manager import SequenceManager, SequenceState
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 SAVE_BUTTON = [0, 0]
+SAVE_SHIFT_BUTTON = [1, 0]  # Add step to current sequence
 BACKGROUND_BUTTON = [7, 0]
 
 
@@ -23,9 +24,10 @@ class LightController:
     COLOR_SCENE_ON = [0.0, 1.0, 0.0]
     COLOR_OFF = [0.0, 0.0, 0.0]
     COLOR_PRESET_ON = [1.0, 0.0, 5.0]
-    COLOR_PRESET_SAVE_MODE = [1.0, 0.0, 0.5]
+    COLOR_PRESET_SAVE_MODE = [1.0, 0.0, 0.5]  # Pink/magenta for normal save mode
+    COLOR_PRESET_SAVE_SHIFT_MODE = [1.0, 1.0, 0.0]  # Yellow for save shift mode
     COLOR_SAVE_MODE_ON = [1.0, 0.0, 0.5]
-    COLOR_SAVE_MODE_OFF = [0.0, 1.0, 0.0]
+    COLOR_SAVE_MODE_OFF = [0.0, 0.0, 0.0]
     COLOR_BACKGROUND_CYCLE = [0.0, 1.0, 0.0]
 
     def __init__(self):
@@ -38,6 +40,7 @@ class LightController:
         )  # Track active scene coordinates
 
         self.save_button_state = False  # Track save button state
+        self.save_shift_button_state = False  # Track save shift button state
 
         # Initialize managers
         preset_file = Path(__file__).parent / "presets.json"
@@ -48,9 +51,12 @@ class LightController:
         # Set up sequence manager callbacks
         self.sequence_manager.on_step_change = self._on_sequence_step_change
         self.sequence_manager.on_sequence_complete = self._on_sequence_complete
-        
+
         # Optional callback for external GUI synchronization
-        self.on_preset_changed: t.Optional[t.Callable[[t.Optional[t.List[int]]], None]] = None
+        self.on_preset_changed: t.Optional[
+            t.Callable[[t.Optional[t.List[int]]], None]
+        ] = None
+        self.on_preset_saved: t.Optional[t.Callable[[], None]] = None
 
     def _cycle_background(self) -> None:
         """Cycle to the next background animation."""
@@ -116,7 +122,7 @@ class LightController:
 
         # Clear active preset
         self.active_preset = None
-        
+
         # Notify GUI of preset change
         if self.on_preset_changed:
             self.on_preset_changed(None)
@@ -132,7 +138,7 @@ class LightController:
 
         # Light up preset button
         self.launchpad.set_button_led(ButtonType.PRESET, coords, self.COLOR_PRESET_ON)
-        
+
         # Notify GUI of preset change
         if self.on_preset_changed:
             self.on_preset_changed(coords.copy())
@@ -184,21 +190,37 @@ class LightController:
                     ButtonType.SCENE, scene_coords, self.COLOR_SCENE_ON
                 )
 
+    def _clear_all_preset_leds(self) -> None:
+        """Clear all preset button LEDs."""
+        for x in range(8):
+            for y in range(3):
+                preset_coords = [x, y]
+                self.launchpad.set_button_led(
+                    ButtonType.PRESET, preset_coords, self.COLOR_OFF
+                )
+
     def _update_preset_leds_for_save_mode(self) -> None:
         """Update preset button LEDs when in save mode to show which have presets."""
         if not self.save_button_state:
             return
 
         preset_indices = self.preset_manager.get_all_preset_indices()
+        
+        # Choose color based on save shift state
+        preset_color = (
+            self.COLOR_PRESET_SAVE_SHIFT_MODE 
+            if self.save_shift_button_state 
+            else self.COLOR_PRESET_SAVE_MODE
+        )
 
         # Light up all preset buttons that have presets saved
         for x in range(8):
             for y in range(3):
                 coords = [x, y]
                 if tuple(coords) in preset_indices:
-                    # Preset exists - make it glow
+                    # Preset exists - make it glow (yellow if save shift, pink if normal save)
                     self.launchpad.set_button_led(
-                        ButtonType.PRESET, coords, self.COLOR_PRESET_SAVE_MODE
+                        ButtonType.PRESET, coords, preset_color
                     )
                 else:
                     # No preset - turn off
@@ -230,26 +252,62 @@ class LightController:
         if not active:
             return
 
-        # If in save mode, save current active scenes to this preset
+        # If in save mode, either add step or save preset based on save shift state
         if self.save_button_state:
-            active_scene_list = [[scene[0], scene[1]] for scene in self.active_scenes]
-            self.preset_manager.save_preset(coords, active_scene_list)
-            logger.info(f"Saved {len(active_scene_list)} scenes to preset {coords}")
+            if self.save_shift_button_state:
+                # Save shift mode is on - add step to sequence
+                self._add_step_to_preset(coords)
 
-            # Exit save mode
-            self.save_button_state = False
+                # Notify GUI that preset was saved/updated
+                if self.on_preset_saved:
+                    self.on_preset_saved()
 
-            self.launchpad.set_button_led(
-                ButtonType.TOP, SAVE_BUTTON, self.COLOR_SAVE_MODE_OFF
-            )
+                # Exit save mode and save shift mode after adding step
+                self.save_button_state = False
+                self.save_shift_button_state = False
+
+                # Turn off both buttons
+                self.launchpad.set_button_led(
+                    ButtonType.TOP, SAVE_BUTTON, self.COLOR_SAVE_MODE_OFF
+                )
+                self.launchpad.set_button_led(
+                    ButtonType.TOP, SAVE_SHIFT_BUTTON, self.COLOR_OFF
+                )
+
+                # Clear all preset LEDs
+                self._clear_all_preset_leds()
+
+                # Activate the preset so the sequence plays
+                self._activate_preset(coords)
+                logger.info(f"Exited save mode and activated preset {coords}")
+                return
+            else:
+                # Normal save mode - save/overwrite preset
+                active_scene_list = [
+                    [scene[0], scene[1]] for scene in self.active_scenes
+                ]
+                self.preset_manager.save_preset(coords, active_scene_list)
+                logger.info(f"Saved {len(active_scene_list)} scenes to preset {coords}")
+
+                # Notify GUI that preset was saved
+                if self.on_preset_saved:
+                    self.on_preset_saved()
+
+                # Exit save mode and turn off save shift mode too
+                self.save_button_state = False
+                self.save_shift_button_state = False
+
+                self.launchpad.set_button_led(
+                    ButtonType.TOP, SAVE_BUTTON, self.COLOR_SAVE_MODE_OFF
+                )
+
+                # Also turn off save shift button
+                self.launchpad.set_button_led(
+                    ButtonType.TOP, SAVE_SHIFT_BUTTON, self.COLOR_OFF
+                )
 
             # Clear all preset LEDs first
-            for x in range(8):
-                for y in range(3):
-                    preset_coords = [x, y]
-                    self.launchpad.set_button_led(
-                        ButtonType.PRESET, preset_coords, self.COLOR_OFF
-                    )
+            self._clear_all_preset_leds()
 
             # Activate the newly saved preset
             self._activate_preset(coords)
@@ -277,25 +335,28 @@ class LightController:
             self.save_button_state = not self.save_button_state
 
             if self.save_button_state:
-                # Entering save mode - turn save button red and show preset buttons with presets in blue
+                # Entering save mode - stop any active sequence and turn save button red
+                if self.sequence_manager.sequence_state != SequenceState.STOPPED:
+                    self.sequence_manager.stop_sequence()
+                    logger.info("Stopped sequence playback for save mode")
+
                 self.launchpad.set_button_led(
                     ButtonType.TOP, coords, self.COLOR_SAVE_MODE_ON
                 )  # Red
                 self._update_preset_leds_for_save_mode()
                 logger.info("Entered save mode")
             else:
-                # Exiting save mode - turn save button off and restore normal preset display
+                # Exiting save mode - turn off save button and save shift button
+                self.save_shift_button_state = False  # Reset save shift state
                 self.launchpad.set_button_led(
                     ButtonType.TOP, coords, self.COLOR_SAVE_MODE_OFF
                 )  # Off
+                self.launchpad.set_button_led(
+                    ButtonType.TOP, SAVE_SHIFT_BUTTON, self.COLOR_OFF
+                )  # Turn off save shift button too
 
                 # Clear all preset LEDs first
-                for x in range(8):
-                    for y in range(3):
-                        preset_coords = [x, y]
-                        self.launchpad.set_button_led(
-                            ButtonType.PRESET, preset_coords, self.COLOR_OFF
-                        )
+                self._clear_all_preset_leds()
 
                 # Show only the active preset if there is one
                 if self.active_preset:
@@ -303,6 +364,9 @@ class LightController:
                         ButtonType.PRESET, self.active_preset, self.COLOR_PRESET_ON
                     )
                 logger.info("Exited save mode")
+
+        elif coords == SAVE_SHIFT_BUTTON and is_pressed:  # Toggle save shift mode
+            self._handle_save_shift_toggle()
 
         elif coords == BACKGROUND_BUTTON:  # Background cycling button
             if is_pressed:
@@ -314,6 +378,57 @@ class LightController:
                 self.launchpad.set_button_led(
                     ButtonType.TOP, coords, self.COLOR_OFF
                 )  # Off
+
+    def _handle_save_shift_toggle(self) -> None:
+        """Handle SAVE_SHIFT button press - toggle save shift mode (only works when save mode is active)."""
+        if not self.save_button_state:
+            # SAVE_SHIFT only works when save mode is active
+            logger.info("SAVE_SHIFT button only works when save mode is active")
+            return
+
+        # Toggle save shift state
+        self.save_shift_button_state = not self.save_shift_button_state
+
+        if self.save_shift_button_state:
+            # Turn on save shift mode - button glows
+            self.launchpad.set_button_led(
+                ButtonType.TOP, SAVE_SHIFT_BUTTON, [1.0, 1.0, 0.0]
+            )  # Yellow/bright
+            logger.info(
+                "Save shift mode ON - preset buttons will add steps instead of overwriting"
+            )
+        else:
+            # Turn off save shift mode
+            self.launchpad.set_button_led(
+                ButtonType.TOP, SAVE_SHIFT_BUTTON, self.COLOR_OFF
+            )
+            logger.info(
+                "Save shift mode OFF - preset buttons will save/overwrite normally"
+            )
+        
+        # Update preset button colors to reflect the new mode
+        self._update_preset_leds_for_save_mode()
+
+    def _add_step_to_preset(self, preset_coords: t.List[int]) -> None:
+        """Add current active scenes as a step to the specified preset."""
+        if not self.active_scenes:
+            logger.warning("No active scenes to add as step")
+            return
+
+        # Convert active scenes to list format
+        active_scene_list = [[scene[0], scene[1]] for scene in self.active_scenes]
+
+        # Let preset manager handle all the logic
+        self.preset_manager.add_step_to_preset(preset_coords, active_scene_list)
+
+        # Briefly flash the preset button to indicate success
+        self.launchpad.set_button_led(
+            ButtonType.PRESET, preset_coords, [0.0, 1.0, 0.0]
+        )  # Green flash
+        time.sleep(0.2)
+        self.launchpad.set_button_led(
+            ButtonType.PRESET, preset_coords, self.COLOR_PRESET_SAVE_MODE
+        )  # Back to save mode color
 
     def _process_button_event(self, button_event: t.Dict[str, t.Any]) -> None:
         """Process a button event based on its type."""
