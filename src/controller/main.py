@@ -48,6 +48,9 @@ class LightController:
         # Set up sequence manager callbacks
         self.sequence_manager.on_step_change = self._on_sequence_step_change
         self.sequence_manager.on_sequence_complete = self._on_sequence_complete
+        
+        # Optional callback for external GUI synchronization
+        self.on_preset_changed: t.Optional[t.Callable[[t.Optional[t.List[int]]], None]] = None
 
     def _cycle_background(self) -> None:
         """Cycle to the next background animation."""
@@ -113,6 +116,10 @@ class LightController:
 
         # Clear active preset
         self.active_preset = None
+        
+        # Notify GUI of preset change
+        if self.on_preset_changed:
+            self.on_preset_changed(None)
 
     def _activate_preset(self, coords: t.List[int]) -> None:
         """Activate a preset (handles both simple and sequence presets uniformly)."""
@@ -125,6 +132,10 @@ class LightController:
 
         # Light up preset button
         self.launchpad.set_button_led(ButtonType.PRESET, coords, self.COLOR_PRESET_ON)
+        
+        # Notify GUI of preset change
+        if self.on_preset_changed:
+            self.on_preset_changed(coords.copy())
 
         # Send blackout first
         self.midi_software.send_scene_command((8, 0))

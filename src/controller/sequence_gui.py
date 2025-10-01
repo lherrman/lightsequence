@@ -230,9 +230,9 @@ class SequenceStepWidget(QFrame):
         # Create 8x5 grid of scene buttons (matching the launchpad scene area)
         for y in range(5):
             for x in range(8):
-                btn = SceneButton(x, y + 1)  # y+1 because scenes start at row 1
+                btn = SceneButton(x, y)  # Scene coordinates start at (0,0)
                 btn.scene_toggled.connect(self.on_scene_toggled)
-                self.scene_buttons[(x, y + 1)] = btn
+                self.scene_buttons[(x, y)] = btn
                 scenes_layout.addWidget(btn, y, x)
 
         # Make all columns and rows have equal stretch
@@ -518,11 +518,18 @@ class PresetSequenceEditor(QWidget):
 class LightSequenceGUI(QMainWindow):
     """Main GUI application for light sequence configuration."""
 
+    # Custom signal for thread-safe preset updates
+    preset_changed_signal = Signal(object)
+
     def __init__(self):
         super().__init__()
         self.controller: t.Optional[LightController] = None
         self.controller_thread: t.Optional[ControllerThread] = None
         self.current_editor: t.Optional[PresetSequenceEditor] = None
+        self._updating_from_launchpad = False  # Flag to prevent infinite loops
+        
+        # Connect the signal to the slot
+        self.preset_changed_signal.connect(self._update_preset_from_launchpad)
 
         self.setWindowTitle("Light Sequence Controller")
         self.setMinimumSize(1200, 800)
@@ -644,6 +651,9 @@ class LightSequenceGUI(QMainWindow):
         """Called when controller is ready."""
         if self.controller_thread:
             self.controller = self.controller_thread.controller
+            # Set up callback for preset changes from launchpad
+            if self.controller:
+                self.controller.on_preset_changed = self.on_launchpad_preset_changed
             self.statusBar().showMessage("Controller connected successfully")
             self.refresh_presets()
 
@@ -672,32 +682,79 @@ class LightSequenceGUI(QMainWindow):
             item.setText(1, "Sequence" if has_sequence else "Simple")
             item.setData(0, Qt.ItemDataRole.UserRole, preset_tuple)
 
-            if has_sequence:
-                from PySide6.QtWidgets import QStyle
+        # Update icons after creating all items
 
-                item.setIcon(
-                    0, self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay)
-                )
 
     def on_preset_selected(self, item: QTreeWidgetItem, column: int):
         """Called when a preset is selected."""
         preset_tuple = item.data(0, Qt.ItemDataRole.UserRole)
         if preset_tuple and self.controller:
+            # Only activate on launchpad if we're not updating from launchpad
+            if not self._updating_from_launchpad:
+                self.select_preset_on_launchpad(list(preset_tuple))
+            # Show editor
             self.show_sequence_editor(preset_tuple)
 
     def show_sequence_editor(self, preset_index: t.Tuple[int, int]):
         """Show sequence editor for the selected preset."""
+        print(f"DEBUG: show_sequence_editor called for preset {preset_index}")
+        
         # Clear current editor
         if self.current_editor:
+            print("DEBUG: Clearing existing editor")
             self.current_editor.deleteLater()
             self.current_editor = None
 
         # Hide default label
         self.default_label.hide()
+        print("DEBUG: Hidden default label")
 
         # Create new editor
+        print("DEBUG: Creating new PresetSequenceEditor")
         self.current_editor = PresetSequenceEditor(preset_index, self.controller)
         self.editor_layout.addWidget(self.current_editor)
+        print("DEBUG: Added editor to layout")
+    
+    def on_launchpad_preset_changed(self, preset_coords: t.Optional[t.List[int]]):
+        """Called when preset selection changes on the launchpad."""
+        # Emit signal to handle on GUI thread
+        self.preset_changed_signal.emit(preset_coords)
+    
+    def _update_preset_from_launchpad(self, preset_coords: t.Optional[t.List[int]]):
+        """Update preset selection from launchpad (runs on GUI thread).""" 
+        self._updating_from_launchpad = True
+        try:
+            if preset_coords is None:
+                # No preset selected - clear selection in GUI
+                self.preset_tree.clearSelection()
+                # Hide editor and show default message
+                if self.current_editor:
+                    self.current_editor.deleteLater()
+                    self.current_editor = None
+                self.default_label.show()
+                return
+            
+            # Find and select the matching preset in the tree
+            preset_tuple = (preset_coords[0], preset_coords[1])
+            print(f"DEBUG: Looking for preset {preset_tuple} in tree")
+            for i in range(self.preset_tree.topLevelItemCount()):
+                item = self.preset_tree.topLevelItem(i)
+                if item and item.data(0, Qt.ItemDataRole.UserRole) == preset_tuple:
+                    print(f"DEBUG: Found preset {preset_tuple}, setting current item and showing editor")
+                    self.preset_tree.setCurrentItem(item)
+                    # Also show the editor for this preset
+                    self.show_sequence_editor(preset_tuple)
+                    break
+            else:
+                print(f"DEBUG: Preset {preset_tuple} not found in tree")
+        finally:
+            self._updating_from_launchpad = False
+    
+    def select_preset_on_launchpad(self, preset_coords: t.List[int]):
+        """Programmatically select a preset on the launchpad (called from GUI)."""
+        if self.controller and self.controller.active_preset != preset_coords:
+            # Simulate a preset button press
+            self.controller._activate_preset(preset_coords)
 
     def closeEvent(self, event):
         """Handle application close."""
