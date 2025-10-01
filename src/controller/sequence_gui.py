@@ -34,12 +34,12 @@ logger = logging.getLogger(__name__)
 
 class SelectAllLineEdit(QLineEdit):
     """QLineEdit that automatically selects all text when clicked or focused."""
-    
+
     def mousePressEvent(self, event):
         """Override mouse press to select all text."""
         super().mousePressEvent(event)
         self.selectAll()
-    
+
     def focusInEvent(self, event):
         """Override focus in to select all text."""
         super().focusInEvent(event)
@@ -461,25 +461,25 @@ class SequenceStepWidget(QFrame):
         try:
             text = self.duration_input.text().strip()
             value = float(text)
-            
+
             # Validate range
             if value < 0.1:
                 value = 0.1
             elif value > 3600.0:
                 value = 3600.0
-            
+
             # Update step and display
             self.step.duration = value
             self.duration_input.setText(f"{value:.1f}")
             self.step_changed.emit()
-            
+
         except ValueError:
             # Invalid input - restore previous value
             self.duration_input.setText(f"{self.step.duration:.1f}")
             QMessageBox.warning(
-                self, 
-                "Invalid Duration", 
-                "Please enter a valid number for duration (0.1 - 3600.0 seconds)."
+                self,
+                "Invalid Duration",
+                "Please enter a valid number for duration (0.1 - 3600.0 seconds).",
             )
 
     def on_step_changed(self):
@@ -591,7 +591,9 @@ class PresetSequenceEditor(QWidget):
             self.sequence_steps = steps
         else:
             # Create default single step
-            self.sequence_steps = [SequenceStep(scenes=[], duration=DEFAULT_STEP_DURATION, name="Step 1")]
+            self.sequence_steps = [
+                SequenceStep(scenes=[], duration=DEFAULT_STEP_DURATION, name="Step 1")
+            ]
 
         # Load loop setting
         loop_setting = self.controller.preset_manager.get_loop_setting(
@@ -621,7 +623,9 @@ class PresetSequenceEditor(QWidget):
     def add_empty_step(self):
         """Add an empty step."""
         step = SequenceStep(
-            scenes=[], duration=DEFAULT_STEP_DURATION, name=f"Step {len(self.sequence_steps) + 1}"
+            scenes=[],
+            duration=DEFAULT_STEP_DURATION,
+            name=f"Step {len(self.sequence_steps) + 1}",
         )
         self.sequence_steps.append(step)
         self.rebuild_step_widgets()
