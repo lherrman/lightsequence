@@ -388,8 +388,12 @@ class LightController:
 
     def _activate_preset(self, coords: t.List[int]) -> None:
         """Activate a preset (simple or sequence)."""
+        # Stop any running sequence but don't clear scenes - let smart transition handle it
         if self.active_preset:
-            self._deactivate_current_preset()
+            self.sequence_manager.stop_sequence()
+            self.launchpad.set_button_led(
+                ButtonType.PRESET, self.active_preset, self.colors.OFF
+            )
 
         self.active_preset = coords.copy()
         self.launchpad.set_button_led(ButtonType.PRESET, coords, self.colors.PRESET_ON)
@@ -502,7 +506,7 @@ class LightController:
                 ButtonType.SCENE, coords_list, self.colors.SCENE_ON
             )
 
-        # Update active scenes tracking
+        # Update our tracking to the expected final state for next diffing calculation
         self.active_scenes = target_scenes.copy()
 
     def get_active_scenes_info(self) -> str:
