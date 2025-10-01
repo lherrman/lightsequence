@@ -245,7 +245,7 @@ class SequenceStepWidget(QFrame):
                 padding: 3px;
             }
         """)
-        self.setMaximumHeight(120)  # Limit height for compactness
+        self.setMaximumHeight(160)  # More height to prevent text cutoff
 
         self.setup_ui()
         self.update_from_step()
@@ -254,24 +254,24 @@ class SequenceStepWidget(QFrame):
         # Main horizontal layout - scenes on left, parameters on right
         main_layout = QHBoxLayout(self)
 
-        # Left side: Scene grid (compact, fixed size)
-        scenes_group = QGroupBox(f"Step {self.step_index + 1}")
-        scenes_group.setFont(QFont("Arial", 9, QFont.Weight.Bold))
-        scenes_group.setFixedWidth(200)  # Fixed width to prevent stretching
-        scenes_layout = QGridLayout(scenes_group)
-        scenes_layout.setSpacing(2)
-        scenes_layout.setContentsMargins(5, 15, 5, 5)  # Compact margins
+        # Left side: Scene grid widget (no container box)
+        scenes_widget = QWidget()
+        scenes_widget.setFixedWidth(150)
+        scenes_layout = QGridLayout(scenes_widget)
+        scenes_layout.setHorizontalSpacing(2)
+        scenes_layout.setVerticalSpacing(2)
+        scenes_layout.setContentsMargins(5, 5, 5, 5)
 
-        # Create 8x5 grid of scene buttons (compact size)
+        # Create 8x5 grid of scene buttons
         for y in range(5):
             for x in range(8):
                 btn = SceneButton(x, y)
-                btn.setFixedSize(18, 18)  # Even smaller buttons for compactness
+                btn.setFixedSize(14, 14)  # Compact buttons
                 btn.scene_toggled.connect(self.on_scene_toggled)
                 self.scene_buttons[(x, y)] = btn
                 scenes_layout.addWidget(btn, y, x)
 
-        main_layout.addWidget(scenes_group)
+        main_layout.addWidget(scenes_widget)
 
         # Right side: Parameters and controls (compact)
         controls_widget = QWidget()
@@ -279,14 +279,19 @@ class SequenceStepWidget(QFrame):
         controls_layout.setContentsMargins(8, 5, 5, 5)
         controls_layout.setSpacing(4)  # Tighter spacing
 
+        # Step number label
+        step_label = QLabel(f"Step {self.step_index + 1}")
+        step_label.setStyleSheet("font-weight: bold; font-size: 11px; color: #cccccc;")
+        controls_layout.addWidget(step_label)
+
         # Step name (more compact)
         name_layout = QHBoxLayout()
         name_layout.setSpacing(5)
         name_label = QLabel("Name:")
-        name_label.setFixedWidth(40)  # Fixed width for alignment
+        name_label.setFixedWidth(70)
         name_layout.addWidget(name_label)
         self.name_edit = QLineEdit()
-        self.name_edit.setMaximumHeight(22)  # Shorter input field
+        self.name_edit.setMaximumHeight(25)  # Taller input field to prevent cutoff
         self.name_edit.textChanged.connect(self.on_step_changed)
         name_layout.addWidget(self.name_edit)
         controls_layout.addLayout(name_layout)
@@ -295,28 +300,28 @@ class SequenceStepWidget(QFrame):
         duration_layout = QHBoxLayout()
         duration_layout.setSpacing(5)
         duration_label = QLabel("Duration:")
-        duration_label.setFixedWidth(50)  # Fixed width for alignment
+        duration_label.setFixedWidth(70)
         duration_layout.addWidget(duration_label)
 
         # Minus button
         minus_btn = QPushButton("-")
-        minus_btn.setFixedSize(22, 22)  # Smaller buttons
+        minus_btn.setFixedSize(25, 25)
         minus_btn.setStyleSheet("font-weight: bold; font-size: 12px;")
         minus_btn.clicked.connect(self.decrease_duration)
         duration_layout.addWidget(minus_btn)
 
-        # Duration display (more compact)
+        # Duration display
         self.duration_label = QLabel("1.0 sec")
         self.duration_label.setStyleSheet(
-            "border: 1px solid #555; padding: 2px; background: #1e1e1e; min-width: 50px;"
+            "border: 1px solid #555; padding: 3px; background: #1e1e1e; min-width: 50px;"
         )
         self.duration_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.duration_label.setMaximumHeight(22)
+        self.duration_label.setMaximumHeight(25)  # Match other elements
         duration_layout.addWidget(self.duration_label)
 
         # Plus button
         plus_btn = QPushButton("+")
-        plus_btn.setFixedSize(22, 22)  # Smaller buttons
+        plus_btn.setFixedSize(25, 25)
         plus_btn.setStyleSheet("font-weight: bold; font-size: 12px;")
         plus_btn.clicked.connect(self.increase_duration)
         duration_layout.addWidget(plus_btn)
@@ -328,26 +333,26 @@ class SequenceStepWidget(QFrame):
         button_layout = QHBoxLayout()
         button_layout.setSpacing(3)
 
-        # Move buttons (smaller and more compact)
-        self.move_up_btn = QPushButton("↑")
-        self.move_up_btn.setFixedSize(28, 25)
-        self.move_up_btn.setStyleSheet("font-size: 14px; font-weight: bold;")
+        # Move buttons with proper triangles
+        self.move_up_btn = QPushButton("▲")
+        self.move_up_btn.setFixedSize(30, 28)
+        self.move_up_btn.setStyleSheet("font-size: 12px; font-weight: bold;")
         self.move_up_btn.clicked.connect(lambda: self.move_up.emit(self))
         button_layout.addWidget(self.move_up_btn)
 
-        self.move_down_btn = QPushButton("↓")
-        self.move_down_btn.setFixedSize(28, 25)
-        self.move_down_btn.setStyleSheet("font-size: 14px; font-weight: bold;")
+        self.move_down_btn = QPushButton("▼")
+        self.move_down_btn.setFixedSize(30, 28)
+        self.move_down_btn.setStyleSheet("font-size: 12px; font-weight: bold;")
         self.move_down_btn.clicked.connect(lambda: self.move_down.emit(self))
         button_layout.addWidget(self.move_down_btn)
 
         button_layout.addStretch()
 
-        # Remove button (more compact)
+        # Remove button with proper height
         remove_btn = QPushButton("Remove")
-        remove_btn.setFixedHeight(25)
+        remove_btn.setFixedHeight(28)
         remove_btn.setStyleSheet(
-            "background-color: #cc4444; color: white; font-weight: bold; font-size: 11px;"
+            "background-color: #cc4444; color: white; font-weight: bold; font-size: 12px;"
         )
         remove_btn.clicked.connect(lambda: self.remove_step.emit(self))
         button_layout.addWidget(remove_btn)
@@ -498,12 +503,6 @@ class PresetSequenceEditor(QWidget):
 
         button_layout.addStretch()
 
-        # Test sequence button
-        self.test_btn = QPushButton("Test Sequence")
-        self.test_btn.clicked.connect(self.test_sequence)
-        self.test_btn.setEnabled(self.controller is not None)
-        button_layout.addWidget(self.test_btn)
-
         layout.addLayout(button_layout)
 
     def load_sequence(self):
@@ -578,14 +577,6 @@ class PresetSequenceEditor(QWidget):
         self.sequence_steps.append(step)
         self.rebuild_step_widgets()
         self.auto_save_sequence()
-
-    def test_sequence(self):
-        """Test the current sequence."""
-        if not self.controller or not self.sequence_steps:
-            return
-
-        # TODO: Implement sequence testing
-        QMessageBox.information(self, "Test", "Sequence testing not yet implemented.")
 
     def rebuild_step_widgets(self):
         """Rebuild all step widgets."""
