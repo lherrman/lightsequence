@@ -205,11 +205,11 @@ class LightController:
             return
 
         preset_indices = self.preset_manager.get_all_preset_indices()
-
+        
         # Choose color based on save shift state
         preset_color = (
-            self.COLOR_PRESET_SAVE_SHIFT_MODE
-            if self.save_shift_button_state
+            self.COLOR_PRESET_SAVE_SHIFT_MODE 
+            if self.save_shift_button_state 
             else self.COLOR_PRESET_SAVE_MODE
         )
 
@@ -405,7 +405,7 @@ class LightController:
             logger.info(
                 "Save shift mode OFF - preset buttons will save/overwrite normally"
             )
-
+        
         # Update preset button colors to reflect the new mode
         self._update_preset_leds_for_save_mode()
 
