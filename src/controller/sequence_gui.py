@@ -25,8 +25,25 @@ from PySide6.QtGui import QFont
 from main import LightController
 from sequence_manager import SequenceStep
 
+# Configuration constants
+DEFAULT_STEP_DURATION = 2.0  # Default duration in seconds for new steps
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+class SelectAllLineEdit(QLineEdit):
+    """QLineEdit that automatically selects all text when clicked or focused."""
+    
+    def mousePressEvent(self, event):
+        """Override mouse press to select all text."""
+        super().mousePressEvent(event)
+        self.selectAll()
+    
+    def focusInEvent(self, event):
+        """Override focus in to select all text."""
+        super().focusInEvent(event)
+        self.selectAll()
 
 
 class ControllerThread(QThread):
@@ -316,7 +333,7 @@ class SequenceStepWidget(QFrame):
         name_layout.addWidget(self.name_edit)
         controls_layout.addLayout(name_layout)
 
-        # Duration with +/- buttons
+        # Duration with +/- buttons and manual input
         duration_layout = QHBoxLayout()
         duration_layout.setSpacing(5)
         duration_label = QLabel("Duration:")
@@ -330,14 +347,22 @@ class SequenceStepWidget(QFrame):
         minus_btn.clicked.connect(self.decrease_duration)
         duration_layout.addWidget(minus_btn)
 
-        # Duration display
-        self.duration_label = QLabel("1.0 sec")
-        self.duration_label.setStyleSheet(
-            "border: 1px solid #555; padding: 3px; background: #1e1e1e; min-width: 50px;"
+        # Duration input field (editable)
+        self.duration_input = SelectAllLineEdit()
+        self.duration_input.setFixedWidth(60)
+        self.duration_input.setMaximumHeight(25)
+        self.duration_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.duration_input.setStyleSheet(
+            "border: 1px solid #555; padding: 3px; background: #1e1e1e;"
         )
-        self.duration_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.duration_label.setMaximumHeight(25)  # Match other elements
-        duration_layout.addWidget(self.duration_label)
+        self.duration_input.textChanged.connect(self.on_duration_text_changed)
+        self.duration_input.editingFinished.connect(self.on_duration_editing_finished)
+        duration_layout.addWidget(self.duration_input)
+
+        # Seconds label
+        sec_label = QLabel("sec")
+        sec_label.setStyleSheet("color: #cccccc; font-size: 10px;")
+        duration_layout.addWidget(sec_label)
 
         # Plus button
         plus_btn = QPushButton("+")
@@ -388,7 +413,7 @@ class SequenceStepWidget(QFrame):
     def update_from_step(self):
         """Update widget from step data."""
         self.name_edit.setText(self.step.name)
-        self.duration_label.setText(f"{self.step.duration:.1f} sec")
+        self.duration_input.setText(f"{self.step.duration:.1f}")
 
         # Clear all scene buttons first
         for btn in self.scene_buttons.values():
@@ -413,9 +438,9 @@ class SequenceStepWidget(QFrame):
     def decrease_duration(self):
         """Decrease duration by 0.5 seconds."""
         current = self.step.duration
-        new_value = max(0.5, current - 0.5)
+        new_value = max(0.1, current - 0.5)
         self.step.duration = new_value
-        self.duration_label.setText(f"{new_value:.1f} sec")
+        self.duration_input.setText(f"{new_value:.1f}")
         self.step_changed.emit()
 
     def increase_duration(self):
@@ -423,8 +448,39 @@ class SequenceStepWidget(QFrame):
         current = self.step.duration
         new_value = min(3600.0, current + 0.5)
         self.step.duration = new_value
-        self.duration_label.setText(f"{new_value:.1f} sec")
+        self.duration_input.setText(f"{new_value:.1f}")
         self.step_changed.emit()
+
+    def on_duration_text_changed(self):
+        """Called when duration text is being changed."""
+        # Optional: Add real-time validation visual feedback here
+        pass
+
+    def on_duration_editing_finished(self):
+        """Called when user finishes editing duration text."""
+        try:
+            text = self.duration_input.text().strip()
+            value = float(text)
+            
+            # Validate range
+            if value < 0.1:
+                value = 0.1
+            elif value > 3600.0:
+                value = 3600.0
+            
+            # Update step and display
+            self.step.duration = value
+            self.duration_input.setText(f"{value:.1f}")
+            self.step_changed.emit()
+            
+        except ValueError:
+            # Invalid input - restore previous value
+            self.duration_input.setText(f"{self.step.duration:.1f}")
+            QMessageBox.warning(
+                self, 
+                "Invalid Duration", 
+                "Please enter a valid number for duration (0.1 - 3600.0 seconds)."
+            )
 
     def on_step_changed(self):
         """Called when step details change."""
@@ -535,7 +591,7 @@ class PresetSequenceEditor(QWidget):
             self.sequence_steps = steps
         else:
             # Create default single step
-            self.sequence_steps = [SequenceStep(scenes=[], duration=1.0, name="Step 1")]
+            self.sequence_steps = [SequenceStep(scenes=[], duration=DEFAULT_STEP_DURATION, name="Step 1")]
 
         # Load loop setting
         loop_setting = self.controller.preset_manager.get_loop_setting(
@@ -565,7 +621,7 @@ class PresetSequenceEditor(QWidget):
     def add_empty_step(self):
         """Add an empty step."""
         step = SequenceStep(
-            scenes=[], duration=1.0, name=f"Step {len(self.sequence_steps) + 1}"
+            scenes=[], duration=DEFAULT_STEP_DURATION, name=f"Step {len(self.sequence_steps) + 1}"
         )
         self.sequence_steps.append(step)
         self.rebuild_step_widgets()
@@ -591,7 +647,7 @@ class PresetSequenceEditor(QWidget):
 
         step = SequenceStep(
             scenes=active_scenes,
-            duration=1.0,
+            duration=DEFAULT_STEP_DURATION,
             name=f"Step {len(self.sequence_steps) + 1}",
         )
         self.sequence_steps.append(step)
