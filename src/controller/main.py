@@ -5,11 +5,11 @@ from pathlib import Path
 from enum import Enum
 from dataclasses import dataclass
 
-from daslight import Daslight
-from launchpad import LaunchpadMK2, ButtonType
-from preset_manager import PresetManager
-from background_animator import BackgroundManager
-from sequence_manager import SequenceManager, SequenceState
+from controller.daslight import Daslight
+from controller.launchpad import LaunchpadMK2, ButtonType
+from controller.preset_manager import PresetManager
+from controller.background_animator import BackgroundManager
+from controller.sequence_manager import SequenceManager, SequenceState
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -18,9 +18,9 @@ logger = logging.getLogger(__name__)
 SAVE_BUTTON = [0, 0]
 SAVE_SHIFT_BUTTON = [1, 0]
 BACKGROUND_BUTTON = [7, 0]
-PLAYBACK_TOGGLE_BUTTON = [0, 5]  # Right bar button for play/pause
-NEXT_STEP_BUTTON = [0, 6]  # Right bar button for next step
-CONNECTION_STATUS_BUTTON = [0, 7]  # Bottom right button for connection status
+PLAYBACK_TOGGLE_BUTTON = [0, 5]
+NEXT_STEP_BUTTON = [0, 6]
+CONNECTION_STATUS_BUTTON = [0, 7]
 
 
 class AppState(str, Enum):

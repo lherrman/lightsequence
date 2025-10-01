@@ -22,8 +22,8 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, QThread
 from PySide6.QtGui import QFont
 
-from main import LightController
-from sequence_manager import SequenceStep
+from controller.main import LightController
+from controller.sequence_manager import SequenceStep
 
 # Configuration constants
 DEFAULT_STEP_DURATION = 2.0  # Default duration in seconds for new steps

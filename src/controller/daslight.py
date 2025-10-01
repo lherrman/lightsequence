@@ -50,8 +50,8 @@ class Daslight:
 
         Returns:
             Tuple of (midi_out, midi_in) for DasLight communication
-            - midi_out: Send commands TO DasLight (via Daylight_in port)
-            - midi_in: Receive feedback FROM DasLight (via Daylight_out port)
+            - midi_out: Send commands TO DasLight (via DasLight_in port)
+            - midi_in: Receive feedback FROM DasLight (via DasLight_out port)
         """
         try:
             pygame.midi.init()
@@ -63,20 +63,20 @@ class Daslight:
                 info = pygame.midi.get_device_info(i)
                 name = info[1].decode() if info[1] else ""
 
-                # Connect output (to DasLight via Daylight_in)
-                if "daylight_in" in name.lower() and info[3]:  # output device
+                # Connect output (to DasLight via DasLight_in)
+                if "daslight_in" in name.lower() and info[3]:  # output device
                     self.midi_out = pygame.midi.Output(i)
                     logger.info(f"✅ DasLight OUT: {name}")
 
-                # Connect input (from DasLight via Daylight_out)
-                elif "daylight_out" in name.lower() and info[2]:  # input device
+                # Connect input (from DasLight via DasLight_out)
+                elif "daslight_out" in name.lower() and info[2]:  # input device
                     self.midi_in = pygame.midi.Input(i)
                     logger.info(f"✅ DasLight IN: {name}")
 
             if not self.midi_out:
-                logger.error("❌ No Daylight_in MIDI output found")
+                logger.error("❌ No DasLight_in MIDI output found")
             if not self.midi_in:
-                logger.error("❌ No Daylight_out MIDI input found")
+                logger.error("❌ No DasLight_out MIDI input found")
 
             # Initialize connection monitoring if successful
             if self.midi_out and self.midi_in:

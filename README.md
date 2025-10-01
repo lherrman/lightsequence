@@ -1,60 +1,70 @@
-# Light Controller
+# LightSequence
 
-Professional party lighting controller for Novation Launchpad MK2.
+A Python-based lighting controller for DasLight systems with Launchpad MK2 hardware integration.
 
 ## Features
 
-- **Hardware Control**: Direct integration with Novation Launchpad MK2
-- **Scene Management**: Create and organize lighting scenes  
-- **Preset Playlists**: Build cycling sequences of scenes
-- **MIDI Integration**: Send lighting commands to DasLight4
-- **Modern GUI**: Dark-themed interface for live control
-- **Production Ready**: Clean architecture, minimal dependencies
+- **Hardware Integration**: Control DasLight via MIDI with Launchpad MK2 as physical interface
+- **Sequence Management**: Create, save, and playback lighting sequences with precise timing
+- **Preset System**: Store and recall lighting presets instantly
+- **Background Animation**: Automated background lighting effects
+- **GUI Configuration**: User-friendly interface for sequence editing and management
+- **Real-time Control**: Live lighting control with visual feedback
+
+Only tested on Windows with DasLight and Launchpad MK2.
 
 ## Quick Start
 
-```bash
-# Run the GUI
-uv run run.py
+### Requirements
+- Python 3.12+
+- DasLight software
+- Launchpad MK2 (optional but recommended)
+- loopMIDI (for MIDI communication)
 
-# Or install and run
-uv install
-lightcontroller-gui
+### Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/lherrman/lightsequence.git
+cd lightsequence
+
+# run
+uv run run.py
 ```
+
+### Usage
+
+**GUI Mode (Recommended):**
+```bash
+uv run run.py --mode gui
+```
+
+**Controller Mode (Standalone):**
+```bash
+uv run run.py --mode controller
+```
+
+**Quick Launch:**
+- Windows: Run `src/run_editor.bat` (GUI) or `src/run.bat` (controller)
 
 ## Hardware Setup
 
-1. Connect Novation Launchpad MK2 via USB
-2. Install DasLight4 lighting software (optional)
-3. Configure scenes using the GUI
-4. Create presets and start controlling!
+1. Connect Launchpad MK2 via USB
+2. Install and configure loopMIDI with ports named "DasLight_in" and "DasLight_out"
+3. Configure DasLight to receive MIDI input and output on these ports
+4. Configure at least one Scene that feedbacks MIDI NOTE_ON on channel 1 Number 127 (Ping Scene)
+5. Launch the application
+6. Configure MIDI feedback in DasLight for the buttons you want to use
 
-## Architecture
+## Project Structure
 
-```
-src/lightcontroller/
-├── config.py      # YAML configuration management
-├── controller.py  # Main lighting controller  
-├── gui.py         # PySide6 interface
-├── midi.py        # MIDI note mapping
-└── simulator.py   # Hardware simulation
-```
+- `controller/main.py` - Core lighting controller logic
+- `controller/sequence_gui.py` - GUI interface for sequence management
+- `controller/daslight.py` - DasLight MIDI communication
+- `controller/launchpad.py` - Launchpad MK2 hardware interface
+- `controller/sequence_manager.py` - Sequence timing and playback
+- `controller/preset_manager.py` - Preset storage and recall
 
-Total: **~500 lines** of clean, production-ready code.
+## License
 
-## MIDI Mapping
-
-The controller uses the correct Launchpad MK2 mapping:
-- **8x8 Grid**: Notes 11-88 (verified with hardware)
-- **Preset Buttons**: Right column, notes 89-96
-- **Scene Feedback**: Automatic button lighting
-
-## Usage
-
-1. **Start System**: Click START to initialize MIDI
-2. **Create Scenes**: Each scene maps to a grid button
-3. **Build Presets**: Combine scenes into cycling playlists  
-4. **Live Control**: Press preset buttons to activate sequences
-5. **Emergency**: BLACKOUT button stops everything
-
-Scenes are sent to DasLight4, presets handled in Python for maximum performance.
+Open source - feel free to use and modify for your lighting projects.

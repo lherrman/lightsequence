@@ -1,1 +1,0 @@
-uv run controller\launcher.py 
