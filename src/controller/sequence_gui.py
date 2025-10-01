@@ -153,8 +153,8 @@ class PresetButton(QPushButton):
         self.has_sequence = False
         self.is_active_preset = False
 
-        self.setFixedHeight(32)  # Fixed height only, let width stretch
-        self.setMinimumWidth(55)  # Minimum width to prevent too small buttons
+        self.setFixedHeight(32)
+        self.setMinimumWidth(10)
         self.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
         )  # Expand horizontally
@@ -461,13 +461,13 @@ class PresetSequenceEditor(QWidget):
         header_layout.addStretch()
 
         # Add step from current scenes button
-        self.add_from_scenes_btn = QPushButton("Add Step from Active Scenes")
+        self.add_from_scenes_btn = QPushButton("Add from Active")
         self.add_from_scenes_btn.clicked.connect(self.add_step_from_active_scenes)
         self.add_from_scenes_btn.setEnabled(self.controller is not None)
         header_layout.addWidget(self.add_from_scenes_btn)
 
         # Add empty step button
-        add_step_btn = QPushButton("Add Empty Step")
+        add_step_btn = QPushButton("Add Empty")
         add_step_btn.clicked.connect(self.add_empty_step)
         header_layout.addWidget(add_step_btn)
 
@@ -659,8 +659,8 @@ class LightSequenceGUI(QMainWindow):
         self.preset_changed_signal.connect(self._update_preset_from_launchpad)
 
         self.setWindowTitle("Light Sequence Controller")
-        self.setMinimumSize(1200, 800)
-
+        self.setMinimumSize(470, 200)
+        self.resize(600, 800)
         self.setup_ui()
         self.apply_dark_theme()
         self.start_controller()
