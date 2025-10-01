@@ -7,6 +7,7 @@ from daslight import Daslight
 from launchpad import LaunchpadMK2, ButtonType
 from preset_manager import PresetManager
 from background_animator import BackgroundManager
+from sequence_manager import SequenceManager
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -42,10 +43,135 @@ class LightController:
         preset_file = Path(__file__).parent / "presets.json"
         self.preset_manager = PresetManager(preset_file)
         self.background_manager = BackgroundManager()
+        self.sequence_manager = SequenceManager()
+
+        # Set up sequence manager callbacks
+        self.sequence_manager.on_step_change = self._on_sequence_step_change
+        self.sequence_manager.on_sequence_complete = self._on_sequence_complete
 
     def _cycle_background(self) -> None:
         """Cycle to the next background animation."""
         self.background_manager.cycle_background()
+
+    def _on_sequence_step_change(self, scenes: t.List[t.List[int]]) -> None:
+        """Called when sequence changes to a new step."""
+        # Only process if we have an active preset (sequence should be running)
+        if not self.active_preset:
+            return
+
+        # Clear all scene LEDs first
+        for x in range(8):
+            for y in range(1, 6):  # Scene rows 1-5
+                self.launchpad.set_button_led(ButtonType.SCENE, [x, y], self.COLOR_OFF)
+
+        # Clear active scenes tracking
+        self.active_scenes.clear()
+
+        # Send blackout first
+        self.midi_software.send_scene_command((8, 0))
+
+        # Activate new scenes using helper method
+        self._activate_scenes(scenes)
+
+        # Ensure active preset LED stays on (might get cleared by some operations)
+        if self.active_preset:
+            self.launchpad.set_button_led(
+                ButtonType.PRESET, self.active_preset, self.COLOR_PRESET_ON
+            )
+
+        logger.debug(f"Sequence step changed to {len(scenes)} scenes")
+
+    def _on_sequence_complete(self) -> None:
+        """Called when sequence completes (non-looping sequences only)."""
+        logger.info("Sequence completed")
+        # For non-looping sequences, keep the last step active
+        # The preset remains active until manually toggled off
+
+    def _deactivate_current_preset(self) -> None:
+        """Deactivate the currently active preset (both simple and sequence)."""
+        if not self.active_preset:
+            return
+
+        # Stop any running sequence
+        self.sequence_manager.stop_sequence()
+
+        # Turn off preset LED
+        self.launchpad.set_button_led(
+            ButtonType.PRESET, self.active_preset, self.COLOR_OFF
+        )
+
+        # Send blackout
+        self.midi_software.send_scene_command((8, 0))
+
+        # Clear active scenes tracking
+        self.active_scenes.clear()
+
+        # Clear scene LEDs
+        for x in range(8):
+            for y in range(1, 6):  # Scene rows 1-5
+                self.launchpad.set_button_led(ButtonType.SCENE, [x, y], self.COLOR_OFF)
+
+        # Clear active preset
+        self.active_preset = None
+
+    def _activate_preset(self, coords: t.List[int]) -> None:
+        """Activate a preset (handles both simple and sequence presets uniformly)."""
+        # Deactivate any current preset first
+        if self.active_preset:
+            self._deactivate_current_preset()
+
+        # Set as active preset
+        self.active_preset = coords.copy()
+
+        # Light up preset button
+        self.launchpad.set_button_led(ButtonType.PRESET, coords, self.COLOR_PRESET_ON)
+
+        # Send blackout first
+        self.midi_software.send_scene_command((8, 0))
+
+        # Check if this preset has a sequence
+        preset_tuple = (coords[0], coords[1])
+        if self.preset_manager.has_sequence(coords):
+            # Handle sequence preset
+            sequence_steps = self.preset_manager.get_sequence(coords)
+            if sequence_steps:
+                # Add sequence to sequence manager
+                self.sequence_manager.add_sequence(preset_tuple, sequence_steps)
+
+                # Set loop setting
+                loop_enabled = self.preset_manager.get_loop_setting(coords)
+                self.sequence_manager.set_loop_enabled(loop_enabled)
+
+                # Start sequence playback
+                if self.sequence_manager.start_sequence(preset_tuple):
+                    logger.info(
+                        f"Activated sequence preset {coords} with {len(sequence_steps)} steps (loop: {loop_enabled})"
+                    )
+                else:
+                    logger.error(f"Failed to start sequence for preset {coords}")
+                    # Fallback to first step if sequence fails
+                    if sequence_steps[0].scenes:
+                        self._activate_scenes(sequence_steps[0].scenes)
+        else:
+            # Handle simple preset
+            preset = self.preset_manager.get_preset_by_index(coords)
+            if preset and "scenes" in preset:
+                self._activate_scenes(preset["scenes"])
+                logger.info(
+                    f"Activated simple preset {coords} with {len(preset['scenes'])} scenes"
+                )
+
+    def _activate_scenes(self, scenes: t.List[t.List[int]]) -> None:
+        """Activate a list of scenes (helper method)."""
+        for scene_coords in scenes:
+            if len(scene_coords) >= 2:
+                scene_tuple = (scene_coords[0], scene_coords[1])
+                self.midi_software.send_scene_command(scene_tuple)
+                self.active_scenes.add(scene_tuple)
+                # Update LED
+                self.launchpad.set_button_led(
+                    ButtonType.SCENE, scene_coords, self.COLOR_SCENE_ON
+                )
 
     def _update_preset_leds_for_save_mode(self) -> None:
         """Update preset button LEDs when in save mode to show which have presets."""
@@ -115,50 +241,19 @@ class LightController:
                     )
 
             # Activate the newly saved preset
-            self.active_preset = coords.copy()
-            self.launchpad.set_button_led(
-                ButtonType.PRESET, coords, self.COLOR_PRESET_ON
-            )
+            self._activate_preset(coords)
             logger.info(f"Activated saved preset {coords}")
             return
 
         # Normal preset activation/deactivation logic
-        # Clear previous preset LED
-        if self.active_preset:
-            self.launchpad.set_button_led(
-                ButtonType.PRESET, self.active_preset, self.COLOR_OFF
-            )
-
         # Toggle preset if same button pressed again
         if self.active_preset == coords:
-            self.active_preset = None
-            self.launchpad.set_button_led(ButtonType.PRESET, coords, self.COLOR_OFF)
-            self.midi_software.send_scene_command((8, 0))
+            self._deactivate_current_preset()
             logger.debug(f"Preset {coords} deactivated")
             return
 
         # Activate new preset
-        self.active_preset = coords.copy()
-
-        # send blackout (8,0)
-        self.midi_software.send_scene_command((8, 0))
-        self.launchpad.set_button_led(ButtonType.PRESET, coords, self.COLOR_PRESET_ON)
-
-        # Load and activate scenes from the preset
-        preset = self.preset_manager.get_preset_by_index(coords)
-        if preset and "scenes" in preset:
-            for scene_coords in preset["scenes"]:
-                if len(scene_coords) >= 2:
-                    scene_tuple = (scene_coords[0], scene_coords[1])
-                    self.midi_software.send_scene_command(scene_tuple)
-                    self.active_scenes.add(scene_tuple)
-                    # Use abstracted LED control with relative coordinates
-                    color = self.COLOR_SCENE_ON
-                    coords_list = [scene_coords[0], scene_coords[1]]
-                    self.launchpad.set_button_led(ButtonType.SCENE, coords_list, color)
-            logger.info(
-                f"Activated preset {coords} with {len(preset['scenes'])} scenes"
-            )
+        self._activate_preset(coords)
 
         logger.debug(f"Preset {coords} activated")
 
@@ -294,6 +389,7 @@ class LightController:
 
     def cleanup(self) -> None:
         """Clean up resources."""
+        self.sequence_manager.cleanup()
         self.launchpad.close()
         logger.info("Light controller stopped")
 

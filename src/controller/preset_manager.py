@@ -2,6 +2,7 @@ import json
 import logging
 import typing as t
 from pathlib import Path
+from sequence_manager import SequenceStep
 
 logger = logging.getLogger(__name__)
 
@@ -147,3 +148,134 @@ class PresetManager:
         return {
             tuple(preset["index"]): True for preset in presets_data.get("presets", [])
         }
+
+    def save_sequence(
+        self, index: t.List[int], steps: t.List[SequenceStep], loop: bool = True
+    ) -> None:
+        """Save or update a preset with sequence steps."""
+        try:
+            # Validate input parameters
+            if not isinstance(index, list) or len(index) < 2:
+                logger.error(f"Invalid index format: {index}")
+                return
+
+            if not isinstance(steps, list):
+                logger.error(f"Invalid steps format: {steps}")
+                return
+
+            presets_data = self.load_presets()
+
+            # Convert steps to serializable format
+            sequence_data = []
+            for step in steps:
+                step_data = {
+                    "scenes": [
+                        [int(scene[0]), int(scene[1])]
+                        for scene in step.scenes
+                        if isinstance(scene, list) and len(scene) >= 2
+                    ],
+                    "duration": float(step.duration),
+                    "name": str(step.name) if step.name else "",
+                }
+                sequence_data.append(step_data)
+
+            # Find existing preset or create new one
+            preset_found = False
+            for preset in presets_data["presets"]:
+                if preset["index"] == index:
+                    preset["sequence"] = sequence_data
+                    preset["loop"] = loop
+                    # Keep scenes for backward compatibility (use first step's scenes)
+                    if sequence_data:
+                        preset["scenes"] = sequence_data[0]["scenes"]
+                    preset_found = True
+                    logger.info(f"Updated existing preset {index} with sequence")
+                    break
+
+            if not preset_found:
+                new_preset = {
+                    "index": [int(index[0]), int(index[1])],
+                    "sequence": sequence_data,
+                    "scenes": sequence_data[0]["scenes"] if sequence_data else [],
+                    "loop": loop,
+                }
+                presets_data["presets"].append(new_preset)
+                logger.info(f"Created new preset {index} with sequence")
+
+            self.save_presets(presets_data)
+            logger.info(
+                f"Preset {index} saved with {len(sequence_data)} sequence steps"
+            )
+        except Exception as e:
+            logger.error(f"Error in save_sequence: {e}")
+
+    def get_sequence(self, index: t.List[int]) -> t.Optional[t.List[SequenceStep]]:
+        """Get sequence steps for a preset."""
+        preset = self.get_preset_by_index(index)
+        if not preset:
+            return None
+
+        # Check if preset has sequence data
+        if "sequence" in preset and isinstance(preset["sequence"], list):
+            try:
+                steps = []
+                for step_data in preset["sequence"]:
+                    if isinstance(step_data, dict):
+                        step = SequenceStep(
+                            scenes=step_data.get("scenes", []),
+                            duration=float(step_data.get("duration", 1.0)),
+                            name=step_data.get("name", ""),
+                        )
+                        steps.append(step)
+                return steps
+            except Exception as e:
+                logger.error(f"Error parsing sequence for preset {index}: {e}")
+
+        # Fallback to simple scenes format for backward compatibility
+        if "scenes" in preset:
+            return [SequenceStep(scenes=preset["scenes"], duration=1.0, name="Default")]
+
+        return None
+
+    def has_sequence(self, index: t.List[int]) -> bool:
+        """Check if a preset has a multi-step sequence."""
+        preset = self.get_preset_by_index(index)
+        if not preset:
+            return False
+
+        # Check if it has sequence data with more than one step
+        if "sequence" in preset and isinstance(preset["sequence"], list):
+            return len(preset["sequence"]) > 1
+
+        return False
+
+    def remove_sequence(self, index: t.List[int]) -> bool:
+        """Remove sequence data from a preset, keeping only the first step as simple scenes."""
+        try:
+            presets_data = self.load_presets()
+
+            for preset in presets_data["presets"]:
+                if preset["index"] == index:
+                    if "sequence" in preset:
+                        # Keep first step as simple scenes
+                        if preset["sequence"] and len(preset["sequence"]) > 0:
+                            preset["scenes"] = preset["sequence"][0].get("scenes", [])
+                        del preset["sequence"]
+                        self.save_presets(presets_data)
+                        logger.info(f"Removed sequence from preset {index}")
+                        return True
+
+            logger.warning(f"Preset {index} not found")
+            return False
+        except Exception as e:
+            logger.error(f"Error removing sequence from preset {index}: {e}")
+            return False
+
+    def get_loop_setting(self, index: t.List[int]) -> bool:
+        """Get loop setting for a preset."""
+        preset = self.get_preset_by_index(index)
+        if preset:
+            return preset.get(
+                "loop", True
+            )  # Default to True for backward compatibility
+        return True
