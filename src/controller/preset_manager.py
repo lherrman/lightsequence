@@ -128,7 +128,9 @@ class PresetManager:
                     preset["scenes"] = valid_scenes
                     if "sequence" in preset:
                         del preset["sequence"]
-                        logger.info(f"Converted sequence preset {index} to simple preset")
+                        logger.info(
+                            f"Converted sequence preset {index} to simple preset"
+                        )
                     if "loop" in preset:
                         del preset["loop"]
                     preset_found = True
