@@ -240,7 +240,7 @@ class LightController:
     def _toggle_save_shift_mode(self) -> None:
         """Toggle save shift mode (only works when in save mode)."""
         if self.app_state not in [AppState.SAVE_MODE, AppState.SAVE_SHIFT_MODE]:
-            logger.info("SAVE_SHIFT only works when save mode is active")
+            logger.debug("SAVE_SHIFT only works when save mode is active")
             return
 
         if self.app_state == AppState.SAVE_MODE:
@@ -248,13 +248,13 @@ class LightController:
             self.launchpad.set_button_led(
                 ButtonType.TOP, SAVE_SHIFT_BUTTON, self.colors.YELLOW_BRIGHT
             )
-            logger.info("Save shift mode ON - preset buttons will add steps")
+            logger.debug("Save shift mode ON - preset buttons will add steps")
         else:  # app_state == AppState.SAVE_SHIFT_MODE
             self.app_state = AppState.SAVE_MODE
             self.launchpad.set_button_led(
                 ButtonType.TOP, SAVE_SHIFT_BUTTON, self.colors.OFF
             )
-            logger.info("Save shift mode OFF - preset buttons will save normally")
+            logger.debug("Save shift mode OFF - preset buttons will save normally")
 
         self._update_preset_leds_for_save_mode()
 
@@ -264,13 +264,13 @@ class LightController:
 
         if self.sequence_manager.sequence_state != SequenceState.STOPPED:
             self.sequence_manager.stop_sequence()
-            logger.info("Stopped sequence playback for save mode")
+            logger.debug("Stopped sequence playback for save mode")
 
         self.launchpad.set_button_led(
             ButtonType.TOP, SAVE_BUTTON, self.colors.SAVE_MODE_ON
         )
         self._update_preset_leds_for_save_mode()
-        logger.info("Entered save mode")
+        logger.debug("Entered save mode")
 
     def _exit_save_modes(self) -> None:
         """Exit all save modes and return to normal."""
@@ -291,7 +291,7 @@ class LightController:
                 ButtonType.PRESET, self.active_preset, self.colors.PRESET_ON
             )
 
-        logger.info("Exited save mode")
+        logger.debug("Exited save mode")
 
     def _cycle_background(self) -> None:
         """Cycle background animation."""
@@ -300,11 +300,11 @@ class LightController:
     def _toggle_playback(self) -> None:
         """Toggle sequence playback (play/pause)."""
         if not self.active_preset:
-            logger.info("No active preset - playback toggle has no effect")
+            logger.debug("No active preset - playback toggle has no effect")
             return
 
         if not self.preset_manager.has_sequence(self.active_preset):
-            logger.info(
+            logger.debug(
                 "Active preset is not a sequence - playback toggle has no effect"
             )
             return
@@ -314,13 +314,13 @@ class LightController:
         if current_state == SequenceState.PLAYING:
             self.sequence_manager.pause_sequence()
             self.playback_enabled = False
-            logger.info("Sequence playback paused")
+            logger.debug("Sequence playback paused")
         elif current_state == SequenceState.PAUSED:
             self.sequence_manager.resume_sequence()
             self.playback_enabled = True
-            logger.info("Sequence playback resumed")
+            logger.debug("Sequence playback resumed")
         else:
-            logger.info("No sequence currently playing to pause/resume")
+            logger.debug("No sequence currently playing to pause/resume")
             return
 
         self._update_playback_buttons()
@@ -328,11 +328,11 @@ class LightController:
     def _next_step(self) -> None:
         """Jump to next step in current sequence."""
         if not self.active_preset:
-            logger.info("No active preset - cannot advance step")
+            logger.debug("No active preset - cannot advance step")
             return
 
         if not self.preset_manager.has_sequence(self.active_preset):
-            logger.info("Active preset is not a sequence - cannot advance step")
+            logger.debug("Active preset is not a sequence - cannot advance step")
             return
 
         if self.sequence_manager.next_step():
@@ -439,7 +439,7 @@ class LightController:
         preset = self.preset_manager.get_preset_by_index(coords)
         if preset and "scenes" in preset:
             self._activate_scenes(preset["scenes"])
-            logger.info(
+            logger.debug(
                 f"Activated simple preset {coords} with {len(preset['scenes'])} scenes"
             )
 

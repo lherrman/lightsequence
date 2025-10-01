@@ -69,7 +69,8 @@ class ControllerThread(QThread):
                         time.sleep(0.02)  # Small delay to prevent excessive CPU usage
                     except Exception as e:
                         logger.error(f"Error in controller loop: {e}")
-                        break
+                        # Continue running instead of breaking to prevent crashes
+                        time.sleep(0.1)  # Wait a bit longer on error
 
             else:
                 self.controller_error.emit("Failed to connect to devices")
@@ -82,6 +83,13 @@ class ControllerThread(QThread):
     def stop(self):
         """Stop the controller thread."""
         self.should_stop = True
+        if self.controller:
+            try:
+                # Clear any callbacks to prevent cross-thread calls during shutdown
+                self.controller.on_preset_changed = None
+                self.controller.on_preset_saved = None
+            except Exception as e:
+                logger.error(f"Error clearing callbacks: {e}")
         self.wait(3000)  # Wait up to 3 seconds for thread to finish
 
 
@@ -203,17 +211,26 @@ class PresetButton(QPushButton):
                 self.setText(f"SIMPLE\n{self.coord_x},{self.coord_y}")
                 base_color = "#cc6600" if not self.is_active_preset else "#ff8800"
 
+            # Generate hover color more safely
+            if self.has_sequence:
+                hover_color = "#0088ff" if not self.is_active_preset else "#00aaff"
+            else:
+                hover_color = "#ff8800" if not self.is_active_preset else "#ffaa00"
+
+            # Set border color based on active state
+            border_color = "ffffff" if self.is_active_preset else "666666"
+
             self.setStyleSheet(f"""
                 QPushButton {{
                     background-color: {base_color};
                     color: #ffffff;
-                    border: 2px solid #{"ffffff" if self.is_active_preset else "666666"};
+                    border: 2px solid #{border_color};
                     border-radius: 3px;
                     font-size: 9px;
                     font-weight: bold;
                 }}
                 QPushButton:hover {{
-                    background-color: {base_color.replace("cc", "dd").replace("66", "88")};
+                    background-color: {hover_color};
                 }}
                 QPushButton:checked {{
                     border: 2px solid #ffffff;
@@ -645,8 +662,9 @@ class PresetSequenceEditor(QWidget):
 class LightSequenceGUI(QMainWindow):
     """Main GUI application for light sequence configuration."""
 
-    # Custom signal for thread-safe preset updates
+    # Custom signals for thread-safe preset updates
     preset_changed_signal = Signal(object)
+    preset_saved_signal = Signal()
 
     def __init__(self):
         super().__init__()
@@ -655,8 +673,9 @@ class LightSequenceGUI(QMainWindow):
         self.current_editor: t.Optional[PresetSequenceEditor] = None
         self._updating_from_launchpad = False  # Flag to prevent infinite loops
 
-        # Connect the signal to the slot
+        # Connect the signals to the slots
         self.preset_changed_signal.connect(self._update_preset_from_launchpad)
+        self.preset_saved_signal.connect(self._handle_preset_saved)
 
         self.setWindowTitle("Light Sequence Controller")
         self.setMinimumSize(470, 200)
@@ -841,7 +860,12 @@ class LightSequenceGUI(QMainWindow):
         )
 
     def on_preset_saved(self):
-        """Called when a preset is saved from the launchpad."""
+        """Called when a preset is saved from the launchpad (thread-unsafe callback)."""
+        # Use signal to handle this in a thread-safe way
+        self.preset_saved_signal.emit()
+
+    def _handle_preset_saved(self):
+        """Handle preset saved signal (runs on GUI thread)."""
         # Refresh presets list to show the new/updated preset
         self.refresh_presets()
 
