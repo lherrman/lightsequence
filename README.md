@@ -11,7 +11,7 @@ A Python-based lighting controller for DasLight systems with Launchpad MK2 hardw
 - **GUI Configuration**: User-friendly interface for sequence editing and management
 - **Real-time Control**: Live lighting control with visual feedback
 
-Only tested on Windows with DasLight and Launchpad MK2.
+Only tested on Windows with DasLight and Launchpad MK2. Easily adaptable to other Launchpad models or Lighting software.
 
 ## Quick Start
 
@@ -47,7 +47,7 @@ uv run run.py --mode controller
 **Quick Launch:**
 - Windows: Run `src/run_editor.bat` (GUI) or `src/run.bat` (controller)
 
-## Hardware Setup
+## Setup
 
 1. Connect Launchpad MK2 via USB
 2. Install and configure loopMIDI with ports named "DasLight_in" and "DasLight_out"
@@ -56,15 +56,6 @@ uv run run.py --mode controller
 5. Launch the application
 6. Configure MIDI feedback in DasLight for the buttons you want to use
 
-## Project Structure
 
-- `controller/main.py` - Core lighting controller logic
-- `controller/sequence_gui.py` - GUI interface for sequence management
-- `controller/daslight.py` - DasLight MIDI communication
-- `controller/launchpad.py` - Launchpad MK2 hardware interface
-- `controller/sequence_manager.py` - Sequence timing and playback
-- `controller/preset_manager.py` - Preset storage and recall
-
-## License
 
 Open source - feel free to use and modify for your lighting projects.
