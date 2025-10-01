@@ -152,10 +152,12 @@ class PresetButton(QPushButton):
         self.has_preset = False
         self.has_sequence = False
         self.is_active_preset = False
-        
+
         self.setFixedHeight(32)  # Fixed height only, let width stretch
         self.setMinimumWidth(55)  # Minimum width to prevent too small buttons
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)  # Expand horizontally
+        self.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )  # Expand horizontally
         self.setCheckable(True)
         self.clicked.connect(self._on_preset_clicked)
         self.update_appearance()
@@ -200,7 +202,7 @@ class PresetButton(QPushButton):
             else:
                 self.setText(f"SIMPLE\n{self.coord_x},{self.coord_y}")
                 base_color = "#cc6600" if not self.is_active_preset else "#ff8800"
-            
+
             self.setStyleSheet(f"""
                 QPushButton {{
                     background-color: {base_color};
@@ -711,14 +713,14 @@ class LightSequenceGUI(QMainWindow):
         header_layout = QHBoxLayout()
         header_layout.setContentsMargins(0, 0, 0, 0)
         header_layout.setSpacing(5)
-        
+
         # Title label
         title_label = QLabel("Presets")
         title_label.setStyleSheet("color: #cccccc; font-weight: bold; font-size: 11px;")
         header_layout.addWidget(title_label)
-        
+
         header_layout.addStretch()  # Push refresh button to right
-        
+
         # Small refresh icon button in corner
         refresh_btn = QPushButton("🔄")
         refresh_btn.clicked.connect(self.refresh_presets)
@@ -742,9 +744,9 @@ class LightSequenceGUI(QMainWindow):
         self.preset_grid_widget = QWidget()
         preset_grid_layout = QGridLayout(self.preset_grid_widget)
         preset_grid_layout.setHorizontalSpacing(3)  # Horizontal spacing between columns
-        preset_grid_layout.setVerticalSpacing(6)    # More vertical spacing between rows
+        preset_grid_layout.setVerticalSpacing(6)  # More vertical spacing between rows
         preset_grid_layout.setContentsMargins(0, 2, 0, 2)  # Small top/bottom margins
-        
+
         # Create 3x8 grid of preset buttons
         self.preset_buttons: t.Dict[t.Tuple[int, int], PresetButton] = {}
         for y in range(3):  # 3 rows
@@ -753,7 +755,7 @@ class LightSequenceGUI(QMainWindow):
                 btn.preset_selected.connect(self.on_preset_button_selected)
                 self.preset_buttons[(x, y)] = btn
                 preset_grid_layout.addWidget(btn, y, x)
-                
+
                 # Make columns stretch equally to use full width
                 preset_grid_layout.setColumnStretch(x, 1)
 
@@ -877,14 +879,14 @@ class LightSequenceGUI(QMainWindow):
 
         preset_coords = [x, y]
         preset_tuple = (x, y)
-        
+
         # Show sequence editor for this preset
         self.show_sequence_editor(preset_tuple)
 
         # Update button states - clear all first
         for btn in self.preset_buttons.values():
             btn.set_active_preset(False)
-        
+
         # Set selected button as active
         if (x, y) in self.preset_buttons:
             self.preset_buttons[(x, y)].set_active_preset(True)
