@@ -68,10 +68,6 @@ class LaunchpadMK2:
             logger.warning(f"Invalid coordinates {relative_coords}")
             return
 
-        # Check for suppressed buttons (e.g. top right button)
-        if self._handle_suppressed_buttons(button_type, relative_coords):
-            return
-
         # Convert relative coordinates to absolute coordinates
         abs_x, abs_y = self._relative_to_absolute_coords(button_type, relative_coords)
         if abs_x is not None and abs_y is not None:
@@ -81,15 +77,6 @@ class LaunchpadMK2:
             logger.warning(
                 f"Could not convert coordinates for {button_type}: {relative_coords}"
             )
-
-    def _handle_suppressed_buttons(
-        self, button_type: ButtonType, relative_coords: t.List[int]
-    ) -> bool:
-        """Check if button press should be suppressed (not light up)."""
-        if button_type == ButtonType.SCENE and relative_coords == [8, 0]:
-            return True
-
-        return False
 
     def _relative_to_absolute_coords(
         self, button_type: ButtonType, relative_coords: t.List[int]

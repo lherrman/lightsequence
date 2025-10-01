@@ -84,8 +84,16 @@ class LightController:
         """Connect to devices."""
         midi_connected = self.midi_software.connect_midi()
         if midi_connected:
-            self.midi_software.process_feedback()
+            # Process initial feedback to sync active scenes
+            changes = self.midi_software.process_feedback()
+            for note, state in changes.items():
+                scene_coords = self.midi_software.get_scene_coordinates_for_note(note)
+                if scene_coords and state:
+                    self.active_scenes.add(scene_coords)
+
             logger.info("Successfully connected to DasLight")
+            if self.active_scenes:
+                logger.info(f"Found {len(self.active_scenes)} active scenes on startup")
         else:
             logger.error("Failed to connect to DasLight")
         return midi_connected and self.launchpad.is_connected
@@ -389,7 +397,7 @@ class LightController:
         if self.on_preset_changed:
             self.on_preset_changed(coords.copy())
 
-        self.midi_software.send_scene_command((8, 0))  # Blackout
+        # No blackout needed - smart scene transitions will handle it
 
         if self._handle_sequence_preset(coords):
             # Update playback buttons for sequence presets
@@ -444,10 +452,9 @@ class LightController:
         self.launchpad.set_button_led(
             ButtonType.PRESET, self.active_preset, self.colors.OFF
         )
-        self.midi_software.send_scene_command((8, 0))  # Blackout
 
-        self.active_scenes.clear()
-        self._clear_scene_leds()
+        # Use smart transition to turn off all scenes
+        self._transition_to_scenes(set())
 
         self.active_preset = None
         if self.on_preset_changed:
@@ -457,24 +464,61 @@ class LightController:
         self._update_playback_buttons()
 
     def _activate_scenes(self, scenes: t.List[t.List[int]]) -> None:
-        """Activate scenes and update LEDs."""
+        """Activate scenes with smart diffing to prevent flicker."""
+        # Convert new scenes to set for efficient operations
+        new_scenes = set()
         for scene_coords in scenes:
             if len(scene_coords) >= 2:
-                scene_tuple = (scene_coords[0], scene_coords[1])
-                self.midi_software.send_scene_command(scene_tuple)
-                self.active_scenes.add(scene_tuple)
-                self.launchpad.set_button_led(
-                    ButtonType.SCENE, scene_coords, self.colors.SCENE_ON
-                )
+                new_scenes.add((scene_coords[0], scene_coords[1]))
+
+        # Perform smart scene transition
+        self._transition_to_scenes(new_scenes)
+
+    def _transition_to_scenes(self, target_scenes: t.Set[t.Tuple[int, int]]) -> None:
+        """Smart scene transition that only toggles scenes that need to change."""
+        # Calculate which scenes need to be turned off
+        scenes_to_deactivate = self.active_scenes - target_scenes
+
+        # Calculate which scenes need to be turned on
+        scenes_to_activate = target_scenes - self.active_scenes
+
+        logger.debug(
+            f"Scene transition: deactivating {len(scenes_to_deactivate)}, activating {len(scenes_to_activate)}, keeping {len(self.active_scenes & target_scenes)} unchanged"
+        )
+
+        # Deactivate scenes that should be off
+        for scene_tuple in scenes_to_deactivate:
+            self.midi_software.send_scene_command(scene_tuple)  # Toggle off
+            coords_list = [scene_tuple[0], scene_tuple[1]]
+            self.launchpad.set_button_led(
+                ButtonType.SCENE, coords_list, self.colors.OFF
+            )
+
+        # Activate scenes that should be on
+        for scene_tuple in scenes_to_activate:
+            self.midi_software.send_scene_command(scene_tuple)  # Toggle on
+            coords_list = [scene_tuple[0], scene_tuple[1]]
+            self.launchpad.set_button_led(
+                ButtonType.SCENE, coords_list, self.colors.SCENE_ON
+            )
+
+        # Update active scenes tracking
+        self.active_scenes = target_scenes.copy()
+
+    def get_active_scenes_info(self) -> str:
+        """Get information about currently active scenes (for debugging)."""
+        if not self.active_scenes:
+            return "No scenes currently active"
+
+        scene_list = sorted(list(self.active_scenes))
+        return f"Active scenes ({len(scene_list)}): {scene_list}"
 
     def _on_sequence_step_change(self, scenes: t.List[t.List[int]]) -> None:
-        """Handle sequence step change."""
+        """Handle sequence step change with smart scene transitions."""
         if not self.active_preset:
             return
 
-        self._clear_scene_leds_partial()
-        self.active_scenes.clear()
-        self.midi_software.send_scene_command((8, 0))  # Blackout
+        # Use smart scene transition instead of blackout
         self._activate_scenes(scenes)
 
         logger.debug(f"Sequence step changed to {len(scenes)} scenes")
