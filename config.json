@@ -27,6 +27,7 @@
         "save_mode_off": "#000000",
         "save_mode_on": "#ff0080",
         "scene_on_color": "#00ff00",
+        "scene_off_color": "#aa0000",
         "success_flash": "#00ff00",
         "yellow_bright": "#ffff00"
     },
@@ -64,5 +65,5 @@
             0
         ]
     },
-    "scene_on_color_from_column": true
+    "scene_on_color_from_column": false
 }

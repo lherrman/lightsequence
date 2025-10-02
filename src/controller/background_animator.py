@@ -25,18 +25,14 @@ class BackgroundAnimator:
         self.force_update = False
         self.last_update_time = 0.0
 
-    def get_background(
-        self, animation_type: str = "expanding_waves"
-    ) -> tuple[np.ndarray, bool]:
+    def get_background(self, animation_type: str = "expanding_waves") -> np.ndarray:
         """Generate background animation frame.
 
-        Returns (pixel_buffer, needs_update) tuple.
+        Returns pixel_buffer.
         """
-        needs_update = animation_type != self.last_animation_type or self.force_update
-
-        if needs_update:
-            self.last_animation_type = animation_type
-            self.force_update = False
+        # Always update now since hardware-level optimization handles redundant updates
+        self.last_animation_type = animation_type
+        self.force_update = False
 
         # Clear buffer
         self.pixel_buffer.fill(0.0)
@@ -54,13 +50,8 @@ class BackgroundAnimator:
             if cycle_time < 5.0:
                 # During swoosh - generate animation
                 self._generate_void_ripples()
-                needs_update = True
-            else:
-                # During silent period - buffer stays black
-                # Only update if forced or animation type changed
-                needs_update = needs_update or self.force_update
         elif animation_type == "none":
-            # No animation - buffer stays black, only update if forced or type changed
+            # No animation - buffer stays black
             pass
         elif animation_type == "stellar_pulse":
             current_real_time = time.time()
@@ -68,39 +59,32 @@ class BackgroundAnimator:
             self.time = real_elapsed * self.speed
             self.frame += 1
             self._generate_stellar_pulse()
-            needs_update = True
         elif animation_type == "shadow_waves":
             current_real_time = time.time()
             real_elapsed = current_real_time - self.start_time
             self.time = real_elapsed * self.speed
             self.frame += 1
             self._generate_shadow_waves()
-            needs_update = True
         elif animation_type == "plasma_storm":
             current_real_time = time.time()
             real_elapsed = current_real_time - self.start_time
             self.time = real_elapsed * self.speed
             self.frame += 1
             self._generate_plasma_storm()
-            needs_update = True
         elif animation_type == "deep_pulse":
             current_real_time = time.time()
             real_elapsed = current_real_time - self.start_time
             self.time = real_elapsed * self.speed
             self.frame += 1
             self._generate_deep_pulse()
-            needs_update = True
         else:
             animation_type = "default"
-            needs_update = True
 
         # Apply zone colors and brightness to the completed animation buffer
-        # (only if we need to update)
-        if needs_update:
-            self._apply_zone_colors_and_brightness()
-            self.last_update_time = self.time
+        self._apply_zone_colors_and_brightness()
+        self.last_update_time = self.time
 
-        return self.pixel_buffer.copy(), needs_update
+        return self.pixel_buffer.copy()
 
     def _generate_void_ripples(self):
         """Periodic blue wave animation."""
@@ -369,7 +353,7 @@ class BackgroundManager:
         """Get the current background animation name."""
         return self.current_background
 
-    def generate_background(self) -> tuple[np.ndarray, bool]:
+    def generate_background(self) -> np.ndarray:
         """Generate the current background animation frame."""
         return self.animator.get_background(self.current_background)
 

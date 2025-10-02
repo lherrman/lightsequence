@@ -275,10 +275,8 @@ class LaunchpadMK2:
             self.animator.force_background_update()
 
         # Get complete background buffer with animation, zone colors, and brightness already applied
-        background_buffer, needs_update = self.animator.get_background(animation_type)
+        background_buffer = self.animator.get_background(animation_type)
 
-        if not needs_update:
-            return False  # Skip update - background hasn't changed
         # Apply background to inactive LEDs
         for x in range(8):
             for y in range(1, 9):
