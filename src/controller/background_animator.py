@@ -1,5 +1,6 @@
 import numpy as np
 import logging
+import time
 from config import get_config_manager
 
 logger = logging.getLogger(__name__)
@@ -14,6 +15,8 @@ class BackgroundAnimator:
         self.time = 0.0
         self.speed = 1.0
         self.config_manager = get_config_manager()
+        self.start_time = time.time()
+        self.last_real_time = self.start_time
 
         self.BOUNDS_SCENES = np.array([[0, 1], [8, 5]])
         self.BOUNDS_PRESETS = np.array([[0, 6], [7, 8]])
@@ -39,47 +42,51 @@ class BackgroundAnimator:
         self.pixel_buffer.fill(0.0)
 
         if animation_type == "default":
-            # Only update time when we're in the default animation
-            # Check if we need to animate (during swoosh period)
+            # Use real time for default animation
+            current_real_time = time.time()
+            real_elapsed = current_real_time - self.start_time
+            self.time = real_elapsed * self.speed
+
             cycle_length = 38.0
             cycle_time = self.time % cycle_length
+
+            # Check if we're in the swoosh period (first 5 seconds of cycle)
             if cycle_time < 5.0:
-                # During swoosh - update time and animate
-                self.time += 0.2 * self.speed
-                self.frame += 1
+                # During swoosh - generate animation
                 self._generate_void_ripples()
                 needs_update = True
             else:
-                # During silent period - check if we should start next cycle
-                # Only update time at the very end of cycle to avoid micro-changes
-                time_until_next_cycle = cycle_length - cycle_time
-                if time_until_next_cycle < 0.2 * self.speed:
-                    # Close enough to next cycle, advance to it
-                    self.time += (
-                        time_until_next_cycle + 0.01
-                    )  # Small epsilon to cross threshold
-                    needs_update = True
-                # Don't generate anything - buffer stays black
+                # During silent period - buffer stays black
+                # Only update if forced or animation type changed
+                needs_update = needs_update or self.force_update
         elif animation_type == "none":
             # No animation - buffer stays black, only update if forced or type changed
             pass
         elif animation_type == "stellar_pulse":
-            self.time += 0.2 * self.speed
+            current_real_time = time.time()
+            real_elapsed = current_real_time - self.start_time
+            self.time = real_elapsed * self.speed
             self.frame += 1
             self._generate_stellar_pulse()
             needs_update = True
         elif animation_type == "shadow_waves":
-            self.time += 0.2 * self.speed
+            current_real_time = time.time()
+            real_elapsed = current_real_time - self.start_time
+            self.time = real_elapsed * self.speed
             self.frame += 1
             self._generate_shadow_waves()
             needs_update = True
         elif animation_type == "plasma_storm":
-            self.time += 0.2 * self.speed
+            current_real_time = time.time()
+            real_elapsed = current_real_time - self.start_time
+            self.time = real_elapsed * self.speed
             self.frame += 1
             self._generate_plasma_storm()
             needs_update = True
         elif animation_type == "deep_pulse":
-            self.time += 0.2 * self.speed
+            current_real_time = time.time()
+            real_elapsed = current_real_time - self.start_time
+            self.time = real_elapsed * self.speed
             self.frame += 1
             self._generate_deep_pulse()
             needs_update = True
@@ -287,7 +294,7 @@ class BackgroundAnimator:
         for x in range(8):
             for y in range(1, 9):
                 base_color = self.pixel_buffer[x, y, :].copy()
-                
+
                 # Apply effect brightness to the animated content first
                 effect_color = [c * brightness_effect for c in base_color]
 
@@ -325,6 +332,11 @@ class BackgroundAnimator:
         """Force next background update."""
         self.force_update = True
 
+    def reset_animation_timer(self):
+        """Reset the animation timer to start a new cycle."""
+        self.start_time = time.time()
+        self.time = 0.0
+
 
 class BackgroundManager:
     """Manages background animation cycling."""
@@ -334,10 +346,10 @@ class BackgroundManager:
         self.background_animations = [
             "default",
             "none",
-            "stellar_pulse",
-            "shadow_waves",
-            "plasma_storm",
-            "deep_pulse",
+            # "stellar_pulse",
+            # "shadow_waves",
+            # "plasma_storm",
+            # "deep_pulse",
         ]
         self.current_background_index = 0
         self.current_background = self.background_animations[0]

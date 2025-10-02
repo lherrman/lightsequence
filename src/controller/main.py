@@ -378,12 +378,16 @@ class LightController:
         if current_state == SequenceState.PLAYING:
             # Green for playing
             self.launchpad.set_button_led(
-                ButtonType.RIGHT, self.playback_toggle_button, self.colors.PLAYBACK_PLAYING
+                ButtonType.RIGHT,
+                self.playback_toggle_button,
+                self.colors.PLAYBACK_PLAYING,
             )
         elif current_state == SequenceState.PAUSED:
             # Orange for paused
             self.launchpad.set_button_led(
-                ButtonType.RIGHT, self.playback_toggle_button, self.colors.PLAYBACK_PAUSED
+                ButtonType.RIGHT,
+                self.playback_toggle_button,
+                self.colors.PLAYBACK_PAUSED,
             )
         else:
             # Off for stopped
@@ -521,17 +525,15 @@ class LightController:
         for scene_tuple in scenes_to_activate:
             self.midi_software.send_scene_command(scene_tuple)  # Toggle on
             coords_list = [scene_tuple[0], scene_tuple[1]]
-            
+
             # Choose color based on config setting
             if self.config_manager.get_scene_on_color_from_column():
                 column_color = self.config_manager.get_column_color(scene_tuple[0])
                 scene_color = column_color if column_color else self.colors.SCENE_ON
             else:
                 scene_color = self.colors.SCENE_ON
-                
-            self.launchpad.set_button_led(
-                ButtonType.SCENE, coords_list, scene_color
-            )
+
+            self.launchpad.set_button_led(ButtonType.SCENE, coords_list, scene_color)
 
         # Update our tracking to the expected final state for next diffing calculation
         self.active_scenes = target_scenes.copy()
@@ -577,13 +579,15 @@ class LightController:
                 if state:
                     # Choose color based on config setting
                     if self.config_manager.get_scene_on_color_from_column():
-                        column_color = self.config_manager.get_column_color(scene_coords[0])
+                        column_color = self.config_manager.get_column_color(
+                            scene_coords[0]
+                        )
                         color = column_color if column_color else self.colors.SCENE_ON
                     else:
                         color = self.colors.SCENE_ON
                 else:
                     color = self.colors.OFF
-                    
+
                 coords_list = [scene_coords[0], scene_coords[1]]
                 self.launchpad.set_button_led(ButtonType.SCENE, coords_list, color)
 
@@ -670,7 +674,9 @@ class LightController:
             if current_status
             else self.colors.CONNECTION_BAD
         )
-        self.launchpad.set_button_led(ButtonType.RIGHT, self.connection_status_button, color)
+        self.launchpad.set_button_led(
+            ButtonType.RIGHT, self.connection_status_button, color
+        )
 
     def _update_connection_status(self) -> None:
         """Update the connection status LED using current DasLight status."""
@@ -680,7 +686,9 @@ class LightController:
             if current_status
             else self.colors.CONNECTION_BAD
         )
-        self.launchpad.set_button_led(ButtonType.RIGHT, self.connection_status_button, color)
+        self.launchpad.set_button_led(
+            ButtonType.RIGHT, self.connection_status_button, color
+        )
 
 
 def main():
