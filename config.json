@@ -1,5 +1,5 @@
 {
-    "brightness_background": 0.03,
+    "brightness_background": 0.029999999999999985,
     "brightness_background_effect": 1.0,
     "brightness_foreground": 1.0,
     "colors": {
@@ -31,6 +31,14 @@
         "yellow_bright": "#ffff00"
     },
     "key_bindings": {
+        "background_brightness_down": [
+            5,
+            0
+        ],
+        "background_brightness_up": [
+            6,
+            0
+        ],
         "background_button": [
             7,
             0

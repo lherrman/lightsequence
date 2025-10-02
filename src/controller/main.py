@@ -87,6 +87,19 @@ class LightController:
         """Get connection status button coordinates from config."""
         return self.config_manager.get_key_binding("connection_status_button") or [0, 7]
 
+    @property
+    def background_brightness_down_button(self) -> t.List[int]:
+        """Get background brightness down button coordinates from config."""
+        return self.config_manager.get_key_binding("background_brightness_down") or [
+            5,
+            0,
+        ]
+
+    @property
+    def background_brightness_up_button(self) -> t.List[int]:
+        """Get background brightness up button coordinates from config."""
+        return self.config_manager.get_key_binding("background_brightness_up") or [6, 0]
+
     def connect(self) -> bool:
         """Connect to devices."""
         midi_connected = self.midi_software.connect_midi()
@@ -125,6 +138,9 @@ class LightController:
 
         # Initialize connection status
         self._update_connection_status()
+
+        # Initialize brightness control buttons
+        self._update_brightness_buttons()
 
         try:
             while True:
@@ -231,6 +247,10 @@ class LightController:
             self._toggle_save_shift_mode()
         elif coords == self.background_button:
             self._cycle_background()
+        elif coords == self.background_brightness_down_button:
+            self._decrease_background_brightness()
+        elif coords == self.background_brightness_up_button:
+            self._increase_background_brightness()
 
     def _handle_right_button(self, coords: t.List[int], active: bool) -> None:
         """Handle right bar buttons (playback controls and scenes)."""
@@ -311,6 +331,35 @@ class LightController:
     def _cycle_background(self) -> None:
         """Cycle background animation."""
         self.background_manager.cycle_background()
+
+    def _decrease_background_brightness(self) -> None:
+        """Decrease background brightness by 0.03, minimum 0.0."""
+        current_brightness = self.config_manager.get_brightness_background()
+        new_brightness = max(0.0, current_brightness - 0.03)
+        self._set_background_brightness(new_brightness)
+        logger.info(f"Background brightness decreased to {new_brightness:.2f}")
+
+    def _increase_background_brightness(self) -> None:
+        """Increase background brightness by 0.03, maximum 1.0."""
+        current_brightness = self.config_manager.get_brightness_background()
+        new_brightness = min(1.0, current_brightness + 0.03)
+        self._set_background_brightness(new_brightness)
+        logger.info(f"Background brightness increased to {new_brightness:.2f}")
+
+    def _set_background_brightness(self, brightness: float) -> None:
+        """Set background brightness and update config."""
+        # Update the config data directly
+        self.config_manager.config_data["brightness_background"] = brightness
+        # Save to file
+        self.config_manager._save_config(self.config_manager.config_data)
+        # Force background update to reflect new brightness
+        self.background_manager.force_background_update()
+        # Redraw the background immediately with force_update=True to show the change
+        self.launchpad.draw_background(
+            self.background_manager.get_current_background(), force_update=True
+        )
+        # Update brightness button LEDs
+        self._update_brightness_buttons()
 
     def _toggle_playback(self) -> None:
         """Toggle sequence playback (play/pause)."""
@@ -688,6 +737,16 @@ class LightController:
         )
         self.launchpad.set_button_led(
             ButtonType.RIGHT, self.connection_status_button, color
+        )
+
+    def _update_brightness_buttons(self) -> None:
+        """Update brightness control button LEDs - keep them off (no glow)."""
+        # Turn off both brightness control buttons (no glow)
+        self.launchpad.set_button_led(
+            ButtonType.TOP, self.background_brightness_down_button, [0.0, 0.0, 0.0]
+        )
+        self.launchpad.set_button_led(
+            ButtonType.TOP, self.background_brightness_up_button, [0.0, 0.0, 0.0]
         )
 
 

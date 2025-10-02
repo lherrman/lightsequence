@@ -74,7 +74,7 @@ class ConfigManager:
 
     DEFAULT_CONFIG = {
         "brightness_foreground": 1.0,
-        "brightness_background": 0.06,
+        "brightness_background": 0.03,
         "brightness_background_effect": 1.0,
         "scene_on_color_from_column": True,
         "colors": {
@@ -112,6 +112,8 @@ class ConfigManager:
             "playback_toggle_button": [0, 5],
             "next_step_button": [0, 6],
             "connection_status_button": [0, 7],
+            "background_brightness_down": [5, 0],
+            "background_brightness_up": [6, 0],
         },
     }
 
@@ -129,8 +131,9 @@ class ConfigManager:
                     logger.info(f"Loaded config from {self.config_file}")
 
                     # Merge with defaults to ensure all keys exist
-                    merged_config = self.DEFAULT_CONFIG.copy()
-                    merged_config.update(config_data)
+                    merged_config = self._deep_merge_config(
+                        self.DEFAULT_CONFIG, config_data
+                    )
 
                     # Save back to file if new keys were added
                     if merged_config != config_data:
@@ -154,6 +157,26 @@ class ConfigManager:
                 json.dump(config_data, f, indent=4, sort_keys=True)
         except IOError as e:
             logger.error(f"Error saving config to {self.config_file}: {e}")
+
+    def _deep_merge_config(
+        self, default_config: Dict[str, Any], user_config: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Deep merge user config with defaults, ensuring all default keys exist."""
+        merged = default_config.copy()
+
+        for key, value in user_config.items():
+            if (
+                key in merged
+                and isinstance(merged[key], dict)
+                and isinstance(value, dict)
+            ):
+                # Recursively merge nested dictionaries
+                merged[key] = self._deep_merge_config(merged[key], value)
+            else:
+                # Use user value for non-dict values or new keys
+                merged[key] = value
+
+        return merged
 
     def get_brightness_foreground(self) -> float:
         """Get foreground brightness multiplier (0.0-1.0)."""
