@@ -281,37 +281,45 @@ class BackgroundAnimator:
 
     def _apply_zone_colors_and_brightness(self):
         """Apply zone colors and brightness to animation buffer."""
-        brightness = self.config_manager.get_brightness_background()
+        brightness_static = self.config_manager.get_brightness_background()
+        brightness_effect = self.config_manager.get_brightness_background_effect()
 
         for x in range(8):
             for y in range(1, 9):
                 base_color = self.pixel_buffer[x, y, :].copy()
+                
+                # Apply effect brightness to the animated content first
+                effect_color = [c * brightness_effect for c in base_color]
 
                 if self.BOUNDS_SCENES[0][1] <= y <= self.BOUNDS_SCENES[1][1]:
                     column_color = self.config_manager.get_column_color(x)
                     if column_color:
+                        # Apply static brightness to column colors
+                        static_color = [c * brightness_static for c in column_color]
+                        # Combine effect and static colors
                         combined_color = [
-                            min(1.0, base_color[0] + column_color[0]),
-                            min(1.0, base_color[1] + column_color[1]),
-                            min(1.0, base_color[2] + column_color[2]),
+                            min(1.0, effect_color[0] + static_color[0]),
+                            min(1.0, effect_color[1] + static_color[1]),
+                            min(1.0, effect_color[2] + static_color[2]),
                         ]
-                        final_color = [c * brightness for c in combined_color]
-                        self.pixel_buffer[x, y] = final_color
+                        self.pixel_buffer[x, y] = combined_color
                         continue
 
                 elif self.BOUNDS_PRESETS[0][1] <= y <= self.BOUNDS_PRESETS[1][1]:
                     preset_bg_color = self.config_manager.get_presets_background_color()
+                    # Apply static brightness to preset background colors
+                    static_color = [c * brightness_static for c in preset_bg_color]
+                    # Combine effect and static colors
                     combined_color = [
-                        min(1.0, base_color[0] + preset_bg_color[0]),
-                        min(1.0, base_color[1] + preset_bg_color[1]),
-                        min(1.0, base_color[2] + preset_bg_color[2]),
+                        min(1.0, effect_color[0] + static_color[0]),
+                        min(1.0, effect_color[1] + static_color[1]),
+                        min(1.0, effect_color[2] + static_color[2]),
                     ]
-                    final_color = [c * brightness for c in combined_color]
-                    self.pixel_buffer[x, y] = final_color
+                    self.pixel_buffer[x, y] = combined_color
                     continue
 
-                final_color = [c * brightness for c in base_color]
-                self.pixel_buffer[x, y] = final_color
+                # For areas without zone colors, just use the effect brightness
+                self.pixel_buffer[x, y] = effect_color
 
     def force_background_update(self):
         """Force next background update."""
