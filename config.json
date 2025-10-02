@@ -26,8 +26,8 @@
         "presets_background_color": "#ff0080",
         "save_mode_off": "#000000",
         "save_mode_on": "#ff0080",
-        "scene_on_color": "#00ff00",
         "scene_off_color": "#aa0000",
+        "scene_on_color": "#00ff00",
         "success_flash": "#00ff00",
         "yellow_bright": "#ffff00"
     },
