@@ -6,7 +6,7 @@ logger = logging.getLogger(__name__)
 
 
 class BackgroundAnimator:
-    """Handles animated backgrounds for the Launchpad display."""
+    """Generates animated backgrounds with zone colors."""
 
     def __init__(self):
         self.pixel_buffer = np.zeros((9, 9, 3), dtype=float)
@@ -15,33 +15,21 @@ class BackgroundAnimator:
         self.speed = 1.0
         self.config_manager = get_config_manager()
         
-        # Define zone boundaries (same as launchpad)
-        self.BOUNDS_SCENES = np.array([[0, 1], [8, 5]])  # Scene area: columns 0-7, rows 1-4
-        self.BOUNDS_PRESETS = np.array([[0, 6], [7, 8]])  # Preset area: columns 0-7, rows 6-7
+        self.BOUNDS_SCENES = np.array([[0, 1], [8, 5]])
+        self.BOUNDS_PRESETS = np.array([[0, 6], [7, 8]])
         
-        # Update tracking for optimization
         self.last_animation_type = None
-        self.force_update = False  # Flag to force update when foreground changes
+        self.force_update = False
         self.last_update_time = 0.0
 
     def get_background(self, animation_type: str = "expanding_waves") -> tuple[np.ndarray, bool]:
-        """
-        Update animation and return the current pixel buffer with update flag.
-
-        Args:
-            animation_type: Type of animation to generate
-                - "default": Mostly black void with rare electric blue ripples
-                - "none": No background animation - completely black
-
-        Returns:
-            tuple: (pixel_buffer: 9x9x3 array with RGB values 0.0-1.0, needs_update: bool)
-        """
-        needs_update = False
+        """Generate background animation frame.
         
-        # Check if we need to update due to animation type change or forced update
-        if (animation_type != self.last_animation_type or 
-            self.force_update):
-            needs_update = True
+        Returns (pixel_buffer, needs_update) tuple.
+        """
+        needs_update = (animation_type != self.last_animation_type or self.force_update)
+        
+        if needs_update:
             self.last_animation_type = animation_type
             self.force_update = False
         
@@ -105,35 +93,23 @@ class BackgroundAnimator:
         return self.pixel_buffer.copy(), needs_update
 
     def _generate_void_ripples(self):
-        """Generate blank background with 5-second wave swooshes every 30-40 seconds."""
-        # Calculate time within each 38-second cycle
-        
-        cycle_length = 38.0  # seconds (5 for wave + 33 for silence)
+        """Periodic blue wave animation."""
+        cycle_length = 38.0
         cycle_time = self.time % cycle_length
 
-        # Only activate during first 5 seconds of each cycle
         if cycle_time < 5.0:
-            # Slower swoosh progress over 5 seconds (0 to 1)
             swoosh_progress = cycle_time / 5.0
 
-            # Generate random direction for this cycle (0-360 degrees)
             cycle_number = int(self.time // cycle_length)
-            np.random.seed(
-                cycle_number
-            )  # Use cycle as seed for consistent direction within wave
-            angle_degrees = np.random.uniform(0, 360)
-            angle_radians = np.radians(angle_degrees)
+            np.random.seed(cycle_number)
+            angle_radians = np.radians(np.random.uniform(0, 360))
 
-            # Calculate direction vector (unit vector)
             dir_x = np.cos(angle_radians)
             dir_y = np.sin(angle_radians)
 
-            # Calculate the grid bounds to ensure wave starts off-screen
-            # Grid center is at (3.5, 4.5), extends roughly -4 to +4 in each direction
             grid_center_x, grid_center_y = 3.5, 4.5
-            max_grid_distance = 8.0  # Maximum distance from center to corner
+            max_grid_distance = 8.0
 
-            # Wave starts well off-screen and sweeps across
             wave_start_distance = -max_grid_distance - 2.0
             wave_end_distance = max_grid_distance + 2.0
             wave_distance = wave_start_distance + swoosh_progress * (
@@ -142,29 +118,18 @@ class BackgroundAnimator:
 
             for x in range(8):
                 for y in range(1, 9):
-                    # Calculate position relative to grid center
                     px = x - grid_center_x
                     py = y - grid_center_y
-
-                    # Project point onto wave direction vector
                     point_projection = px * dir_x + py * dir_y
-
-                    # Distance from the moving wave front
                     distance_from_front = point_projection - wave_distance
 
-                    # Create wave with smooth front and tail
-                    if -3.0 <= distance_from_front <= 1.0:  # Wave width (longer tail)
+                    if -3.0 <= distance_from_front <= 1.0:
                         if distance_from_front <= 0:
-                            # Bright front of wave
                             wave_intensity = (3.0 + distance_from_front) / 3.0
                         else:
-                            # Sharp falloff behind wave
                             wave_intensity = (1.0 - distance_from_front) / 1.0
 
-                        # Ensure intensity is within bounds
                         wave_intensity = max(0.0, min(1.0, wave_intensity))
-
-                        # Add flowing wave pattern for texture
                         wave_texture = (
                             np.sin((px + py) * 0.8 + swoosh_progress * 10.0) * 0.2 + 0.8
                         )
@@ -172,12 +137,10 @@ class BackgroundAnimator:
 
                         if final_intensity > 0.1:
                             self.pixel_buffer[x, y] = [
-                                0.0,  # No red
-                                final_intensity * 0.4,  # Cyan component
-                                final_intensity,  # Strong blue wave
+                                0.0,
+                                final_intensity * 0.4,
+                                final_intensity,
                             ]
-        # When not in swoosh period (cycle_time >= 5.0), buffer remains filled with zeros
-        # This ensures completely static background during silent periods
 
     def _generate_stellar_pulse(self):
         """Generate dark space with pulsing star-like points."""
@@ -314,70 +277,59 @@ class BackgroundAnimator:
                                 ]
 
     def _apply_zone_colors_and_brightness(self):
-        """Apply zone-specific colors and brightness to the animation buffer."""
-        brightness_multiplier = self.config_manager.get_brightness_background()
+        """Apply zone colors and brightness to animation buffer."""
+        brightness = self.config_manager.get_brightness_background()
         
-        for x in range(8):  # Columns 0-7
-            for y in range(1, 9):  # Rows 1-8 (excluding top row 0)
-                # Get the base animation color
+        for x in range(8):
+            for y in range(1, 9):
                 base_color = self.pixel_buffer[x, y, :].copy()
                 
-                # Check if this is a scene area (rows 1-4) and add column colors
                 if self.BOUNDS_SCENES[0][1] <= y <= self.BOUNDS_SCENES[1][1]:
-                    # This is in the scene area - layer column color on top of animation
                     column_color = self.config_manager.get_column_color(x)
                     if column_color:
-                        # Combine the animation color with column color (additive)
                         combined_color = [
                             min(1.0, base_color[0] + column_color[0]),
                             min(1.0, base_color[1] + column_color[1]), 
                             min(1.0, base_color[2] + column_color[2])
                         ]
-                        # Apply background brightness and store
-                        final_color = [c * brightness_multiplier for c in combined_color]
+                        final_color = [c * brightness for c in combined_color]
                         self.pixel_buffer[x, y] = final_color
                         continue
                 
-                # Check if this is preset area (rows 6-7)
                 elif self.BOUNDS_PRESETS[0][1] <= y <= self.BOUNDS_PRESETS[1][1]:
-                    # This is in the preset area - layer preset background color on animation
                     preset_bg_color = self.config_manager.get_presets_background_color()
                     combined_color = [
                         min(1.0, base_color[0] + preset_bg_color[0]),
                         min(1.0, base_color[1] + preset_bg_color[1]),
                         min(1.0, base_color[2] + preset_bg_color[2])
                     ]
-                    # Apply background brightness and store
-                    final_color = [c * brightness_multiplier for c in combined_color]
+                    final_color = [c * brightness for c in combined_color]
                     self.pixel_buffer[x, y] = final_color
                     continue
                 
-                # For all other areas (top row and right column), just apply background brightness
-                final_color = [c * brightness_multiplier for c in base_color]
+                final_color = [c * brightness for c in base_color]
                 self.pixel_buffer[x, y] = final_color
 
     def force_background_update(self):
-        """Force the next background update regardless of animation state."""
+        """Force next background update."""
         self.force_update = True
 
 
 class BackgroundManager:
-    """Manages background animations and cycling."""
+    """Manages background animation cycling."""
 
     def __init__(self):
         self.animator = BackgroundAnimator()
         self.background_animations = [
-            "default",  # Index 0 - Default effect (void ripples)
-            "none",  # Index 1 - No background animation
-            "stellar_pulse",  # Index 2
-            "shadow_waves",  # Index 3
-            "plasma_storm",  # Index 4
-            "deep_pulse",  # Index 5
+            "default",
+            "none",
+            "stellar_pulse",
+            "shadow_waves",
+            "plasma_storm",
+            "deep_pulse",
         ]
-        self.current_background_index = 0  # Start with "default"
-        self.current_background = self.background_animations[
-            self.current_background_index
-        ]
+        self.current_background_index = 0
+        self.current_background = self.background_animations[0]
 
     def cycle_background(self) -> str:
         """Cycle to the next background animation and return its name."""

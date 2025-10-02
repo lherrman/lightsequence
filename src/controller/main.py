@@ -3,7 +3,6 @@ import time
 import typing as t
 from pathlib import Path
 from enum import Enum
-from dataclasses import dataclass
 
 from daslight import Daslight
 from launchpad import LaunchpadMK2, ButtonType
@@ -33,7 +32,7 @@ class AppState(str, Enum):
 
 
 class LightController:
-    """State machine-based light controller for cleaner, more maintainable code."""
+    """Main controller for light sequence management."""
 
     def __init__(self):
         # Hardware connections

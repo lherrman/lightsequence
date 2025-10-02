@@ -74,22 +74,17 @@ class LaunchpadMK2:
             logger.warning(f"Invalid coordinates {relative_coords}")
             return
 
-        # Convert relative coordinates to absolute coordinates
         abs_x, abs_y = self._relative_to_absolute_coords(button_type, relative_coords)
-        if abs_x is not None and abs_y is not None:
-            # Apply foreground brightness multiplier
-            brightness_multiplier = self.config_manager.get_brightness_foreground()
-            adjusted_color = [c * brightness_multiplier for c in color]
-            
-            # Store previous state before updating
-            self.previous_pixel_buffer[abs_x, abs_y] = self.pixel_buffer_output[abs_x, abs_y].copy()
-            
-            self.pixel_buffer_output[abs_x, abs_y] = color
-            self.set_led(abs_x, abs_y, adjusted_color)
-        else:
-            logger.warning(
-                f"Could not convert coordinates for {button_type}: {relative_coords}"
-            )
+        if abs_x is None or abs_y is None:
+            logger.warning(f"Invalid coordinates for {button_type}: {relative_coords}")
+            return
+
+        brightness = self.config_manager.get_brightness_foreground()
+        adjusted_color = [c * brightness for c in color]
+        
+        self.previous_pixel_buffer[abs_x, abs_y] = self.pixel_buffer_output[abs_x, abs_y].copy()
+        self.pixel_buffer_output[abs_x, abs_y] = color
+        self.set_led(abs_x, abs_y, adjusted_color)
 
     def _relative_to_absolute_coords(
         self, button_type: ButtonType, relative_coords: t.List[int]
@@ -234,34 +229,22 @@ class LaunchpadMK2:
         self._pressed_buttons.clear()
 
     def _detect_leds_turned_off(self) -> bool:
-        """Detect if any LEDs were turned off (active to inactive) since last check.
-        
-        Returns:
-            bool: True if any LEDs were turned off, False otherwise
-        """
-        # Check each position in the scene and preset areas for LEDs that went from active to off
-        for x in range(8):  # Columns 0-7
-            for y in range(1, 9):  # Rows 1-8
-                # Check if this position had an active LED before but is now off
-                previous_active = self.previous_pixel_buffer[x, y, :].any()
-                current_active = self.pixel_buffer_output[x, y, :].any()
+        """Check if any LEDs changed from active to inactive."""
+        for x in range(8):
+            for y in range(1, 9):
+                was_active = self.previous_pixel_buffer[x, y, :].any()
+                is_active = self.pixel_buffer_output[x, y, :].any()
                 
-                if previous_active and not current_active:
-                    # LED was turned off - update our tracking and return True
+                if was_active and not is_active:
                     self.previous_pixel_buffer[x, y] = [0.0, 0.0, 0.0]
                     return True
         
         return False
 
     def draw_background(self, animation_type: str = "ocean_waves", force_update: bool = False) -> bool:
-        """Fill entire Launchpad with complete background (animation + zones + brightness).
+        """Update background animation.
         
-        Args:
-            animation_type: Type of background animation to use
-            force_update: Force background update regardless of needs_update flag
-            
-        Returns:
-            bool: True if background was actually updated, False if skipped
+        Returns True if background was updated, False if skipped.
         """
         if not self.is_connected:
             return False
@@ -278,11 +261,10 @@ class LaunchpadMK2:
         
         if not needs_update:
             return False  # Skip update - background hasn't changed
-        # Apply the background buffer directly to all non-active LEDs
+        # Apply background to inactive LEDs
         for x in range(8):
             for y in range(1, 9):
                 if not self.pixel_buffer_output[x, y, :].any():
-                    # Background buffer already contains everything: animation + zone colors + brightness
                     color = background_buffer[x, y, :].tolist()
                     self.set_led(x, y, color)
         

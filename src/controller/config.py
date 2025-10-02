@@ -9,22 +9,20 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class Colors:
-    """Color definitions for LED states with configurable values."""
+    """LED color definitions."""
     
-    # Static colors that don't change with config
     OFF = [0.0, 0.0, 0.0]
     SAVE_MODE_ON = [1.0, 0.0, 0.5]
     SAVE_MODE_OFF = [0.0, 0.0, 0.0]
     BACKGROUND_CYCLE = [0.0, 1.0, 0.0]
     SUCCESS_FLASH = [0.0, 1.0, 0.0]
     YELLOW_BRIGHT = [1.0, 1.0, 0.0]
-    PLAYBACK_PLAYING = [0.0, 1.0, 0.0]  # Green for playing
-    PLAYBACK_PAUSED = [1.0, 0.5, 0.0]  # Orange for paused
-    NEXT_STEP = [0.0, 0.5, 1.0]  # Blue for next step button
-    CONNECTION_GOOD = [0.0, 0.3, 0.0]  # Dark green for good connection
-    CONNECTION_BAD = [0.3, 0.0, 0.0]  # Dark red for bad connection
+    PLAYBACK_PLAYING = [0.0, 1.0, 0.0]
+    PLAYBACK_PAUSED = [1.0, 0.5, 0.0]
+    NEXT_STEP = [0.0, 0.5, 1.0]
+    CONNECTION_GOOD = [0.0, 0.3, 0.0]
+    CONNECTION_BAD = [0.3, 0.0, 0.0]
     
-    # Configurable colors (will be set from config)
     SCENE_ON: List[float]
     PRESET_ON: List[float]
     PRESET_SAVE_MODE: List[float]
@@ -63,34 +61,30 @@ class Colors:
 
 
 class ConfigManager:
-    """Manages application configuration from config.json file."""
+    """Handles configuration loading and color management."""
     
     DEFAULT_CONFIG = {
         "brightness_foreground": 1.0,
         "brightness_background": 0.3,
         "column_colors": {
-            "0": "#1a0a0a",  # Dark red
-            "1": "#0a1a0a",  # Dark green  
-            "2": "#0a0a1a",  # Dark blue
-            "3": "#1a1a0a",  # Dark yellow
-            "4": "#1a0a1a",  # Dark magenta
-            "5": "#0a1a1a",  # Dark cyan
-            "6": "#1a1a1a",  # Dark white/gray
-            "7": "#1a0f0a",  # Dark orange
+            "0": "#1a0a0a",
+            "1": "#0a1a0a",
+            "2": "#0a0a1a",
+            "3": "#1a1a0a",
+            "4": "#1a0a1a",
+            "5": "#0a1a1a",
+            "6": "#1a1a1a",
+            "7": "#1a0f0a",
         },
-        "presets_background_color": "#0a050a",  # Very dark purple
-        "preset_on_color": "#ff0050",  # Bright magenta
-        "scene_on_color": "#00ff00",  # Bright green
-        "preset_save_mode_color": "#ff0080",  # Pink
-        "preset_save_shift_mode_color": "#ffff00",  # Yellow
+        "presets_background_color": "#0a050a",
+        "preset_on_color": "#ff0050",
+        "scene_on_color": "#00ff00",
+        "preset_save_mode_color": "#ff0080",
+        "preset_save_shift_mode_color": "#ffff00",
     }
     
     def __init__(self, config_file: Optional[Path] = None):
-        """Initialize config manager with optional config file path."""
-        if config_file is None:
-            config_file = Path("config.json")
-        
-        self.config_file = config_file
+        self.config_file = config_file or Path("config.json")
         self.config_data = self._load_or_create_config()
         self.colors = Colors(self.config_data)
     
