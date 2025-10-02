@@ -14,25 +14,27 @@ class BackgroundAnimator:
         self.time = 0.0
         self.speed = 1.0
         self.config_manager = get_config_manager()
-        
+
         self.BOUNDS_SCENES = np.array([[0, 1], [8, 5]])
         self.BOUNDS_PRESETS = np.array([[0, 6], [7, 8]])
-        
+
         self.last_animation_type = None
         self.force_update = False
         self.last_update_time = 0.0
 
-    def get_background(self, animation_type: str = "expanding_waves") -> tuple[np.ndarray, bool]:
+    def get_background(
+        self, animation_type: str = "expanding_waves"
+    ) -> tuple[np.ndarray, bool]:
         """Generate background animation frame.
-        
+
         Returns (pixel_buffer, needs_update) tuple.
         """
-        needs_update = (animation_type != self.last_animation_type or self.force_update)
-        
+        needs_update = animation_type != self.last_animation_type or self.force_update
+
         if needs_update:
             self.last_animation_type = animation_type
             self.force_update = False
-        
+
         # Clear buffer
         self.pixel_buffer.fill(0.0)
 
@@ -43,7 +45,6 @@ class BackgroundAnimator:
             cycle_time = self.time % cycle_length
             if cycle_time < 5.0:
                 # During swoosh - update time and animate
-                old_time = self.time
                 self.time += 0.2 * self.speed
                 self.frame += 1
                 self._generate_void_ripples()
@@ -54,7 +55,9 @@ class BackgroundAnimator:
                 time_until_next_cycle = cycle_length - cycle_time
                 if time_until_next_cycle < 0.2 * self.speed:
                     # Close enough to next cycle, advance to it
-                    self.time += time_until_next_cycle + 0.01  # Small epsilon to cross threshold
+                    self.time += (
+                        time_until_next_cycle + 0.01
+                    )  # Small epsilon to cross threshold
                     needs_update = True
                 # Don't generate anything - buffer stays black
         elif animation_type == "none":
@@ -279,34 +282,34 @@ class BackgroundAnimator:
     def _apply_zone_colors_and_brightness(self):
         """Apply zone colors and brightness to animation buffer."""
         brightness = self.config_manager.get_brightness_background()
-        
+
         for x in range(8):
             for y in range(1, 9):
                 base_color = self.pixel_buffer[x, y, :].copy()
-                
+
                 if self.BOUNDS_SCENES[0][1] <= y <= self.BOUNDS_SCENES[1][1]:
                     column_color = self.config_manager.get_column_color(x)
                     if column_color:
                         combined_color = [
                             min(1.0, base_color[0] + column_color[0]),
-                            min(1.0, base_color[1] + column_color[1]), 
-                            min(1.0, base_color[2] + column_color[2])
+                            min(1.0, base_color[1] + column_color[1]),
+                            min(1.0, base_color[2] + column_color[2]),
                         ]
                         final_color = [c * brightness for c in combined_color]
                         self.pixel_buffer[x, y] = final_color
                         continue
-                
+
                 elif self.BOUNDS_PRESETS[0][1] <= y <= self.BOUNDS_PRESETS[1][1]:
                     preset_bg_color = self.config_manager.get_presets_background_color()
                     combined_color = [
                         min(1.0, base_color[0] + preset_bg_color[0]),
                         min(1.0, base_color[1] + preset_bg_color[1]),
-                        min(1.0, base_color[2] + preset_bg_color[2])
+                        min(1.0, base_color[2] + preset_bg_color[2]),
                     ]
                     final_color = [c * brightness for c in combined_color]
                     self.pixel_buffer[x, y] = final_color
                     continue
-                
+
                 final_color = [c * brightness for c in base_color]
                 self.pixel_buffer[x, y] = final_color
 
@@ -349,7 +352,7 @@ class BackgroundManager:
     def generate_background(self) -> tuple[np.ndarray, bool]:
         """Generate the current background animation frame."""
         return self.animator.get_background(self.current_background)
-    
+
     def force_background_update(self):
         """Force the next background update."""
         self.animator.force_background_update()
