@@ -1,5 +1,6 @@
 import numpy as np
 import logging
+from config import get_config_manager
 
 logger = logging.getLogger(__name__)
 
@@ -12,44 +13,96 @@ class BackgroundAnimator:
         self.frame = 0
         self.time = 0.0
         self.speed = 1.0
+        self.config_manager = get_config_manager()
+        
+        # Define zone boundaries (same as launchpad)
+        self.BOUNDS_SCENES = np.array([[0, 1], [8, 5]])  # Scene area: columns 0-7, rows 1-4
+        self.BOUNDS_PRESETS = np.array([[0, 6], [7, 8]])  # Preset area: columns 0-7, rows 6-7
+        
+        # Update tracking for optimization
+        self.last_animation_type = None
+        self.force_update = False  # Flag to force update when foreground changes
+        self.last_update_time = 0.0
 
-    def get_background(self, animation_type: str = "expanding_waves") -> np.ndarray:
+    def get_background(self, animation_type: str = "expanding_waves") -> tuple[np.ndarray, bool]:
         """
-        Update animation and return the current pixel buffer.
+        Update animation and return the current pixel buffer with update flag.
 
         Args:
             animation_type: Type of animation to generate
                 - "default": Mostly black void with rare electric blue ripples
                 - "none": No background animation - completely black
 
-
         Returns:
-            np.ndarray: 9x9x3 pixel buffer with RGB values (0.0-1.0)
+            tuple: (pixel_buffer: 9x9x3 array with RGB values 0.0-1.0, needs_update: bool)
         """
-        self.time += 0.2 * self.speed
-        self.frame += 1
-
+        needs_update = False
+        
+        # Check if we need to update due to animation type change or forced update
+        if (animation_type != self.last_animation_type or 
+            self.force_update):
+            needs_update = True
+            self.last_animation_type = animation_type
+            self.force_update = False
+        
         # Clear buffer
         self.pixel_buffer.fill(0.0)
 
         if animation_type == "default":
-            self._generate_void_ripples()
+            # Only update time when we're in the default animation
+            # Check if we need to animate (during swoosh period)
+            cycle_length = 38.0
+            cycle_time = self.time % cycle_length
+            if cycle_time < 5.0:
+                # During swoosh - update time and animate
+                old_time = self.time
+                self.time += 0.2 * self.speed
+                self.frame += 1
+                self._generate_void_ripples()
+                needs_update = True
+            else:
+                # During silent period - check if we should start next cycle
+                # Only update time at the very end of cycle to avoid micro-changes
+                time_until_next_cycle = cycle_length - cycle_time
+                if time_until_next_cycle < 0.2 * self.speed:
+                    # Close enough to next cycle, advance to it
+                    self.time += time_until_next_cycle + 0.01  # Small epsilon to cross threshold
+                    needs_update = True
+                # Don't generate anything - buffer stays black
         elif animation_type == "none":
-            # No animation - buffer stays black
+            # No animation - buffer stays black, only update if forced or type changed
             pass
         elif animation_type == "stellar_pulse":
+            self.time += 0.2 * self.speed
+            self.frame += 1
             self._generate_stellar_pulse()
+            needs_update = True
         elif animation_type == "shadow_waves":
+            self.time += 0.2 * self.speed
+            self.frame += 1
             self._generate_shadow_waves()
+            needs_update = True
         elif animation_type == "plasma_storm":
+            self.time += 0.2 * self.speed
+            self.frame += 1
             self._generate_plasma_storm()
+            needs_update = True
         elif animation_type == "deep_pulse":
+            self.time += 0.2 * self.speed
+            self.frame += 1
             self._generate_deep_pulse()
+            needs_update = True
         else:
-            # Default to void ripples
-            self._generate_void_ripples()
+            animation_type = "default"
+            needs_update = True
 
-        return self.pixel_buffer.copy()
+        # Apply zone colors and brightness to the completed animation buffer
+        # (only if we need to update)
+        if needs_update:
+            self._apply_zone_colors_and_brightness()
+            self.last_update_time = self.time
+
+        return self.pixel_buffer.copy(), needs_update
 
     def _generate_void_ripples(self):
         """Generate blank background with 5-second wave swooshes every 30-40 seconds."""
@@ -123,6 +176,8 @@ class BackgroundAnimator:
                                 final_intensity * 0.4,  # Cyan component
                                 final_intensity,  # Strong blue wave
                             ]
+        # When not in swoosh period (cycle_time >= 5.0), buffer remains filled with zeros
+        # This ensures completely static background during silent periods
 
     def _generate_stellar_pulse(self):
         """Generate dark space with pulsing star-like points."""
@@ -258,6 +313,53 @@ class BackgroundAnimator:
                                     ),  # Deep blue
                                 ]
 
+    def _apply_zone_colors_and_brightness(self):
+        """Apply zone-specific colors and brightness to the animation buffer."""
+        brightness_multiplier = self.config_manager.get_brightness_background()
+        
+        for x in range(8):  # Columns 0-7
+            for y in range(1, 9):  # Rows 1-8 (excluding top row 0)
+                # Get the base animation color
+                base_color = self.pixel_buffer[x, y, :].copy()
+                
+                # Check if this is a scene area (rows 1-4) and add column colors
+                if self.BOUNDS_SCENES[0][1] <= y <= self.BOUNDS_SCENES[1][1]:
+                    # This is in the scene area - layer column color on top of animation
+                    column_color = self.config_manager.get_column_color(x)
+                    if column_color:
+                        # Combine the animation color with column color (additive)
+                        combined_color = [
+                            min(1.0, base_color[0] + column_color[0]),
+                            min(1.0, base_color[1] + column_color[1]), 
+                            min(1.0, base_color[2] + column_color[2])
+                        ]
+                        # Apply background brightness and store
+                        final_color = [c * brightness_multiplier for c in combined_color]
+                        self.pixel_buffer[x, y] = final_color
+                        continue
+                
+                # Check if this is preset area (rows 6-7)
+                elif self.BOUNDS_PRESETS[0][1] <= y <= self.BOUNDS_PRESETS[1][1]:
+                    # This is in the preset area - layer preset background color on animation
+                    preset_bg_color = self.config_manager.get_presets_background_color()
+                    combined_color = [
+                        min(1.0, base_color[0] + preset_bg_color[0]),
+                        min(1.0, base_color[1] + preset_bg_color[1]),
+                        min(1.0, base_color[2] + preset_bg_color[2])
+                    ]
+                    # Apply background brightness and store
+                    final_color = [c * brightness_multiplier for c in combined_color]
+                    self.pixel_buffer[x, y] = final_color
+                    continue
+                
+                # For all other areas (top row and right column), just apply background brightness
+                final_color = [c * brightness_multiplier for c in base_color]
+                self.pixel_buffer[x, y] = final_color
+
+    def force_background_update(self):
+        """Force the next background update regardless of animation state."""
+        self.force_update = True
+
 
 class BackgroundManager:
     """Manages background animations and cycling."""
@@ -292,6 +394,10 @@ class BackgroundManager:
         """Get the current background animation name."""
         return self.current_background
 
-    def generate_background(self) -> np.ndarray:
+    def generate_background(self) -> tuple[np.ndarray, bool]:
         """Generate the current background animation frame."""
         return self.animator.get_background(self.current_background)
+    
+    def force_background_update(self):
+        """Force the next background update."""
+        self.animator.force_background_update()

@@ -27,6 +27,9 @@ class LaunchpadMK2:
         self.pixel_buffer_output = np.zeros(
             (9, 9, 3), dtype=float
         )  # 9x9 grid for Launchpad MK2
+        
+        # Track previous state to detect when LEDs are turned off
+        self.previous_pixel_buffer = np.zeros((9, 9, 3), dtype=float)
 
         # Track pressed buttons state: {(button_type, rel_x, rel_y): True}
         self._pressed_buttons: t.Dict[t.Tuple[ButtonType, int, int], bool] = {}
@@ -77,6 +80,9 @@ class LaunchpadMK2:
             # Apply foreground brightness multiplier
             brightness_multiplier = self.config_manager.get_brightness_foreground()
             adjusted_color = [c * brightness_multiplier for c in color]
+            
+            # Store previous state before updating
+            self.previous_pixel_buffer[abs_x, abs_y] = self.pixel_buffer_output[abs_x, abs_y].copy()
             
             self.pixel_buffer_output[abs_x, abs_y] = color
             self.set_led(abs_x, abs_y, adjusted_color)
@@ -227,56 +233,60 @@ class LaunchpadMK2:
         """Clear all tracked pressed button states."""
         self._pressed_buttons.clear()
 
-    def draw_background(self, animation_type: str = "ocean_waves") -> None:
-        """Fill entire Launchpad with animated background and column/preset colors."""
-        if not self.is_connected:
-            return
-
-        # Use animator to generate background
-        background_buffer = self.animator.get_background(animation_type)
+    def _detect_leds_turned_off(self) -> bool:
+        """Detect if any LEDs were turned off (active to inactive) since last check.
         
+        Returns:
+            bool: True if any LEDs were turned off, False otherwise
+        """
+        # Check each position in the scene and preset areas for LEDs that went from active to off
+        for x in range(8):  # Columns 0-7
+            for y in range(1, 9):  # Rows 1-8
+                # Check if this position had an active LED before but is now off
+                previous_active = self.previous_pixel_buffer[x, y, :].any()
+                current_active = self.pixel_buffer_output[x, y, :].any()
+                
+                if previous_active and not current_active:
+                    # LED was turned off - update our tracking and return True
+                    self.previous_pixel_buffer[x, y] = [0.0, 0.0, 0.0]
+                    return True
+        
+        return False
+
+    def draw_background(self, animation_type: str = "ocean_waves", force_update: bool = False) -> bool:
+        """Fill entire Launchpad with complete background (animation + zones + brightness).
+        
+        Args:
+            animation_type: Type of background animation to use
+            force_update: Force background update regardless of needs_update flag
+            
+        Returns:
+            bool: True if background was actually updated, False if skipped
+        """
+        if not self.is_connected:
+            return False
+
+        # Check if any LEDs were turned off (changed from active to inactive)
+        leds_turned_off = self._detect_leds_turned_off()
+        
+        # Force update if requested or if LEDs were turned off
+        if force_update or leds_turned_off:
+            self.animator.force_background_update()
+
+        # Get complete background buffer with animation, zone colors, and brightness already applied
+        background_buffer, needs_update = self.animator.get_background(animation_type)
+        
+        if not needs_update:
+            return False  # Skip update - background hasn't changed
+        # Apply the background buffer directly to all non-active LEDs
         for x in range(8):
             for y in range(1, 9):
                 if not self.pixel_buffer_output[x, y, :].any():
-                    # Start with the animated background
-                    base_color = background_buffer[x, y, :].tolist()
-                    
-                    # Apply background brightness multiplier
-                    brightness_multiplier = self.config_manager.get_brightness_background()
-                    
-                    # Check if this is a scene area (rows 1-4) and add column colors
-                    if self.BOUNDS_SCENES[0][1] <= y <= self.BOUNDS_SCENES[1][1]:
-                        # This is in the scene area - layer column color on top of animation
-                        column_color = self.config_manager.get_column_color(x)
-                        if column_color:
-                            # Combine the animation color with column color (additive)
-                            combined_color = [
-                                min(1.0, base_color[0] + column_color[0]),
-                                min(1.0, base_color[1] + column_color[1]), 
-                                min(1.0, base_color[2] + column_color[2])
-                            ]
-                            # Apply background brightness
-                            final_color = [c * brightness_multiplier for c in combined_color]
-                            self.set_led(x, y, final_color)
-                            continue
-                    
-                    # Check if this is preset area (rows 6-7)
-                    elif self.BOUNDS_PRESETS[0][1] <= y <= self.BOUNDS_PRESETS[1][1]:
-                        # This is in the preset area - layer preset background color on animation
-                        preset_bg_color = self.config_manager.get_presets_background_color()
-                        combined_color = [
-                            min(1.0, base_color[0] + preset_bg_color[0]),
-                            min(1.0, base_color[1] + preset_bg_color[1]),
-                            min(1.0, base_color[2] + preset_bg_color[2])
-                        ]
-                        # Apply background brightness
-                        final_color = [c * brightness_multiplier for c in combined_color]
-                        self.set_led(x, y, final_color)
-                        continue
-                    
-                    # Use just the animated background where no other LED is set
-                    final_color = [c * brightness_multiplier for c in base_color]
-                    self.set_led(x, y, final_color)
+                    # Background buffer already contains everything: animation + zone colors + brightness
+                    color = background_buffer[x, y, :].tolist()
+                    self.set_led(x, y, color)
+        
+        return True  # Background was updated
 
 
 if __name__ == "__main__":
