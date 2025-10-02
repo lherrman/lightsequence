@@ -27,9 +27,12 @@ class LaunchpadMK2:
         self.pixel_buffer_output = np.zeros(
             (9, 9, 3), dtype=float
         )  # 9x9 grid for Launchpad MK2
-        
+
         # Track previous state to detect when LEDs are turned off
         self.previous_pixel_buffer = np.zeros((9, 9, 3), dtype=float)
+
+        # Track hardware LED state (0-63 range) to avoid unnecessary updates
+        self.hardware_led_state = np.zeros((9, 9, 3), dtype=int)
 
         # Track pressed buttons state: {(button_type, rel_x, rel_y): True}
         self._pressed_buttons: t.Dict[t.Tuple[ButtonType, int, int], bool] = {}
@@ -44,6 +47,7 @@ class LaunchpadMK2:
         self.is_connected = False
         if self.device.Open():
             self.device.Reset()  # Clear all LEDs
+            self.hardware_led_state.fill(0)  # Reset hardware state tracking
             self.is_connected = True
             logger.info("Connected to Launchpad MK2")
             return True
@@ -55,10 +59,18 @@ class LaunchpadMK2:
         """Set LED at absolute (x, y) coordinates to specified color. rgb values float 0-1.0"""
         if not self.is_connected:
             return
-        
+
         # Scale to 0-63 (Launchpad MK2 range)
         color_scaled = [int(c * 63) for c in color]
+
+        # Check if the hardware state already matches the desired color
+        current_hardware_color = self.hardware_led_state[x, y]
+        if np.array_equal(current_hardware_color, color_scaled):
+            return  # Skip update - LED is already at the correct color
+
+        # Update hardware and track the new state
         self.device.LedCtrlXY(x, y, *color_scaled)
+        self.hardware_led_state[x, y] = color_scaled
 
     def set_button_led(
         self,
@@ -81,8 +93,10 @@ class LaunchpadMK2:
 
         brightness = self.config_manager.get_brightness_foreground()
         adjusted_color = [c * brightness for c in color]
-        
-        self.previous_pixel_buffer[abs_x, abs_y] = self.pixel_buffer_output[abs_x, abs_y].copy()
+
+        self.previous_pixel_buffer[abs_x, abs_y] = self.pixel_buffer_output[
+            abs_x, abs_y
+        ].copy()
         self.pixel_buffer_output[abs_x, abs_y] = color
         self.set_led(abs_x, abs_y, adjusted_color)
 
@@ -119,6 +133,7 @@ class LaunchpadMK2:
         if self.is_connected:
             self.device.Reset()
             self.pixel_buffer_output.fill(0)  # Clear pixel buffer
+            self.hardware_led_state.fill(0)  # Clear hardware state tracking
 
     def close(self) -> None:
         """Close connection to Launchpad MK2."""
@@ -126,6 +141,7 @@ class LaunchpadMK2:
             self.device.Reset()
             self.device.Close()
             self.is_connected = False
+            self.hardware_led_state.fill(0)  # Reset hardware state tracking
             logger.info("Disconnected from Launchpad MK2")
 
     def get_button_events(
@@ -234,16 +250,18 @@ class LaunchpadMK2:
             for y in range(1, 9):
                 was_active = self.previous_pixel_buffer[x, y, :].any()
                 is_active = self.pixel_buffer_output[x, y, :].any()
-                
+
                 if was_active and not is_active:
                     self.previous_pixel_buffer[x, y] = [0.0, 0.0, 0.0]
                     return True
-        
+
         return False
 
-    def draw_background(self, animation_type: str = "ocean_waves", force_update: bool = False) -> bool:
+    def draw_background(
+        self, animation_type: str = "ocean_waves", force_update: bool = False
+    ) -> bool:
         """Update background animation.
-        
+
         Returns True if background was updated, False if skipped.
         """
         if not self.is_connected:
@@ -251,14 +269,14 @@ class LaunchpadMK2:
 
         # Check if any LEDs were turned off (changed from active to inactive)
         leds_turned_off = self._detect_leds_turned_off()
-        
+
         # Force update if requested or if LEDs were turned off
         if force_update or leds_turned_off:
             self.animator.force_background_update()
 
         # Get complete background buffer with animation, zone colors, and brightness already applied
         background_buffer, needs_update = self.animator.get_background(animation_type)
-        
+
         if not needs_update:
             return False  # Skip update - background hasn't changed
         # Apply background to inactive LEDs
@@ -267,7 +285,7 @@ class LaunchpadMK2:
                 if not self.pixel_buffer_output[x, y, :].any():
                     color = background_buffer[x, y, :].tolist()
                     self.set_led(x, y, color)
-        
+
         return True  # Background was updated
 
 
