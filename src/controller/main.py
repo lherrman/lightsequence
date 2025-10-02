@@ -435,6 +435,10 @@ class LightController:
             logger.debug(
                 f"Activated simple preset {coords} with {len(preset['scenes'])} scenes"
             )
+        else:
+            # No preset saved - deactivate all running scenes
+            self._activate_scenes([])
+            logger.debug(f"No preset saved at {coords} - deactivated all scenes")
 
     def _deactivate_current_preset(self) -> None:
         """Deactivate current preset."""
