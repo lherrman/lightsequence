@@ -43,7 +43,7 @@ def main():
     if args.mode == "gui":
         try:
             logger.info("Starting GUI application...")
-            from controller.sequence_gui import main as gui_main
+            from src.controller.sequence_gui import main as gui_main
 
             gui_main()
         except ImportError as e:
@@ -57,7 +57,7 @@ def main():
     elif args.mode == "controller":
         try:
             logger.info("Starting standalone controller...")
-            from controller.main import main as controller_main
+            from src.controller.main import main as controller_main
 
             controller_main()
         except Exception as e:

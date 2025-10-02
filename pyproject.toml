@@ -1,9 +1,6 @@
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
 
 [project]
-name = "lightcontroller"
+name = "lightsequence"
 version = "1.0.0"
 description = "Professional party lighting controller for Novation Launchpad MK2"
 readme = "README.md"
@@ -14,10 +11,11 @@ dependencies = [
     "pygame>=2.6.1",
     "pyside6>=6.9.3",
     "launchpad-py>=0.9.1",
+    "numpy>=2.0.2",
 ]
 
 [project.scripts]
-lightcontroller = "lightcontroller.main:main"
+lightsequence = "src.controller.main:main"
 
 [project.gui-scripts] 
-lightcontroller-gui = "lightcontroller.gui:main"
+lightsequence-gui = "src.gui.main:main"

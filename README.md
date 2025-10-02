@@ -19,6 +19,7 @@ Only tested on Windows with DasLight and Launchpad MK2. Easily adaptable to othe
 - Python 3.12+
 - DasLight software
 - Launchpad MK2 (optional but recommended)
+- Launchpad Driver
 - loopMIDI (for MIDI communication)
 
 ### Installation

@@ -2,7 +2,7 @@ import json
 import logging
 import typing as t
 from pathlib import Path
-from controller.sequence_manager import SequenceStep
+from sequence_manager import SequenceStep
 
 logger = logging.getLogger(__name__)
 

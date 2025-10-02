@@ -5,11 +5,11 @@ from pathlib import Path
 from enum import Enum
 from dataclasses import dataclass
 
-from controller.daslight import Daslight
-from controller.launchpad import LaunchpadMK2, ButtonType
-from controller.preset_manager import PresetManager
-from controller.background_animator import BackgroundManager
-from controller.sequence_manager import SequenceManager, SequenceState
+from daslight import Daslight
+from launchpad import LaunchpadMK2, ButtonType
+from preset_manager import PresetManager
+from background_animator import BackgroundManager
+from sequence_manager import SequenceManager, SequenceState
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -61,7 +61,7 @@ class LightController:
         self.launchpad = LaunchpadMK2()
 
         # Managers
-        preset_file = Path(__file__).parent / "presets.json"
+        preset_file = Path("presets.json")
         self.preset_manager = PresetManager(preset_file)
         self.background_manager = BackgroundManager()
         self.sequence_manager = SequenceManager()

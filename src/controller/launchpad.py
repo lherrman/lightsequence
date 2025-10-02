@@ -3,7 +3,7 @@ import typing as t
 from enum import Enum
 import launchpad_py as lp
 import numpy as np
-from controller.background_animator import BackgroundAnimator as Animator
+from background_animator import BackgroundAnimator as Animator
 
 logger = logging.getLogger(__name__)
 

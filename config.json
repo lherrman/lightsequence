@@ -1,0 +1,15 @@
+{
+    "brightness_foreground": 1.0,
+    "brightness_background": 0.3,
+    "row_colors": {
+        "0": "#330033",
+        "1": "#001a33",
+        "2": "#002633",
+        "3": "#003319",
+        "4": "#331a00",
+        "5": "#330d1a"
+    },
+    "presets_background_color": "#1a0d1a",
+    "preset_on_color": "#ff0066",
+    "scene_on_color": "#00ff00"
+}
