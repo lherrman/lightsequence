@@ -29,15 +29,15 @@ class LightController:
     """Main controller for light sequence management."""
 
     def __init__(self):
-        # Hardware connections
-        self.midi_software = Daslight()
-        self.launchpad = LaunchpadMK2()
-
-        # Managers
+        # Managers - create these first
         preset_file = Path("presets.json")
         self.preset_manager = PresetManager(preset_file)
-        self.background_manager = BackgroundManager()
+        self.background_manager = BackgroundManager(self.preset_manager)
         self.sequence_manager = SequenceManager()
+
+        # Hardware connections - create these after managers
+        self.midi_software = Daslight()
+        self.launchpad = LaunchpadMK2(self.preset_manager)
 
         # State
         self.app_state = AppState.NORMAL

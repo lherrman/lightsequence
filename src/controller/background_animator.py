@@ -9,12 +9,13 @@ logger = logging.getLogger(__name__)
 class BackgroundAnimator:
     """Generates animated backgrounds with zone colors."""
 
-    def __init__(self):
+    def __init__(self, preset_manager=None):
         self.pixel_buffer = np.zeros((9, 9, 3), dtype=float)
         self.frame = 0
         self.time = 0.0
         self.speed = 1.0
         self.config_manager = get_config_manager()
+        self.preset_manager = preset_manager
         self.start_time = time.time()
         self.last_real_time = self.start_time
 
@@ -275,6 +276,11 @@ class BackgroundAnimator:
         brightness_static = self.config_manager.get_brightness_background()
         brightness_effect = self.config_manager.get_brightness_background_effect()
 
+        # Get preset indices that have actual presets programmed
+        preset_indices = set()
+        if self.preset_manager:
+            preset_indices = set(self.preset_manager.get_all_preset_indices().keys())
+
         for x in range(8):
             for y in range(1, 9):
                 base_color = self.pixel_buffer[x, y, :].copy()
@@ -297,17 +303,26 @@ class BackgroundAnimator:
                         continue
 
                 elif self.BOUNDS_PRESETS[0][1] <= y <= self.BOUNDS_PRESETS[1][1]:
-                    preset_bg_color = self.config_manager.get_presets_background_color()
-                    # Apply static brightness to preset background colors
-                    static_color = [c * brightness_static for c in preset_bg_color]
-                    # Combine effect and static colors
-                    combined_color = [
-                        min(1.0, effect_color[0] + static_color[0]),
-                        min(1.0, effect_color[1] + static_color[1]),
-                        min(1.0, effect_color[2] + static_color[2]),
-                    ]
-                    self.pixel_buffer[x, y] = combined_color
-                    continue
+                    # Only apply background color to preset buttons that have presets programmed
+                    preset_coords = (
+                        x,
+                        y - 6,
+                    )  # Convert to preset coordinate system (y 6-8 -> 0-2)
+                    if preset_coords in preset_indices:
+                        preset_bg_color = (
+                            self.config_manager.get_presets_background_color()
+                        )
+                        # Apply static brightness to preset background colors
+                        static_color = [c * brightness_static for c in preset_bg_color]
+                        # Combine effect and static colors
+                        combined_color = [
+                            min(1.0, effect_color[0] + static_color[0]),
+                            min(1.0, effect_color[1] + static_color[1]),
+                            min(1.0, effect_color[2] + static_color[2]),
+                        ]
+                        self.pixel_buffer[x, y] = combined_color
+                        continue
+                    # If no preset programmed, fall through to just use effect brightness
 
                 # For areas without zone colors, just use the effect brightness
                 self.pixel_buffer[x, y] = effect_color
@@ -325,8 +340,8 @@ class BackgroundAnimator:
 class BackgroundManager:
     """Manages background animation cycling."""
 
-    def __init__(self):
-        self.animator = BackgroundAnimator()
+    def __init__(self, preset_manager=None):
+        self.animator = BackgroundAnimator(preset_manager)
         self.background_animations = [
             "default",
             "none",

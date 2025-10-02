@@ -18,7 +18,7 @@ class ButtonType(str, Enum):
 
 
 class LaunchpadMK2:
-    def __init__(self):
+    def __init__(self, preset_manager=None):
         self.BOUNDS_SCENES = np.array([[0, 1], [8, 5]])
         self.BOUNDS_PRESETS = np.array([[0, 6], [7, 8]])
         self.BOUNDS_TOP = np.array([[0, 0], [7, 0]])
@@ -36,7 +36,7 @@ class LaunchpadMK2:
 
         # Track pressed buttons state: {(button_type, rel_x, rel_y): True}
         self._pressed_buttons: t.Dict[t.Tuple[ButtonType, int, int], bool] = {}
-        self.animator = Animator()
+        self.animator = Animator(preset_manager)
         self.config_manager = get_config_manager()
 
         self.connect()
