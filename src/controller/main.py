@@ -80,6 +80,9 @@ class LightController:
         else:
             logger.error("Failed to connect to DasLight")
 
+        # Update connection status immediately after connection attempt
+        self._update_connection_status()
+
         return midi_connected and self.launchpad.is_connected
 
     def run(self) -> None:

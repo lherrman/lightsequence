@@ -8,6 +8,7 @@ Based on working patterns from test_minimal.py
 import logging
 import typing as t
 import pygame.midi
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,7 @@ class Daslight:
         self.midi_out = None
         self.midi_in = None
 
-        # Connection monitoring
+        # Connection monitoring - start as False until connected
         self.connection_good = False
         self.last_ping_time = 0.0
         self.last_ping_response_time = 0.0
@@ -42,16 +43,12 @@ class Daslight:
 
         return scene_map
 
-    def connect_midi(
-        self,
-    ) -> t.Tuple[t.Optional[pygame.midi.Output], t.Optional[pygame.midi.Input]]:
+    def connect_midi(self) -> bool:
         """
         Connect to DasLight via loopMIDI ports.
 
         Returns:
-            Tuple of (midi_out, midi_in) for DasLight communication
-            - midi_out: Send commands TO DasLight (via DasLight_in port)
-            - midi_in: Receive feedback FROM DasLight (via DasLight_out port)
+            True if connection successful, False otherwise
         """
         try:
             pygame.midi.init()
@@ -80,19 +77,19 @@ class Daslight:
 
             # Initialize connection monitoring if successful
             if self.midi_out and self.midi_in:
-                import time
-
                 self.connection_good = True
                 self.last_ping_response_time = time.time()
+                logger.info("✅ Successfully connected to DasLight")
+                return True
             else:
                 self.connection_good = False
-
-            return self.midi_out, self.midi_in
+                logger.error("❌ Failed to connect to DasLight - missing MIDI ports")
+                return False
 
         except Exception as e:
             logger.error(f"DasLight MIDI connection failed: {e}")
             self.connection_good = False
-            return None, None
+            return False
 
     def send_scene_command(self, scene_index: t.Tuple[int, int]) -> None:
         """
@@ -141,7 +138,6 @@ class Daslight:
         Returns:
             True if connection is good, False otherwise
         """
-        import time
 
         current_time = time.time()
 
@@ -170,16 +166,7 @@ class Daslight:
             True if reconnection successful, False otherwise
         """
         logger.info("Attempting to reconnect to DasLight...")
-        if self.connect_midi():
-            import time
-
-            self.connection_good = True
-            self.last_ping_response_time = time.time()
-            logger.info("Successfully reconnected to DasLight")
-            return True
-        else:
-            self.connection_good = False
-            return False
+        return self.connect_midi()
 
     def get_scene_coordinates_for_note(
         self, note: int

@@ -2,14 +2,14 @@
   "brightness_background": 1.0,
   "brightness_foreground": 1.0,
   "column_colors": {
-    "0": "#1a0a0a",
-    "1": "#0a1a0a",
-    "2": "#0a0a1a",
-    "3": "#1a1a0a",
-    "4": "#1a0a1a",
-    "5": "#0a1a1a",
-    "6": "#1a1a1a",
-    "7": "#1a0f0a"
+    "0": "#0a0303",
+    "1": "#030a03",
+    "2": "#03030a",
+    "3": "#0a0a03",
+    "4": "#06000d",
+    "5": "#030a0a",
+    "6": "#0a0a0a",
+    "7": "#0a0503"
   },
   "preset_on_color": "#ff0050",
   "preset_save_mode_color": "#ff0080",
