@@ -10,6 +10,7 @@ from launchpad import LaunchpadMK2, ButtonType
 from preset_manager import PresetManager
 from background_animator import BackgroundManager
 from sequence_manager import SequenceManager, SequenceState
+from config import get_config_manager, get_colors
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -29,27 +30,6 @@ class AppState(str, Enum):
     NORMAL = "normal"
     SAVE_MODE = "save_mode"
     SAVE_SHIFT_MODE = "save_shift_mode"
-
-
-@dataclass
-class Colors:
-    """Color definitions for LED states."""
-
-    SCENE_ON = [0.0, 1.0, 0.0]
-    OFF = [0.0, 0.0, 0.0]
-    PRESET_ON = [1.0, 0.0, 5.0]
-    PRESET_SAVE_MODE = [1.0, 0.0, 0.5]
-    PRESET_SAVE_SHIFT_MODE = [1.0, 1.0, 0.0]
-    SAVE_MODE_ON = [1.0, 0.0, 0.5]
-    SAVE_MODE_OFF = [0.0, 0.0, 0.0]
-    BACKGROUND_CYCLE = [0.0, 1.0, 0.0]
-    SUCCESS_FLASH = [0.0, 1.0, 0.0]
-    YELLOW_BRIGHT = [1.0, 1.0, 0.0]
-    PLAYBACK_PLAYING = [0.0, 1.0, 0.0]  # Green for playing
-    PLAYBACK_PAUSED = [1.0, 0.5, 0.0]  # Orange for paused
-    NEXT_STEP = [0.0, 0.5, 1.0]  # Blue for next step button
-    CONNECTION_GOOD = [0.0, 0.3, 0.0]  # Dark green for good connection
-    CONNECTION_BAD = [1.0, 0.0, 0.0]  # Red for bad connection
 
 
 class LightController:
@@ -72,8 +52,9 @@ class LightController:
         self.active_scenes: t.Set[t.Tuple[int, int]] = set()
         self.playback_enabled = True  # Default to playback enabled
 
-        # Colors
-        self.colors = Colors()
+        # Config and colors
+        self.config_manager = get_config_manager()
+        self.colors = get_colors()
 
         # Callbacks
         self.sequence_manager.on_step_change = self._on_sequence_step_change
