@@ -14,13 +14,7 @@ from config import get_config_manager, get_colors
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Button configurations
-SAVE_BUTTON = [0, 0]
-SAVE_SHIFT_BUTTON = [1, 0]
-BACKGROUND_BUTTON = [7, 0]
-PLAYBACK_TOGGLE_BUTTON = [0, 5]
-NEXT_STEP_BUTTON = [0, 6]
-CONNECTION_STATUS_BUTTON = [0, 7]
+# Button configurations will be loaded from config
 
 
 class AppState(str, Enum):
@@ -63,6 +57,36 @@ class LightController:
         ] = None
         self.on_preset_saved: t.Optional[t.Callable[[], None]] = None
 
+    @property
+    def save_button(self) -> t.List[int]:
+        """Get save button coordinates from config."""
+        return self.config_manager.get_key_binding("save_button") or [0, 0]
+
+    @property
+    def save_shift_button(self) -> t.List[int]:
+        """Get save shift button coordinates from config."""
+        return self.config_manager.get_key_binding("save_shift_button") or [1, 0]
+
+    @property
+    def background_button(self) -> t.List[int]:
+        """Get background button coordinates from config."""
+        return self.config_manager.get_key_binding("background_button") or [7, 0]
+
+    @property
+    def playback_toggle_button(self) -> t.List[int]:
+        """Get playback toggle button coordinates from config."""
+        return self.config_manager.get_key_binding("playback_toggle_button") or [0, 5]
+
+    @property
+    def next_step_button(self) -> t.List[int]:
+        """Get next step button coordinates from config."""
+        return self.config_manager.get_key_binding("next_step_button") or [0, 6]
+
+    @property
+    def connection_status_button(self) -> t.List[int]:
+        """Get connection status button coordinates from config."""
+        return self.config_manager.get_key_binding("connection_status_button") or [0, 7]
+
     def connect(self) -> bool:
         """Connect to devices."""
         midi_connected = self.midi_software.connect_midi()
@@ -93,7 +117,7 @@ class LightController:
 
         logger.info("Light controller started. Press Ctrl+C to exit.")
         self.launchpad.set_button_led(
-            ButtonType.TOP, SAVE_BUTTON, self.colors.SAVE_MODE_OFF
+            ButtonType.TOP, self.save_button, self.colors.SAVE_MODE_OFF
         )
 
         # Initialize playback control buttons
@@ -201,11 +225,11 @@ class LightController:
         if not active:
             return
 
-        if coords == SAVE_BUTTON:
+        if coords == self.save_button:
             self._toggle_save_mode()
-        elif coords == SAVE_SHIFT_BUTTON:
+        elif coords == self.save_shift_button:
             self._toggle_save_shift_mode()
-        elif coords == BACKGROUND_BUTTON:
+        elif coords == self.background_button:
             self._cycle_background()
 
     def _handle_right_button(self, coords: t.List[int], active: bool) -> None:
@@ -213,9 +237,9 @@ class LightController:
         if not active:
             return
 
-        if coords == PLAYBACK_TOGGLE_BUTTON:
+        if coords == self.playback_toggle_button:
             self._toggle_playback()
-        elif coords == NEXT_STEP_BUTTON:
+        elif coords == self.next_step_button:
             self._next_step()
         else:
             # Treat other right buttons as scene buttons
@@ -237,13 +261,13 @@ class LightController:
         if self.app_state == AppState.SAVE_MODE:
             self.app_state = AppState.SAVE_SHIFT_MODE
             self.launchpad.set_button_led(
-                ButtonType.TOP, SAVE_SHIFT_BUTTON, self.colors.YELLOW_BRIGHT
+                ButtonType.TOP, self.save_shift_button, self.colors.YELLOW_BRIGHT
             )
             logger.debug("Save shift mode ON - preset buttons will add steps")
         else:  # app_state == AppState.SAVE_SHIFT_MODE
             self.app_state = AppState.SAVE_MODE
             self.launchpad.set_button_led(
-                ButtonType.TOP, SAVE_SHIFT_BUTTON, self.colors.OFF
+                ButtonType.TOP, self.save_shift_button, self.colors.OFF
             )
             logger.debug("Save shift mode OFF - preset buttons will save normally")
 
@@ -258,7 +282,7 @@ class LightController:
             logger.debug("Stopped sequence playback for save mode")
 
         self.launchpad.set_button_led(
-            ButtonType.TOP, SAVE_BUTTON, self.colors.SAVE_MODE_ON
+            ButtonType.TOP, self.save_button, self.colors.SAVE_MODE_ON
         )
         self._update_preset_leds_for_save_mode()
         logger.debug("Entered save mode")
@@ -269,10 +293,10 @@ class LightController:
 
         # Turn off save buttons
         self.launchpad.set_button_led(
-            ButtonType.TOP, SAVE_BUTTON, self.colors.SAVE_MODE_OFF
+            ButtonType.TOP, self.save_button, self.colors.SAVE_MODE_OFF
         )
         self.launchpad.set_button_led(
-            ButtonType.TOP, SAVE_SHIFT_BUTTON, self.colors.OFF
+            ButtonType.TOP, self.save_shift_button, self.colors.OFF
         )
 
         # Clear and restore preset LEDs
@@ -329,7 +353,7 @@ class LightController:
         if self.sequence_manager.next_step():
             # Flash the next step button to indicate success
             self.launchpad.set_button_led(
-                ButtonType.RIGHT, NEXT_STEP_BUTTON, self.colors.SUCCESS_FLASH
+                ButtonType.RIGHT, self.next_step_button, self.colors.SUCCESS_FLASH
             )
             time.sleep(0.1)
             self._update_playback_buttons()
@@ -342,10 +366,10 @@ class LightController:
         ):
             # No sequence active - turn off playback buttons
             self.launchpad.set_button_led(
-                ButtonType.RIGHT, PLAYBACK_TOGGLE_BUTTON, self.colors.OFF
+                ButtonType.RIGHT, self.playback_toggle_button, self.colors.OFF
             )
             self.launchpad.set_button_led(
-                ButtonType.RIGHT, NEXT_STEP_BUTTON, self.colors.OFF
+                ButtonType.RIGHT, self.next_step_button, self.colors.OFF
             )
             return
 
@@ -354,27 +378,27 @@ class LightController:
         if current_state == SequenceState.PLAYING:
             # Green for playing
             self.launchpad.set_button_led(
-                ButtonType.RIGHT, PLAYBACK_TOGGLE_BUTTON, self.colors.PLAYBACK_PLAYING
+                ButtonType.RIGHT, self.playback_toggle_button, self.colors.PLAYBACK_PLAYING
             )
         elif current_state == SequenceState.PAUSED:
             # Orange for paused
             self.launchpad.set_button_led(
-                ButtonType.RIGHT, PLAYBACK_TOGGLE_BUTTON, self.colors.PLAYBACK_PAUSED
+                ButtonType.RIGHT, self.playback_toggle_button, self.colors.PLAYBACK_PAUSED
             )
         else:
             # Off for stopped
             self.launchpad.set_button_led(
-                ButtonType.RIGHT, PLAYBACK_TOGGLE_BUTTON, self.colors.OFF
+                ButtonType.RIGHT, self.playback_toggle_button, self.colors.OFF
             )
 
         # Next step button - blue when sequence is active (playing or paused)
         if current_state in [SequenceState.PLAYING, SequenceState.PAUSED]:
             self.launchpad.set_button_led(
-                ButtonType.RIGHT, NEXT_STEP_BUTTON, self.colors.NEXT_STEP
+                ButtonType.RIGHT, self.next_step_button, self.colors.NEXT_STEP
             )
         else:
             self.launchpad.set_button_led(
-                ButtonType.RIGHT, NEXT_STEP_BUTTON, self.colors.OFF
+                ButtonType.RIGHT, self.next_step_button, self.colors.OFF
             )
 
     def _activate_preset(self, coords: t.List[int]) -> None:
@@ -497,8 +521,16 @@ class LightController:
         for scene_tuple in scenes_to_activate:
             self.midi_software.send_scene_command(scene_tuple)  # Toggle on
             coords_list = [scene_tuple[0], scene_tuple[1]]
+            
+            # Choose color based on config setting
+            if self.config_manager.get_scene_on_color_from_column():
+                column_color = self.config_manager.get_column_color(scene_tuple[0])
+                scene_color = column_color if column_color else self.colors.SCENE_ON
+            else:
+                scene_color = self.colors.SCENE_ON
+                
             self.launchpad.set_button_led(
-                ButtonType.SCENE, coords_list, self.colors.SCENE_ON
+                ButtonType.SCENE, coords_list, scene_color
             )
 
         # Update our tracking to the expected final state for next diffing calculation
@@ -542,7 +574,16 @@ class LightController:
                 else:
                     self.active_scenes.discard(scene_coords)
 
-                color = self.colors.SCENE_ON if state else self.colors.OFF
+                if state:
+                    # Choose color based on config setting
+                    if self.config_manager.get_scene_on_color_from_column():
+                        column_color = self.config_manager.get_column_color(scene_coords[0])
+                        color = column_color if column_color else self.colors.SCENE_ON
+                    else:
+                        color = self.colors.SCENE_ON
+                else:
+                    color = self.colors.OFF
+                    
                 coords_list = [scene_coords[0], scene_coords[1]]
                 self.launchpad.set_button_led(ButtonType.SCENE, coords_list, color)
 
@@ -629,7 +670,7 @@ class LightController:
             if current_status
             else self.colors.CONNECTION_BAD
         )
-        self.launchpad.set_button_led(ButtonType.RIGHT, CONNECTION_STATUS_BUTTON, color)
+        self.launchpad.set_button_led(ButtonType.RIGHT, self.connection_status_button, color)
 
     def _update_connection_status(self) -> None:
         """Update the connection status LED using current DasLight status."""
@@ -639,7 +680,7 @@ class LightController:
             if current_status
             else self.colors.CONNECTION_BAD
         )
-        self.launchpad.set_button_led(ButtonType.RIGHT, CONNECTION_STATUS_BUTTON, color)
+        self.launchpad.set_button_led(ButtonType.RIGHT, self.connection_status_button, color)
 
 
 def main():

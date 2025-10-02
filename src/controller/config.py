@@ -74,7 +74,7 @@ class ConfigManager:
 
     DEFAULT_CONFIG = {
         "brightness_foreground": 1.0,
-        "brightness_background": 0.2,
+        "brightness_background": 0.06,
         "brightness_background_effect": 1.0,
         "scene_on_color_from_column": True,
         "colors": {
@@ -88,10 +88,10 @@ class ConfigManager:
                 "6": "#ffffff",
                 "7": "#ff4800",
             },
-            "preset_on_color": "#ff0050",
+            "preset_on_color": "#ff0080",
             "preset_save_mode_color": "#ff0080",
             "preset_save_shift_mode_color": "#ffff00",
-            "presets_background_color": "#0a050a",
+            "presets_background_color": "#ff0080",
             "scene_on_color": "#00ff00",
             "save_mode_on": "#ff0080",
             "save_mode_off": "#000000",
