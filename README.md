@@ -19,8 +19,8 @@ Only tested on Windows with DasLight and Launchpad MK2. Easily adaptable to othe
 - Python 3.12+
 - DasLight software
 - Launchpad MK2 (optional but recommended)
-- Launchpad Driver
-- loopMIDI (for MIDI communication)
+- [Launchpad Driver](https://downloads.novationmusic.com/novation/launchpad-mk2)
+- loopMIDI (for MIDI communication to DasLight)
 
 ### Installation
 
@@ -35,7 +35,7 @@ uv run run.py
 
 ### Usage
 
-**GUI Mode (Recommended):**
+**GUI Editor Mode:**
 ```bash
 uv run run.py --mode gui
 ```
