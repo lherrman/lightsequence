@@ -208,10 +208,6 @@ class BackgroundManager:
         self.background_animations = [
             "default",
             "none",
-            # "stellar_pulse",
-            # "shadow_waves",
-            # "plasma_storm",
-            # "deep_pulse",
         ]
         self.current_background_index = 0
         self.current_background = self.background_animations[0]
