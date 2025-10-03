@@ -161,22 +161,15 @@ class BackgroundAnimator:
                     continue
 
                 elif self.BOUNDS_PRESETS[0][1] <= y <= self.BOUNDS_PRESETS[1][1]:
-                    # Only apply background color to preset buttons that have presets programmed
-                    preset_coords = (
-                        x,
-                        y - 6,
-                    )  # Convert to preset coordinate system (y 6-8 -> 0-2)
-                    if preset_coords in preset_indices:
-                        preset_bg_color = self.config.data["colors"][
+                    if app_state in [AppState.SAVE_MODE, AppState.SAVE_SHIFT_MODE]:
+                        preset_color_hex = self.config.data["colors"][
                             "presets_background"
                         ]
-                        # Apply static brightness to preset background colors
-                        preset_bg_color_rgb = hex_to_rgb(preset_bg_color)
+                        preset_color_rgb = hex_to_rgb(preset_color_hex)
                         static_color = [
                             c * self.config.data["brightness_background"]
-                            for c in preset_bg_color_rgb
+                            for c in preset_color_rgb
                         ]
-                        # Combine effect and static colors
                         combined_color = [
                             min(1.0, effect_color[0] + static_color[0]),
                             min(1.0, effect_color[1] + static_color[1]),
@@ -184,6 +177,31 @@ class BackgroundAnimator:
                         ]
                         self.pixel_buffer[x, y] = combined_color
                         continue
+
+                    if app_state == AppState.NORMAL:
+                        # Only apply background color to preset buttons that have presets programmed
+                        preset_coords = (
+                            x,
+                            y - 6,
+                        )  # Convert to preset coordinate system (y 6-8 -> 0-2)
+                        if preset_coords in preset_indices:
+                            preset_bg_color = self.config.data["colors"][
+                                "presets_background"
+                            ]
+                            # Apply static brightness to preset background colors
+                            preset_bg_color_rgb = hex_to_rgb(preset_bg_color)
+                            static_color = [
+                                c * self.config.data["brightness_background"]
+                                for c in preset_bg_color_rgb
+                            ]
+                            # Combine effect and static colors
+                            combined_color = [
+                                min(1.0, effect_color[0] + static_color[0]),
+                                min(1.0, effect_color[1] + static_color[1]),
+                                min(1.0, effect_color[2] + static_color[2]),
+                            ]
+                            self.pixel_buffer[x, y] = combined_color
+                            continue
                     # If no preset programmed, fall through to just use effect brightness
 
                 # For areas without zone colors, just use the effect brightness
