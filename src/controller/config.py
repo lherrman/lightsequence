@@ -47,6 +47,7 @@ class ConfigData(TypedDict):
     brightness_foreground: float
     brightness_background: float
     brightness_background_effect: float
+    brightness_background_top_row: float
     scene_on_color_from_column: bool
     colors: ColorConfig
     key_bindings: KeyBindings
@@ -59,6 +60,7 @@ class ConfigManager:
         "brightness_foreground": 1.0,
         "brightness_background": 0.2,
         "brightness_background_effect": 1.0,
+        "brightness_background_top_row": 0.5,
         "scene_on_color_from_column": True,
         "colors": {
             "column_colors": {

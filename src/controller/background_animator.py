@@ -121,8 +121,6 @@ class BackgroundAnimator:
 
     def _apply_zone_colors_and_brightness(self, app_state: AppState):
         """Apply zone colors and brightness to animation buffer."""
-        brightness_static = self.config.data["brightness_background"]
-        brightness_effect = self.config.data["brightness_background_effect"]
 
         # Get preset indices that have actual presets programmed
         preset_indices = set()
@@ -132,7 +130,9 @@ class BackgroundAnimator:
         for x in range(8):
             for y in range(9):
                 base_color = self.pixel_buffer[x, y, :].copy()
-                effect_color = base_color * brightness_effect
+                effect_color = (
+                    base_color * self.config.data["brightness_background_effect"]
+                )
 
                 # Apply column color to row 0
                 if y == 0 and app_state == AppState.NORMAL:
@@ -144,15 +144,18 @@ class BackgroundAnimator:
                         combined_color = [
                             min(
                                 1.0,
-                                column_color_rgb[0] * brightness_effect,
+                                column_color_rgb[0]
+                                * self.config.data["brightness_background_top_row"],
                             ),
                             min(
                                 1.0,
-                                column_color_rgb[1] * brightness_effect,
+                                column_color_rgb[1]
+                                * self.config.data["brightness_background_top_row"],
                             ),
                             min(
                                 1.0,
-                                column_color_rgb[2] * brightness_effect,
+                                column_color_rgb[2]
+                                * self.config.data["brightness_background_top_row"],
                             ),
                         ]
                         self.pixel_buffer[x, y] = combined_color
@@ -171,7 +174,8 @@ class BackgroundAnimator:
                         # Apply static brightness to preset background colors
                         preset_bg_color_rgb = hex_to_rgb(preset_bg_color)
                         static_color = [
-                            c * brightness_static for c in preset_bg_color_rgb
+                            c * self.config.data["brightness_background"]
+                            for c in preset_bg_color_rgb
                         ]
                         # Combine effect and static colors
                         combined_color = [
