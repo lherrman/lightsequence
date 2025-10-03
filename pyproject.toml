@@ -12,6 +12,7 @@ dependencies = [
     "pyside6>=6.9.3",
     "launchpad-py>=0.9.1",
     "numpy>=2.0.2",
+    "typing-extensions>=4.15.0",
 ]
 
 [project.scripts]

@@ -4,7 +4,9 @@ from enum import Enum
 import launchpad_py as lp
 import numpy as np
 from background_animator import BackgroundAnimator as Animator
-from config import get_config_manager
+from config import get_config
+from enums import AppState
+from utils import hex_to_rgb
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +39,7 @@ class LaunchpadMK2:
         # Track pressed buttons state: {(button_type, rel_x, rel_y): True}
         self._pressed_buttons: t.Dict[t.Tuple[ButtonType, int, int], bool] = {}
         self.animator = Animator(preset_manager)
-        self.config_manager = get_config_manager()
+        self.config = get_config()
 
         self.connect()
 
@@ -76,7 +78,7 @@ class LaunchpadMK2:
         self,
         button_type: ButtonType,
         relative_coords: t.List[int],
-        color: t.List[float],
+        color: t.List[float] | str,
     ) -> None:
         """Set LED using button type and relative coordinates."""
         if not self.is_connected:
@@ -91,7 +93,11 @@ class LaunchpadMK2:
             logger.warning(f"Invalid coordinates for {button_type}: {relative_coords}")
             return
 
-        brightness = self.config_manager.get_brightness_foreground()
+        if isinstance(color, str):
+            color = hex_to_rgb(color)
+
+        # multiply with foreground brightness
+        brightness = self.config.data["brightness_foreground"]
         adjusted_color = [c * brightness for c in color]
 
         self.previous_pixel_buffer[abs_x, abs_y] = self.pixel_buffer_output[
@@ -258,7 +264,10 @@ class LaunchpadMK2:
         return False
 
     def draw_background(
-        self, animation_type: str = "ocean_waves", force_update: bool = False
+        self,
+        animation_type: str = "ocean_waves",
+        force_update: bool = False,
+        app_state: AppState = AppState.NORMAL,
     ) -> bool:
         """Update background animation.
 
@@ -275,11 +284,13 @@ class LaunchpadMK2:
             self.animator.force_background_update()
 
         # Get complete background buffer with animation, zone colors, and brightness already applied
-        background_buffer = self.animator.get_background(animation_type)
+        background_buffer = self.animator.get_background(
+            animation_type=animation_type, app_state=app_state
+        )
 
         # Apply background to inactive LEDs
-        for x in range(8):
-            for y in range(1, 9):
+        for x in range(9):
+            for y in range(9):
                 if not self.pixel_buffer_output[x, y, :].any():
                     color = background_buffer[x, y, :].tolist()
                     self.set_led(x, y, color)
