@@ -23,6 +23,7 @@ class PresetManager:
                     if not content:
                         # File exists but is empty
                         logger.info("Presets file is empty, creating default structure")
+                        self.create_empty_presets_file()
                         return {"presets": []}
                     data = json.loads(content)
                     # Ensure the data has the expected structure
@@ -30,15 +31,35 @@ class PresetManager:
                         logger.warning(
                             "Invalid presets file format, creating default structure"
                         )
+
                         return {"presets": []}
                     return data
             else:
                 # File doesn't exist, create default structure
-                logger.info("Presets file doesn't exist, will create it when saving")
+                logger.info("Presets file doesn't exist")
+                self.create_empty_presets_file()
                 return {"presets": []}
         except (json.JSONDecodeError, Exception) as e:
             logger.error(f"Error loading presets: {e}, using default structure")
             return {"presets": []}
+
+    def create_empty_presets_file(self) -> None:
+        """Create an empty presets file with default structure."""
+        try:
+            if not self.preset_file.exists():
+                self.preset_file.parent.mkdir(parents=True, exist_ok=True)
+                with open(self.preset_file, "w", encoding="utf-8") as f:
+                    json.dump({"presets": []}, f, indent=4)
+                logger.info(f"Created new presets file at {self.preset_file}")
+            else:
+                logger.info(f"Presets file already exists at {self.preset_file}")
+                # If the file exists but is empty, write the default structure
+                if self.preset_file.stat().st_size == 0:
+                    with open(self.preset_file, "w", encoding="utf-8") as f:
+                        json.dump({"presets": []}, f, indent=4)
+                    logger.info(f"Initialized empty presets file at {self.preset_file}")
+        except Exception as e:
+            logger.error(f"Error creating presets file: {e}")
 
     def save_presets(self, presets_data: t.Dict[str, t.Any]) -> None:
         """Save presets to JSON file."""
