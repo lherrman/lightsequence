@@ -1,6 +1,7 @@
 import logging
 import typing as t
 from enum import Enum
+
 import launchpad_py as lp
 import numpy as np
 from background_animator import BackgroundAnimator as Animator

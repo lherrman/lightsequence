@@ -3,7 +3,7 @@ import time
 import typing as t
 from pathlib import Path
 
-from daslight import Daslight
+from light_software import LightSoftware
 from launchpad import LaunchpadMK2, ButtonType
 from preset_manager import PresetManager
 from background_animator import BackgroundManager
@@ -27,7 +27,7 @@ class LightController:
         self.sequence_manager = SequenceManager()
 
         # Hardware connections
-        self.midi_software = Daslight()
+        self.light_software = LightSoftware()
         self.launchpad_controller = LaunchpadMK2(self.preset_manager)
 
         # Application state
@@ -55,13 +55,13 @@ class LightController:
 
     def initialize_hardware_connections(self) -> bool:
         """Connect to all hardware devices and sync initial state."""
-        midi_connection_successful = self.midi_software.connect_midi()
+        midi_connection_successful = self.light_software.connect_midi()
 
         if midi_connection_successful:
             # Process initial feedback to sync active scenes
-            initial_changes = self.midi_software.process_feedback()
+            initial_changes = self.light_software.process_feedback()
             for note, is_active in initial_changes.items():
-                scene_coordinates = self.midi_software.get_scene_coordinates_for_note(
+                scene_coordinates = self.light_software.get_scene_coordinates_for_note(
                     note
                 )
                 if scene_coordinates and is_active:
@@ -132,16 +132,14 @@ class LightController:
 
     def _process_midi_feedback_inputs(self) -> None:
         """Process MIDI feedback from lighting software and update scene tracking."""
-        midi_changes = self.midi_software.process_feedback()
+        midi_changes = self.light_software.process_feedback()
 
         for note, is_active in midi_changes.items():
             # Skip ping responses (note 127) - handled by Daslight class
             if note == 127:
                 continue
 
-            scene_coordinates = self.midi_software.get_scene_coordinates_for_note(
-                note
-            )
+            scene_coordinates = self.light_software.get_scene_coordinates_for_note(note)
             if scene_coordinates:
                 if is_active:
                     self.currently_active_scenes.add(scene_coordinates)
@@ -178,7 +176,7 @@ class LightController:
 
     def _update_connection_status_from_software(self) -> None:
         """Check software connection status and update LED if changed."""
-        current_connection_status = self.midi_software.check_connection_status()
+        current_connection_status = self.light_software.check_connection_status()
         connection_color = (
             self.app_config.data["colors"]["connection_good"]
             if current_connection_status
@@ -192,7 +190,7 @@ class LightController:
 
     def _update_connection_status_display(self) -> None:
         """Update the connection status LED using current connection state."""
-        current_status = self.midi_software.connection_good
+        current_status = self.light_software.connection_good
         status_color = (
             self.app_config.data["colors"]["connection_good"]
             if current_status
@@ -228,7 +226,7 @@ class LightController:
         if is_pressed and len(coordinates) >= 2:
             coordinate_tuple = (coordinates[0], coordinates[1])
             logger.debug(f"Scene button {coordinates} pressed")
-            self.midi_software.send_scene_command(coordinate_tuple)
+            self.light_software.send_scene_command(coordinate_tuple)
 
     def _handle_preset_button_press(
         self, coordinates: t.List[int], is_pressed: bool
@@ -684,7 +682,7 @@ class LightController:
 
         # Deactivate scenes that should be turned off
         for scene_tuple in scenes_to_deactivate:
-            self.midi_software.send_scene_command(scene_tuple)  # Toggle off
+            self.light_software.send_scene_command(scene_tuple)  # Toggle off
             coordinates_list = [scene_tuple[0], scene_tuple[1]]
             self.launchpad_controller.set_button_led(
                 ButtonType.SCENE,
@@ -694,7 +692,7 @@ class LightController:
 
         # Activate scenes that should be turned on
         for scene_tuple in scenes_to_activate:
-            self.midi_software.send_scene_command(scene_tuple)  # Toggle on
+            self.light_software.send_scene_command(scene_tuple)  # Toggle on
             coordinates_list = [scene_tuple[0], scene_tuple[1]]
 
             # Determine appropriate color for the activated scene

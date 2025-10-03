@@ -136,30 +136,29 @@ class BackgroundAnimator:
 
                 # Apply column color to row 0
                 if y == 0 and app_state == AppState.NORMAL:
-                    if self.config.data["scene_on_color_from_column"]:
-                        column_color_hex = self.config.data["colors"][
-                            "column_colors"
-                        ].get(str(x), "#ff0000")
-                        column_color_rgb = hex_to_rgb(column_color_hex)
-                        combined_color = [
-                            min(
-                                1.0,
-                                column_color_rgb[0]
-                                * self.config.data["brightness_background_top_row"],
-                            ),
-                            min(
-                                1.0,
-                                column_color_rgb[1]
-                                * self.config.data["brightness_background_top_row"],
-                            ),
-                            min(
-                                1.0,
-                                column_color_rgb[2]
-                                * self.config.data["brightness_background_top_row"],
-                            ),
-                        ]
-                        self.pixel_buffer[x, y] = combined_color
-                        continue
+                    column_color_hex = self.config.data["colors"]["column_colors"].get(
+                        str(x), "#ff0000"
+                    )
+                    column_color_rgb = hex_to_rgb(column_color_hex)
+                    combined_color = [
+                        min(
+                            1.0,
+                            column_color_rgb[0]
+                            * self.config.data["brightness_background_top_row"],
+                        ),
+                        min(
+                            1.0,
+                            column_color_rgb[1]
+                            * self.config.data["brightness_background_top_row"],
+                        ),
+                        min(
+                            1.0,
+                            column_color_rgb[2]
+                            * self.config.data["brightness_background_top_row"],
+                        ),
+                    ]
+                    self.pixel_buffer[x, y] = combined_color
+                    continue
 
                 elif self.BOUNDS_PRESETS[0][1] <= y <= self.BOUNDS_PRESETS[1][1]:
                     # Only apply background color to preset buttons that have presets programmed
@@ -226,5 +225,3 @@ class BackgroundManager:
     def get_current_background(self) -> str:
         """Get the current background animation name."""
         return self.current_background
-
-

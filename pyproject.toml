@@ -13,6 +13,7 @@ dependencies = [
     "launchpad-py>=0.9.1",
     "numpy>=2.0.2",
     "typing-extensions>=4.15.0",
+    "isort>=6.1.0",
 ]
 
 [project.scripts]
