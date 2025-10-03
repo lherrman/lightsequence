@@ -47,7 +47,7 @@ class SequenceManager:
     ) -> None:
         """Add or update a sequence for a preset."""
         self.sequences[preset_index] = steps.copy()
-        logger.info(f"Added sequence for preset {preset_index} with {len(steps)} steps")
+        logger.debug(f"Added sequence for preset {preset_index} with {len(steps)} steps")
 
     def get_sequence(
         self, preset_index: t.Tuple[int, int]

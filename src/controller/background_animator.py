@@ -227,10 +227,4 @@ class BackgroundManager:
         """Get the current background animation name."""
         return self.current_background
 
-    def generate_background(self) -> np.ndarray:
-        """Generate the current background animation frame."""
-        return self.animator.get_background(self.current_background)
 
-    def force_background_update(self):
-        """Force the next background update."""
-        self.animator.force_background_update()

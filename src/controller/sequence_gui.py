@@ -61,7 +61,7 @@ class ControllerThread(QThread):
         """Run the controller in a separate thread."""
         try:
             self.controller = LightController()
-            if self.controller.connect():
+            if self.controller.initialize_hardware_connections():
                 self.controller_ready.emit()
 
                 # Modified run loop to work with threading
@@ -72,17 +72,19 @@ class ControllerThread(QThread):
                 while not self.should_stop:
                     try:
                         # Handle button events
-                        button_event = self.controller.launchpad.get_button_events()
+                        button_event = (
+                            self.controller.launchpad_controller.get_button_events()
+                        )
                         if button_event:
-                            self.controller._process_button_event(button_event)
+                            self.controller._route_button_event_to_handler(button_event)
 
-                        # Update connection status from DasLight monitoring
-                        self.controller._update_connection_status_from_daslight()
+                        # Update connection status from software monitoring
+                        self.controller._update_connection_status_from_software()
 
                         # Process MIDI feedback
-                        self.controller._process_midi_feedback()
+                        self.controller.process_midi_feedback_from_external()
 
-                        self.controller.launchpad.draw_background(
+                        self.controller.launchpad_controller.draw_background(
                             self.controller.background_manager.get_current_background()
                         )
 
@@ -98,7 +100,7 @@ class ControllerThread(QThread):
             self.controller_error.emit(f"Controller error: {e}")
         finally:
             if self.controller:
-                self.controller.cleanup()
+                self.controller.cleanup_resources()
 
     def stop(self):
         """Stop the controller thread."""
@@ -638,7 +640,7 @@ class PresetSequenceEditor(QWidget):
 
         # Get active scenes from controller
         active_scenes = [
-            [scene[0], scene[1]] for scene in self.controller.active_scenes
+            [scene[0], scene[1]] for scene in self.controller.currently_active_scenes
         ]
 
         if not active_scenes:
@@ -1018,7 +1020,7 @@ class LightSequenceGUI(QMainWindow):
 
     def select_preset_on_launchpad(self, preset_coords: t.List[int]):
         """Programmatically select a preset on the launchpad (called from GUI)."""
-        if self.controller and self.controller.active_preset != preset_coords:
+        if self.controller and self.controller.currently_active_preset != preset_coords:
             # Simulate a preset button press
             self.controller._activate_preset(preset_coords)
 
