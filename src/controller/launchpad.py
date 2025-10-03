@@ -296,5 +296,3 @@ class LaunchpadMK2:
                     self.set_led(x, y, color)
 
         return True  # Background was updated
-
-
