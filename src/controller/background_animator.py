@@ -135,7 +135,6 @@ class BackgroundAnimator:
                 effect_color = base_color * brightness_effect
 
                 # Apply column color to row 0
-                print(app_state)
                 if y == 0 and app_state == AppState.NORMAL:
                     if self.config.data["scene_on_color_from_column"]:
                         column_color_hex = self.config.data["colors"][

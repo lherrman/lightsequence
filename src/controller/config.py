@@ -1,13 +1,10 @@
 import json
 import logging
 from pathlib import Path
-from dataclasses import dataclass
 from typing import Dict, List, Any, Optional
 from typing_extensions import TypedDict
 
 logger = logging.getLogger(__name__)
-
-
 
 
 class ColorConfig(TypedDict):

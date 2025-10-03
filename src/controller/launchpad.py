@@ -298,10 +298,3 @@ class LaunchpadMK2:
         return True  # Background was updated
 
 
-if __name__ == "__main__":
-    pixel_buffer = np.zeros((9, 9, 3), dtype=float)
-    pixel_buffer[0, 0] = [1.0, 0.0, 0.0]
-    for x in range(9):
-        for y in range(9):
-            if pixel_buffer[x, y, :].any():
-                print(f"Setting LED at ({x}, {y}) to {pixel_buffer[x, y, :]}")
