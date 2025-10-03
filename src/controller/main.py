@@ -421,14 +421,14 @@ class LightController:
         current_brightness_level = self.app_config.data["brightness_background"]
         new_brightness_level = max(0.0, current_brightness_level - 0.03)
         self._set_background_brightness_level(new_brightness_level)
-        logger.info(f"Background brightness decreased to {new_brightness_level:.2f}")
+        logger.debug(f"Background brightness decreased to {new_brightness_level:.2f}")
 
     def _increase_background_brightness(self) -> None:
         """Increase background brightness by 0.03, maximum 1.0."""
         current_brightness_level = self.app_config.data["brightness_background"]
         new_brightness_level = min(1.0, current_brightness_level + 0.03)
         self._set_background_brightness_level(new_brightness_level)
-        logger.info(f"Background brightness increased to {new_brightness_level:.2f}")
+        logger.debug(f"Background brightness increased to {new_brightness_level:.2f}")
 
     def _set_background_brightness_level(self, brightness_level: float) -> None:
         """Set background brightness and persist the setting."""
