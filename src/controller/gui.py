@@ -227,17 +227,17 @@ class PresetButton(QPushButton):
         else:
             # Show preset type indicator
             if self.has_sequence:
-                self.setText(f"SEQ\n{self.coord_x},{self.coord_y}")
-                base_color = "#0066cc" if not self.is_active_preset else "#0088ff"
+                self.setText(f"{self.coord_x},{self.coord_y}")
+                base_color = "#3f94e9" if not self.is_active_preset else "#569de4"
             else:
-                self.setText(f"SIMPLE\n{self.coord_x},{self.coord_y}")
-                base_color = "#cc6600" if not self.is_active_preset else "#ff8800"
+                self.setText(f"{self.coord_x},{self.coord_y}")
+                base_color = "#03519e" if not self.is_active_preset else "#1b5c9c"
 
             # Generate hover color more safely
             if self.has_sequence:
-                hover_color = "#0088ff" if not self.is_active_preset else "#00aaff"
+                hover_color = "#3f94e9" if not self.is_active_preset else "#569de4"
             else:
-                hover_color = "#ff8800" if not self.is_active_preset else "#ffaa00"
+                hover_color = "#03519e" if not self.is_active_preset else "#1b5c9c"
 
             # Set border color based on active state
             border_color = "ffffff" if self.is_active_preset else "666666"

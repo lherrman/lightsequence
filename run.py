@@ -43,7 +43,7 @@ def main():
     if args.mode == "gui":
         try:
             logger.info("Starting GUI application...")
-            from src.controller.sequence_gui import main as gui_main
+            from src.controller.gui import main as gui_main
 
             gui_main()
         except ImportError as e:
