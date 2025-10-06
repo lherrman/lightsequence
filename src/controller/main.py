@@ -191,11 +191,10 @@ class LightController:
             if current_connection_status
             else self.app_config.data["colors"]["connection_bad"]
         )
-        self.launchpad_controller.set_button_led(
-            ButtonType.RIGHT,
-            self.app_config.data["key_bindings"]["connection_status_button"] or [0, 7],
-            connection_color,
-        )
+        binding = self.app_config.data["key_bindings"]["connection_status_button"]
+        from config import get_button_type_enum
+        button_type = get_button_type_enum(binding["button_type"])
+        self.launchpad_controller.set_button_led(button_type, binding["coordinates"], connection_color)
 
     def _update_connection_status_display(self) -> None:
         """Update the connection status LED using current connection state."""
@@ -205,11 +204,15 @@ class LightController:
             if current_status
             else self.app_config.data["colors"]["connection_bad"]
         )
-        self.launchpad_controller.set_button_led(
-            ButtonType.RIGHT,
-            self.app_config.data["key_bindings"]["connection_status_button"] or [0, 7],
-            status_color,
-        )
+        binding = self.app_config.data["key_bindings"]["connection_status_button"]
+        from config import get_button_type_enum
+        button_type = get_button_type_enum(binding["button_type"])
+        self.launchpad_controller.set_button_led(button_type, binding["coordinates"], status_color)
+    
+    def _matches_key_binding(self, coordinates: list[int], key_name: str) -> bool:
+        """Check if coordinates match a specific key binding."""
+        binding = self.app_config.data["key_bindings"][key_name]
+        return coordinates == binding["coordinates"]
 
     # ============================================================================
     # BUTTON EVENT ROUTING AND HANDLING
@@ -260,21 +263,15 @@ class LightController:
         if not is_pressed:
             return
 
-        if coordinates == (self.app_config.data["key_bindings"]["save_button"]):
+        if self._matches_key_binding(coordinates, "save_button"):
             self._toggle_save_mode_state()
-        elif coordinates == (self.app_config.data["key_bindings"]["save_shift_button"]):
+        elif self._matches_key_binding(coordinates, "save_shift_button"):
             self._toggle_save_shift_mode_state()
-        elif coordinates == (self.app_config.data["key_bindings"]["background_button"]):
+        elif self._matches_key_binding(coordinates, "background_button"):
             self._cycle_background_animation()
-        elif (
-            coordinates
-            == (self.app_config.data["key_bindings"]["background_brightness_down"])
-        ):
+        elif self._matches_key_binding(coordinates, "background_brightness_down"):
             self._decrease_background_brightness()
-        elif (
-            coordinates
-            == (self.app_config.data["key_bindings"]["background_brightness_up"])
-        ):
+        elif self._matches_key_binding(coordinates, "background_brightness_up"):
             self._increase_background_brightness()
 
     def _handle_right_column_button_press(
@@ -284,12 +281,9 @@ class LightController:
         if not is_pressed:
             return
 
-        if (
-            coordinates
-            == (self.app_config.data["key_bindings"]["playback_toggle_button"])
-        ):
+        if self._matches_key_binding(coordinates, "playback_toggle_button"):
             self._toggle_sequence_playback()
-        elif coordinates == (self.app_config.data["key_bindings"]["next_step_button"]):
+        elif self._matches_key_binding(coordinates, "next_step_button"):
             self._advance_to_next_sequence_step()
         else:
             # Treat other right column buttons as scene buttons
@@ -344,35 +338,23 @@ class LightController:
 
     def _toggle_save_mode_state(self) -> None:
         """Toggle between normal mode and save mode."""
-        if self.current_app_state == AppState.NORMAL:
-            self._enter_save_mode()
-        else:
+        if self.current_app_state == AppState.SAVE_MODE:
             self._exit_all_save_modes()
+        else:
+            # Exit save shift mode if active, then enter save mode
+            if self.current_app_state == AppState.SAVE_SHIFT_MODE:
+                self._exit_all_save_modes()
+            self._enter_save_mode()
 
     def _toggle_save_shift_mode_state(self) -> None:
-        """Toggle save shift mode (only works when already in save mode)."""
-        if self.current_app_state not in [AppState.SAVE_MODE, AppState.SAVE_SHIFT_MODE]:
-            logger.debug("SAVE_SHIFT only works when save mode is active")
-            return
-
-        if self.current_app_state == AppState.SAVE_MODE:
-            self.current_app_state = AppState.SAVE_SHIFT_MODE
-            self.launchpad_controller.set_button_led(
-                ButtonType.TOP,
-                self.app_config.data["key_bindings"]["save_shift_button"] or [1, 0],
-                self.app_config.data["colors"]["save_mode_on"],
-            )
-            logger.debug("Save shift mode ON - preset buttons will add steps")
-        else:  # current_app_state == AppState.SAVE_SHIFT_MODE
-            self.current_app_state = AppState.SAVE_MODE
-            self.launchpad_controller.set_button_led(
-                ButtonType.TOP,
-                self.app_config.data["key_bindings"]["save_shift_button"] or [1, 0],
-                self.app_config.data["colors"]["off"],
-            )
-            logger.debug("Save shift mode OFF - preset buttons will save normally")
-
-        self._update_preset_leds_for_current_save_mode()
+        """Toggle save shift mode independently."""
+        if self.current_app_state == AppState.SAVE_SHIFT_MODE:
+            self._exit_all_save_modes()
+        else:
+            # Exit save mode if active, then enter save shift mode
+            if self.current_app_state == AppState.SAVE_MODE:
+                self._exit_all_save_modes()
+            self._enter_save_shift_mode()
 
     def _enter_save_mode(self) -> None:
         """Enter save mode state."""
@@ -382,29 +364,31 @@ class LightController:
             self.sequence_manager.stop_sequence()
             logger.debug("Stopped sequence playback for save mode")
 
-        self.launchpad_controller.set_button_led(
-            ButtonType.TOP,
-            self.app_config.data["key_bindings"]["save_button"] or [0, 0],
-            self.app_config.data["colors"]["save_mode_on"],
-        )
+        # Light up save button
+        self._set_save_button_led("save_button", True)
         self._update_preset_leds_for_current_save_mode()
         logger.debug("Entered save mode")
+    
+    def _enter_save_shift_mode(self) -> None:
+        """Enter save shift mode state."""
+        self.current_app_state = AppState.SAVE_SHIFT_MODE
+
+        if self.sequence_manager.sequence_state != SequenceState.STOPPED:
+            self.sequence_manager.stop_sequence()
+            logger.debug("Stopped sequence playback for save shift mode")
+
+        # Light up save shift button
+        self._set_save_button_led("save_shift_button", True)
+        self._update_preset_leds_for_current_save_mode()
+        logger.debug("Entered save shift mode")
 
     def _exit_all_save_modes(self) -> None:
         """Exit all save modes and return to normal operation."""
         self.current_app_state = AppState.NORMAL
 
         # Turn off save mode indicator buttons
-        self.launchpad_controller.set_button_led(
-            ButtonType.TOP,
-            self.app_config.data["key_bindings"]["save_button"] or [0, 0],
-            self.app_config.data["colors"]["off"],
-        )
-        self.launchpad_controller.set_button_led(
-            ButtonType.TOP,
-            self.app_config.data["key_bindings"]["save_shift_button"] or [1, 0],
-            self.app_config.data["colors"]["off"],
-        )
+        self._set_save_button_led("save_button", False)
+        self._set_save_button_led("save_shift_button", False)
 
         # Clear and restore preset LEDs to normal state
         self._clear_all_preset_button_leds()
@@ -416,6 +400,18 @@ class LightController:
             )
 
         logger.debug("Exited save mode")
+    
+    def _set_save_button_led(self, button_key: str, is_on: bool) -> None:
+        """Set LED state for save buttons using configuration."""
+        binding = self.app_config.data["key_bindings"][button_key]
+        from config import get_button_type_enum
+        button_type = get_button_type_enum(binding["button_type"])
+        color = (
+            self.app_config.data["colors"]["save_mode_on"] 
+            if is_on 
+            else self.app_config.data["colors"]["off"]
+        )
+        self.launchpad_controller.set_button_led(button_type, binding["coordinates"], color)
 
     # ============================================================================
     # BACKGROUND ANIMATION CONTROLS
@@ -497,11 +493,7 @@ class LightController:
 
         if self.sequence_manager.next_step():
             # Flash the next step button to indicate successful advancement
-            self.launchpad_controller.set_button_led(
-                ButtonType.RIGHT,
-                self.app_config.data["key_bindings"]["next_step_button"] or [0, 6],
-                self.app_config.data["colors"]["next_step"],
-            )
+            self._set_playback_button_led("next_step_button", "next_step")
             time.sleep(0.1)
             self._update_playback_control_button_displays()
 
@@ -512,59 +504,35 @@ class LightController:
             self.currently_active_preset
         ):
             # No sequence active - turn off playback control buttons
-            self.launchpad_controller.set_button_led(
-                ButtonType.RIGHT,
-                self.app_config.data["key_bindings"]["playback_toggle_button"]
-                or [0, 5],
-                self.app_config.data["colors"]["off"],
-            )
-            self.launchpad_controller.set_button_led(
-                ButtonType.RIGHT,
-                self.app_config.data["key_bindings"]["next_step_button"] or [0, 6],
-                self.app_config.data["colors"]["off"],
-            )
+            self._set_playback_button_led("playback_toggle_button", "off")
+            self._set_playback_button_led("next_step_button", "off")
             return
 
         current_sequence_state = self.sequence_manager.sequence_state
 
         if current_sequence_state == SequenceState.PLAYING:
             # Green indicator for actively playing
-            self.launchpad_controller.set_button_led(
-                ButtonType.RIGHT,
-                self.app_config.data["key_bindings"]["playback_toggle_button"]
-                or [0, 5],
-                self.app_config.data["colors"]["playback_playing"],
-            )
+            self._set_playback_button_led("playback_toggle_button", "playback_playing")
         elif current_sequence_state == SequenceState.PAUSED:
             # Orange indicator for paused state
-            self.launchpad_controller.set_button_led(
-                ButtonType.RIGHT,
-                self.app_config.data["key_bindings"]["playback_toggle_button"]
-                or [0, 5],
-                self.app_config.data["colors"]["playback_paused"],
-            )
+            self._set_playback_button_led("playback_toggle_button", "playback_paused")
         else:
             # Off indicator for stopped state
-            self.launchpad_controller.set_button_led(
-                ButtonType.RIGHT,
-                self.app_config.data["key_bindings"]["playback_toggle_button"]
-                or [0, 5],
-                self.app_config.data["colors"]["off"],
-            )
+            self._set_playback_button_led("playback_toggle_button", "off")
 
         # Next step button - blue when sequence is active (playing or paused)
         if current_sequence_state in [SequenceState.PLAYING, SequenceState.PAUSED]:
-            self.launchpad_controller.set_button_led(
-                ButtonType.RIGHT,
-                self.app_config.data["key_bindings"]["next_step_button"] or [0, 6],
-                self.app_config.data["colors"]["next_step"],
-            )
+            self._set_playback_button_led("next_step_button", "next_step")
         else:
-            self.launchpad_controller.set_button_led(
-                ButtonType.RIGHT,
-                self.app_config.data["key_bindings"]["next_step_button"] or [0, 6],
-                self.app_config.data["colors"]["off"],
-            )
+            self._set_playback_button_led("next_step_button", "off")
+    
+    def _set_playback_button_led(self, button_key: str, color_key: str) -> None:
+        """Set LED for playback buttons using configuration."""
+        binding = self.app_config.data["key_bindings"][button_key]
+        from config import get_button_type_enum
+        button_type = get_button_type_enum(binding["button_type"])
+        color = self.app_config.data["colors"][color_key]
+        self.launchpad_controller.set_button_led(button_type, binding["coordinates"], color)
 
     # ============================================================================
     # PRESET ACTIVATION AND MANAGEMENT
@@ -762,20 +730,30 @@ class LightController:
             return
 
         existing_preset_indices = self.preset_manager.get_all_preset_indices()
-        led_color = (
-            self.app_config.data["colors"]["preset_save_shift_mode"]
-            if self.current_app_state == AppState.SAVE_SHIFT_MODE
-            else self.app_config.data["colors"]["preset_save_mode"]
-        )
 
         for column in range(8):
             for row in range(3):
                 coordinates = [column, row]
-                button_led_color = (
-                    led_color
-                    if tuple(coordinates) in existing_preset_indices
-                    else self.app_config.data["colors"]["off"]
-                )
+                has_preset = tuple(coordinates) in existing_preset_indices
+                
+                if has_preset:
+                    # Button has a preset - use appropriate save mode color
+                    if self.current_app_state == AppState.SAVE_SHIFT_MODE:
+                        button_led_color = self.app_config.data["colors"]["preset_save_shift_mode"]
+                    else:  # AppState.SAVE_MODE
+                        button_led_color = self.app_config.data["colors"]["preset_save_mode"]
+                else:
+                    # Button has no preset
+                    if self.current_app_state == AppState.SAVE_MODE:
+                        # In save mode: reduced brightness white
+                        from utils import hex_to_rgb
+                        base_color = hex_to_rgb(self.app_config.data["colors"]["save_mode_preset_background"])
+                        brightness = self.app_config.data["brightness_background"]
+                        button_led_color = [c * brightness for c in base_color]
+                    else:  # AppState.SAVE_SHIFT_MODE
+                        # In save shift mode: turn off empty buttons
+                        button_led_color = self.app_config.data["colors"]["off"]
+                
                 self.launchpad_controller.set_button_led(
                     ButtonType.PRESET, coordinates, button_led_color
                 )

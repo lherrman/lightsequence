@@ -161,10 +161,20 @@ class BackgroundAnimator:
                     continue
 
                 elif self.BOUNDS_PRESETS[0][1] <= y <= self.BOUNDS_PRESETS[1][1]:
-                    if app_state in [AppState.SAVE_MODE, AppState.SAVE_SHIFT_MODE]:
-                        preset_color_hex = self.config.data["colors"][
-                            "presets_background"
-                        ]
+                    if app_state == AppState.SAVE_MODE:
+                        # In save mode: show white background for buttons without presets
+                        preset_coords = (
+                            x,
+                            y - 6,
+                        )  # Convert to preset coordinate system (y 6-8 -> 0-2)
+                        
+                        if preset_coords in preset_indices:
+                            # Has preset - use normal preset background
+                            preset_color_hex = self.config.data["colors"]["presets_background"]
+                        else:
+                            # No preset - use save mode background color
+                            preset_color_hex = self.config.data["colors"]["save_mode_preset_background"]
+                        
                         preset_color_rgb = hex_to_rgb(preset_color_hex)
                         static_color = [
                             c * self.config.data["brightness_background"]

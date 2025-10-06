@@ -7,6 +7,28 @@ from typing_extensions import TypedDict
 logger = logging.getLogger(__name__)
 
 
+def get_button_type_enum(button_type_str: str):
+    """Convert button type string to ButtonType enum.
+    
+    Args:
+        button_type_str: String representation of button type ("TOP", "RIGHT", etc.)
+        
+    Returns:
+        ButtonType enum value
+    """
+    # Import here to avoid circular imports
+    from launchpad import ButtonType
+    
+    button_type_map = {
+        "TOP": ButtonType.TOP,
+        "RIGHT": ButtonType.RIGHT,
+        "SCENE": ButtonType.SCENE,
+        "PRESET": ButtonType.PRESET,
+    }
+    
+    return button_type_map.get(button_type_str.upper(), ButtonType.UNKNOWN)
+
+
 class ColorConfig(TypedDict):
     """Type definition for color configuration."""
 
@@ -15,6 +37,7 @@ class ColorConfig(TypedDict):
     preset_save_mode: str
     preset_save_shift_mode: str
     presets_background: str
+    save_mode_preset_background: str
     scene_on: str
     save_mode_on: str
     background_cycle: str
@@ -28,17 +51,24 @@ class ColorConfig(TypedDict):
     off: str
 
 
+class KeyBinding(TypedDict):
+    """Type definition for a single key binding."""
+    
+    button_type: str  # "TOP", "RIGHT", "SCENE", "PRESET"
+    coordinates: List[int]  # [x, y] relative coordinates
+
+
 class KeyBindings(TypedDict):
     """Type definition for key bindings configuration."""
 
-    save_button: List[int]
-    save_shift_button: List[int]
-    background_button: List[int]
-    playback_toggle_button: List[int]
-    next_step_button: List[int]
-    connection_status_button: List[int]
-    background_brightness_down: List[int]
-    background_brightness_up: List[int]
+    save_button: KeyBinding
+    save_shift_button: KeyBinding
+    background_button: KeyBinding
+    playback_toggle_button: KeyBinding
+    next_step_button: KeyBinding
+    connection_status_button: KeyBinding
+    background_brightness_down: KeyBinding
+    background_brightness_up: KeyBinding
 
 
 class ConfigData(TypedDict):
@@ -77,6 +107,7 @@ class ConfigManager:
             "preset_save_mode": "#ff0000",
             "preset_save_shift_mode": "#3cff00",
             "presets_background": "#ffffff",
+            "save_mode_preset_background": "#ffffff",
             "scene_on": "#00ff00",
             "save_mode_on": "#ff0080",
             "background_cycle": "#00ff00",
@@ -90,14 +121,39 @@ class ConfigManager:
             "off": "#000000",
         },
         "key_bindings": {
-            "save_button": [0, 0],
-            "save_shift_button": [1, 0],
-            "background_button": [7, 0],
-            "playback_toggle_button": [0, 5],
-            "next_step_button": [0, 6],
-            "connection_status_button": [0, 7],
-            "background_brightness_down": [5, 0],
-            "background_brightness_up": [6, 0],
+            "save_button": {
+                "button_type": "TOP",
+                "coordinates": [0, 0]
+            },
+            "save_shift_button": {
+                "button_type": "TOP",
+                "coordinates": [1, 0]
+            },
+            "background_button": {
+                "button_type": "TOP",
+                "coordinates": [7, 0]
+            },
+            "playback_toggle_button": {
+                "button_type": "RIGHT",
+                "coordinates": [0, 5]
+            },
+            "next_step_button": {
+                "button_type": "RIGHT",
+                "coordinates": [0, 6]
+            },
+            "connection_status_button": {
+                "button_type": "RIGHT",
+                "coordinates": [0, 7]
+            },
+            "background_brightness_down": {
+                "button_type": "TOP",
+                "coordinates": [5, 0]
+            },
+            "background_brightness_up": {
+              
+                "button_type": "TOP",
+                "coordinates": [6, 0]
+            },
         },
     }
 
