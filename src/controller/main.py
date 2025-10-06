@@ -4,6 +4,7 @@ import typing as t
 from pathlib import Path
 
 from light_software import LightSoftware
+from light_software_sim import LightSoftwareSim
 from launchpad import LaunchpadMK2, ButtonType
 from preset_manager import PresetManager
 from background_animator import BackgroundManager
@@ -18,8 +19,12 @@ logger = logging.getLogger(__name__)
 class LightController:
     """Main controller for light sequence management."""
 
-    def __init__(self):
-        """Initialize the light controller with all managers and hardware connections."""
+    def __init__(self, simulation: bool = False):
+        """Initialize the light controller with all managers and hardware connections.
+        
+        Args:
+            simulation: If True, use simulated lighting software instead of real one
+        """
         # Managers - create these first
         preset_file = Path("presets.json")
         self.preset_manager = PresetManager(preset_file)
@@ -27,7 +32,11 @@ class LightController:
         self.sequence_manager = SequenceManager()
 
         # Hardware connections
-        self.light_software = LightSoftware()
+        if simulation:
+            logger.info("🔧 Using simulated lighting software")
+            self.light_software = LightSoftwareSim()
+        else:
+            self.light_software = LightSoftware()
         self.launchpad_controller = LaunchpadMK2(self.preset_manager)
 
         # Application state
@@ -841,9 +850,13 @@ class LightController:
 # ============================================================================
 
 
-def main():
-    """Main application entry point."""
-    light_controller = LightController()
+def main(simulation: bool = False):
+    """Main application entry point.
+    
+    Args:
+        simulation: If True, use simulated lighting software instead of real one
+    """
+    light_controller = LightController(simulation=simulation)
     light_controller.run_main_loop()
 
 

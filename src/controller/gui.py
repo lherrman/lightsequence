@@ -52,15 +52,16 @@ class ControllerThread(QThread):
     controller_ready = Signal()
     controller_error = Signal(str)
 
-    def __init__(self):
+    def __init__(self, simulation: bool = False):
         super().__init__()
         self.controller: t.Optional[LightController] = None
         self.should_stop = False
+        self.simulation = simulation
 
     def run(self):
         """Run the controller in a separate thread."""
         try:
-            self.controller = LightController()
+            self.controller = LightController(simulation=self.simulation)
             if self.controller.initialize_hardware_connections():
                 self.controller_ready.emit()
 
@@ -731,12 +732,13 @@ class LightSequenceGUI(QMainWindow):
     preset_changed_signal = Signal(object)
     preset_saved_signal = Signal()
 
-    def __init__(self):
+    def __init__(self, simulation: bool = False):
         super().__init__()
         self.controller: t.Optional[LightController] = None
         self.controller_thread: t.Optional[ControllerThread] = None
         self.current_editor: t.Optional[PresetSequenceEditor] = None
         self._updating_from_launchpad = False  # Flag to prevent infinite loops
+        self.simulation = simulation
 
         # Connect the signals to the slots
         self.preset_changed_signal.connect(self._update_preset_from_launchpad)
@@ -901,7 +903,7 @@ class LightSequenceGUI(QMainWindow):
 
     def start_controller(self):
         """Start the light controller in a separate thread."""
-        self.controller_thread = ControllerThread()
+        self.controller_thread = ControllerThread(simulation=self.simulation)
         self.controller_thread.controller_ready.connect(self.on_controller_ready)
         self.controller_thread.controller_error.connect(self.on_controller_error)
         self.controller_thread.start()
@@ -1031,8 +1033,12 @@ class LightSequenceGUI(QMainWindow):
         event.accept()
 
 
-def main():
-    """Main entry point for GUI application."""
+def main(simulation: bool = False):
+    """Main entry point for GUI application.
+    
+    Args:
+        simulation: If True, use simulated lighting software instead of real one
+    """
     app = QApplication(sys.argv)
 
     # Set application properties
@@ -1040,7 +1046,7 @@ def main():
     app.setApplicationVersion("1.0")
 
     # Create and show main window
-    window = LightSequenceGUI()
+    window = LightSequenceGUI(simulation=simulation)
     window.show()
 
     sys.exit(app.exec())

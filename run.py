@@ -34,18 +34,26 @@ def main():
         default="INFO",
         help="Set logging level",
     )
+    parser.add_argument(
+        "--simulation",
+        action="store_true",
+        help="Run in simulation mode (simulates lighting software without needing it running)",
+    )
 
     args = parser.parse_args()
 
     # Set logging level
     logging.getLogger().setLevel(getattr(logging, args.log_level))
 
+    if args.simulation:
+        logger.info("🔧 SIMULATION MODE ENABLED - No lighting software required")
+
     if args.mode == "gui":
         try:
             logger.info("Starting GUI application...")
             from src.controller.gui import main as gui_main
 
-            gui_main()
+            gui_main(simulation=args.simulation)
         except ImportError as e:
             logger.error(f"Failed to import GUI components: {e}")
             logger.error("Make sure PySide6 is installed: pip install PySide6")
@@ -59,7 +67,7 @@ def main():
             logger.info("Starting standalone controller...")
             from src.controller.main import main as controller_main
 
-            controller_main()
+            controller_main(simulation=args.simulation)
         except Exception as e:
             logger.error(f"Controller error: {e}")
             sys.exit(1)
