@@ -685,6 +685,9 @@ class LightController:
 
     def _clear_all_active_scenes(self) -> None:
         """Turn off every active scene regardless of origin."""
+        if self.currently_active_preset:
+            self._deactivate_current_preset()
+
         if not self.currently_active_scenes:
             logger.debug("Clear button pressed but no scenes are active")
             return

@@ -9,23 +9,23 @@ logger = logging.getLogger(__name__)
 
 def get_button_type_enum(button_type_str: str):
     """Convert button type string to ButtonType enum.
-    
+
     Args:
         button_type_str: String representation of button type ("TOP", "RIGHT", etc.)
-        
+
     Returns:
         ButtonType enum value
     """
     # Import here to avoid circular imports
     from launchpad import ButtonType
-    
+
     button_type_map = {
         "TOP": ButtonType.TOP,
         "RIGHT": ButtonType.RIGHT,
         "SCENE": ButtonType.SCENE,
         "PRESET": ButtonType.PRESET,
     }
-    
+
     return button_type_map.get(button_type_str.upper(), ButtonType.UNKNOWN)
 
 
@@ -53,7 +53,7 @@ class ColorConfig(TypedDict):
 
 class KeyBinding(TypedDict):
     """Type definition for a single key binding."""
-    
+
     button_type: str  # "TOP", "RIGHT", "SCENE", "PRESET"
     coordinates: List[int]  # [x, y] relative coordinates
 
@@ -121,39 +121,14 @@ class ConfigManager:
             "off": "#000000",
         },
         "key_bindings": {
-            "save_button": {
-                "button_type": "TOP",
-                "coordinates": [0, 0]
-            },
-            "save_shift_button": {
-                "button_type": "TOP",
-                "coordinates": [1, 0]
-            },
-            "background_button": {
-                "button_type": "TOP",
-                "coordinates": [7, 0]
-            },
-            "playback_toggle_button": {
-                "button_type": "RIGHT",
-                "coordinates": [0, 5]
-            },
-            "next_step_button": {
-                "button_type": "RIGHT",
-                "coordinates": [0, 6]
-            },
-            "clear_button": {
-                "button_type": "RIGHT",
-                "coordinates": [0, 7]
-            },
-            "background_brightness_down": {
-                "button_type": "TOP",
-                "coordinates": [5, 0]
-            },
-            "background_brightness_up": {
-              
-                "button_type": "TOP",
-                "coordinates": [6, 0]
-            },
+            "save_button": {"button_type": "TOP", "coordinates": [0, 0]},
+            "save_shift_button": {"button_type": "TOP", "coordinates": [1, 0]},
+            "background_button": {"button_type": "TOP", "coordinates": [7, 0]},
+            "playback_toggle_button": {"button_type": "RIGHT", "coordinates": [0, 5]},
+            "next_step_button": {"button_type": "RIGHT", "coordinates": [0, 6]},
+            "clear_button": {"button_type": "RIGHT", "coordinates": [0, 7]},
+            "background_brightness_down": {"button_type": "TOP", "coordinates": [5, 0]},
+            "background_brightness_up": {"button_type": "TOP", "coordinates": [6, 0]},
         },
     }
 
