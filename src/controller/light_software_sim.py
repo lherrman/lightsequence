@@ -6,7 +6,6 @@ Maintains a 9x5 grid of scene states and provides MIDI feedback.
 """
 
 import logging
-import time
 import typing as t
 import os
 
@@ -39,12 +38,8 @@ class LightSoftwareSim:
         self.midi_out = None
         self.midi_in = None
 
-        # Connection monitoring
+        # Connection state flag
         self.connection_good = False
-        self.last_ping_time = 0.0
-        self.last_ping_response_time = 0.0
-        self.ping_interval = 2.5  # seconds
-        self.ping_timeout = 5.0  # seconds without response = bad connection
 
         # Feedback queue - messages to send back to controller
         self.feedback_queue: t.List[t.Tuple[int, int]] = []
@@ -96,17 +91,14 @@ class LightSoftwareSim:
             if not self.midi_in:
                 logger.error("❌ [SIM] No LightSoftware_in MIDI input found")
 
-            # Initialize connection monitoring if successful
+            # Update connection state if successful
             if self.midi_out and self.midi_in:
                 self.connection_good = True
-                self.last_ping_response_time = time.time()
                 logger.info("✅ [SIM] Successfully connected to MIDI (simulation mode)")
                 return True
             else:
                 self.connection_good = False
-                logger.error(
-                    "❌ [SIM] Failed to connect to MIDI - missing MIDI ports"
-                )
+                logger.error("❌ [SIM] Failed to connect to MIDI - missing MIDI ports")
                 return False
 
         except Exception as e:
@@ -124,7 +116,9 @@ class LightSoftwareSim:
         """
         scene_note = self._scene_to_note_map.get(scene_index)
         if not scene_note:
-            logger.warning(f"[SIM] No MIDI note mapped for scene coordinates {scene_index}")
+            logger.warning(
+                f"[SIM] No MIDI note mapped for scene coordinates {scene_index}"
+            )
             return
 
         logger.debug(
@@ -143,51 +137,6 @@ class LightSoftwareSim:
         logger.debug(
             f"[SIM] Scene {scene_index} toggled to {'ON' if new_state else 'OFF'}"
         )
-
-    def send_ping(self) -> bool:
-        """
-        Process ping command (simulates receiving from controller).
-
-        Returns:
-            True if ping was processed successfully, False otherwise
-        """
-        logger.debug("[SIM] Received ping on note 127")
-        
-        # Queue ping response
-        self.feedback_queue.append((127, 127))
-        
-        return True
-
-    def check_connection_status(self) -> bool:
-        """
-        Check connection status. In simulation mode, always report good connection.
-
-        Returns:
-            True if connection is good, False otherwise
-        """
-        current_time = time.time()
-
-        # Check if it's time to send a ping
-        if current_time - self.last_ping_time >= self.ping_interval:
-            if self.send_ping():
-                self.last_ping_time = current_time
-
-        # Simulation always has good connection if MIDI is connected
-        if self.midi_out and self.midi_in:
-            self.connection_good = True
-            self.last_ping_response_time = current_time
-
-        return self.connection_good
-
-    def attempt_reconnection(self) -> bool:
-        """
-        Attempt to reconnect to MIDI.
-
-        Returns:
-            True if reconnection successful, False otherwise
-        """
-        logger.info("[SIM] Attempting to reconnect...")
-        return self.connect_midi()
 
     def get_scene_coordinates_for_note(
         self, note: int
@@ -218,17 +167,12 @@ class LightSoftwareSim:
             try:
                 for note, velocity in self.feedback_queue:
                     self.midi_out.write([[[0x90, note, velocity], pygame.midi.time()]])
-                    logger.debug(f"[SIM] Sent feedback: note {note}, velocity {velocity}")
-                    
-                    # Track the change we just sent
-                    if note == 127:
-                        self.last_ping_response_time = time.time()
-                        if not self.connection_good:
-                            self.connection_good = True
-                            logger.info("[SIM] Connection restored")
-                    else:
-                        changes[note] = velocity > 0
-                
+                    logger.debug(
+                        f"[SIM] Sent feedback: note {note}, velocity {velocity}"
+                    )
+
+                    changes[note] = velocity > 0
+
                 self.feedback_queue.clear()
             except Exception as e:
                 logger.error(f"[SIM] MIDI feedback send error: {e}")
@@ -243,16 +187,14 @@ class LightSoftwareSim:
                         status, note, velocity = msg_data[0], msg_data[1], msg_data[2]
 
                         if status == 0x90:  # Note on message
-                            logger.debug(f"[SIM] Received command: note {note}, velocity {velocity}")
-                            
-                            # Handle ping
-                            if note == 127:
-                                self.feedback_queue.append((127, 127))
-                            else:
-                                # Handle scene command
-                                scene_coords = self.get_scene_coordinates_for_note(note)
-                                if scene_coords:
-                                    self.send_scene_command(scene_coords)
+                            logger.debug(
+                                f"[SIM] Received command: note {note}, velocity {velocity}"
+                            )
+
+                            # Handle scene command
+                            scene_coords = self.get_scene_coordinates_for_note(note)
+                            if scene_coords:
+                                self.send_scene_command(scene_coords)
 
             except Exception as e:
                 logger.error(f"[SIM] MIDI command processing error: {e}")

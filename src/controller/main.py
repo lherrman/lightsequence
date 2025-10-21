@@ -21,7 +21,7 @@ class LightController:
 
     def __init__(self, simulation: bool = False):
         """Initialize the light controller with all managers and hardware connections.
-        
+
         Args:
             simulation: If True, use simulated lighting software instead of real one
         """
@@ -174,7 +174,7 @@ class LightController:
         self._update_background_display()
 
         # Update connection status indicator
-        self._update_connection_status_from_software()
+        self._update_connection_status_display()
 
     def _update_background_display(self) -> None:
         """Update the background animation display on the launchpad."""
@@ -182,19 +182,6 @@ class LightController:
         self.launchpad_controller.draw_background(
             current_background, app_state=self.current_app_state
         )
-
-    def _update_connection_status_from_software(self) -> None:
-        """Check software connection status and update LED if changed."""
-        current_connection_status = self.light_software.check_connection_status()
-        connection_color = (
-            self.app_config.data["colors"]["connection_good"]
-            if current_connection_status
-            else self.app_config.data["colors"]["connection_bad"]
-        )
-        binding = self.app_config.data["key_bindings"]["connection_status_button"]
-        from config import get_button_type_enum
-        button_type = get_button_type_enum(binding["button_type"])
-        self.launchpad_controller.set_button_led(button_type, binding["coordinates"], connection_color)
 
     def _update_connection_status_display(self) -> None:
         """Update the connection status LED using current connection state."""
@@ -206,9 +193,12 @@ class LightController:
         )
         binding = self.app_config.data["key_bindings"]["connection_status_button"]
         from config import get_button_type_enum
+
         button_type = get_button_type_enum(binding["button_type"])
-        self.launchpad_controller.set_button_led(button_type, binding["coordinates"], status_color)
-    
+        self.launchpad_controller.set_button_led(
+            button_type, binding["coordinates"], status_color
+        )
+
     def _matches_key_binding(self, coordinates: list[int], key_name: str) -> bool:
         """Check if coordinates match a specific key binding."""
         binding = self.app_config.data["key_bindings"][key_name]
@@ -368,7 +358,7 @@ class LightController:
         self._set_save_button_led("save_button", True)
         self._update_preset_leds_for_current_save_mode()
         logger.debug("Entered save mode")
-    
+
     def _enter_save_shift_mode(self) -> None:
         """Enter save shift mode state."""
         self.current_app_state = AppState.SAVE_SHIFT_MODE
@@ -400,18 +390,21 @@ class LightController:
             )
 
         logger.debug("Exited save mode")
-    
+
     def _set_save_button_led(self, button_key: str, is_on: bool) -> None:
         """Set LED state for save buttons using configuration."""
         binding = self.app_config.data["key_bindings"][button_key]
         from config import get_button_type_enum
+
         button_type = get_button_type_enum(binding["button_type"])
         color = (
-            self.app_config.data["colors"]["save_mode_on"] 
-            if is_on 
+            self.app_config.data["colors"]["save_mode_on"]
+            if is_on
             else self.app_config.data["colors"]["off"]
         )
-        self.launchpad_controller.set_button_led(button_type, binding["coordinates"], color)
+        self.launchpad_controller.set_button_led(
+            button_type, binding["coordinates"], color
+        )
 
     # ============================================================================
     # BACKGROUND ANIMATION CONTROLS
@@ -525,14 +518,17 @@ class LightController:
             self._set_playback_button_led("next_step_button", "next_step")
         else:
             self._set_playback_button_led("next_step_button", "off")
-    
+
     def _set_playback_button_led(self, button_key: str, color_key: str) -> None:
         """Set LED for playback buttons using configuration."""
         binding = self.app_config.data["key_bindings"][button_key]
         from config import get_button_type_enum
+
         button_type = get_button_type_enum(binding["button_type"])
         color = self.app_config.data["colors"][color_key]
-        self.launchpad_controller.set_button_led(button_type, binding["coordinates"], color)
+        self.launchpad_controller.set_button_led(
+            button_type, binding["coordinates"], color
+        )
 
     # ============================================================================
     # PRESET ACTIVATION AND MANAGEMENT
@@ -735,25 +731,34 @@ class LightController:
             for row in range(3):
                 coordinates = [column, row]
                 has_preset = tuple(coordinates) in existing_preset_indices
-                
+
                 if has_preset:
                     # Button has a preset - use appropriate save mode color
                     if self.current_app_state == AppState.SAVE_SHIFT_MODE:
-                        button_led_color = self.app_config.data["colors"]["preset_save_shift_mode"]
+                        button_led_color = self.app_config.data["colors"][
+                            "preset_save_shift_mode"
+                        ]
                     else:  # AppState.SAVE_MODE
-                        button_led_color = self.app_config.data["colors"]["preset_save_mode"]
+                        button_led_color = self.app_config.data["colors"][
+                            "preset_save_mode"
+                        ]
                 else:
                     # Button has no preset
                     if self.current_app_state == AppState.SAVE_MODE:
                         # In save mode: reduced brightness white
                         from utils import hex_to_rgb
-                        base_color = hex_to_rgb(self.app_config.data["colors"]["save_mode_preset_background"])
+
+                        base_color = hex_to_rgb(
+                            self.app_config.data["colors"][
+                                "save_mode_preset_background"
+                            ]
+                        )
                         brightness = self.app_config.data["brightness_background"]
                         button_led_color = [c * brightness for c in base_color]
                     else:  # AppState.SAVE_SHIFT_MODE
                         # In save shift mode: turn off empty buttons
                         button_led_color = self.app_config.data["colors"]["off"]
-                
+
                 self.launchpad_controller.set_button_led(
                     ButtonType.PRESET, coordinates, button_led_color
                 )
@@ -830,7 +835,7 @@ class LightController:
 
 def main(simulation: bool = False):
     """Main application entry point.
-    
+
     Args:
         simulation: If True, use simulated lighting software instead of real one
     """

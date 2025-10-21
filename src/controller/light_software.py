@@ -8,7 +8,6 @@ Only tested with DasLight 4
 
 import os
 import logging
-import time
 import typing as t
 
 os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"
@@ -27,13 +26,8 @@ class LightSoftware:
         # MIDI connection variables
         self.midi_out = None
         self.midi_in = None
-
-        # Connection monitoring - start as False until connected
+        # Connection state flag
         self.connection_good = False
-        self.last_ping_time = 0.0
-        self.last_ping_response_time = 0.0
-        self.ping_interval = 2.5  # seconds
-        self.ping_timeout = 5.0  # seconds without response = bad connection
 
     def _build_scene_note_mapping(self) -> t.Dict[t.Tuple[int, int], int]:
         """
@@ -65,27 +59,27 @@ class LightSoftware:
 
             for i in range(pygame.midi.get_count()):
                 info = pygame.midi.get_device_info(i)
-                name = info[1].decode() if info[1] else ""
-
-                # Connect output (to LightSoftware via LightSoftware_in)
-                if "lightsoftware_in" in name.lower() and info[3]:  # output device
-                    self.midi_out = pygame.midi.Output(i)
-                    logger.info(f"✅ LightSoftware OUT: {name}")
+                interface, name, is_input, is_output, opened = info
+                name = name.decode() if name else ""
 
                 # Connect input (from LightSoftware via LightSoftware_out)
-                elif "lightsoftware_out" in name.lower() and info[2]:  # input device
+                if "lightsoftware_out" in name.lower() and is_input:
                     self.midi_in = pygame.midi.Input(i)
                     logger.info(f"✅ LightSoftware IN: {name}")
+
+                # Connect output (to LightSoftware via LightSoftware_in)
+                elif "lightsoftware_in" in name.lower() and is_output:
+                    self.midi_out = pygame.midi.Output(i)
+                    logger.info(f"✅ LightSoftware OUT: {name}")
 
             if not self.midi_out:
                 logger.error("❌ No LightSoftware_in MIDI output found")
             if not self.midi_in:
                 logger.error("❌ No LightSoftware_out MIDI input found")
 
-            # Initialize connection monitoring if successful
+            # Update connection state if successful
             if self.midi_out and self.midi_in:
                 self.connection_good = True
-                self.last_ping_response_time = time.time()
                 logger.info("✅ Successfully connected to LightSoftware MIDI")
                 return True
             else:
@@ -124,61 +118,6 @@ class LightSoftware:
         except Exception as e:
             logger.error(f"MIDI send error: {e}")
 
-    def send_ping(self) -> bool:
-        """
-        Send a ping to LightSoftware on note 127 to check connection status.
-
-        Returns:
-            True if ping was sent successfully, False otherwise
-        """
-        if not self.midi_out:
-            return False
-
-        try:
-            self.midi_out.write([[[0x90, 127, 127], pygame.midi.time()]])
-            logger.debug("Sent ping to LightSoftware on note 127")
-            return True
-        except Exception as e:
-            logger.error(f"MIDI ping error: {e}")
-            return False
-
-    def check_connection_status(self) -> bool:
-        """
-        Check connection status and send pings as needed.
-
-        Returns:
-            True if connection is good, False otherwise
-        """
-
-        current_time = time.time()
-
-        # Check if it's time to send a ping
-        if current_time - self.last_ping_time >= self.ping_interval:
-            if self.send_ping():
-                self.last_ping_time = current_time
-            else:
-                # Failed to send ping - try to reconnect
-                logger.warning("Failed to send ping - attempting reconnection")
-                self.attempt_reconnection()
-
-        # Check if we've lost connection (no response to ping)
-        if current_time - self.last_ping_response_time > self.ping_timeout:
-            if self.connection_good:
-                self.connection_good = False
-                logger.warning("LightSoftware connection lost")
-
-        return self.connection_good
-
-    def attempt_reconnection(self) -> bool:
-        """
-        Attempt to reconnect to LightSoftware.
-
-        Returns:
-            True if reconnection successful, False otherwise
-        """
-        logger.info("Attempting to reconnect to LightSoftware...")
-        return self.connect_midi()
-
     def get_scene_coordinates_for_note(
         self, note: int
     ) -> t.Optional[t.Tuple[int, int]]:
@@ -213,15 +152,6 @@ class LightSoftware:
                     status, note, velocity = msg_data[0], msg_data[1], msg_data[2]
 
                     if status == 0x90:  # Note on message
-                        # Check if this is a ping response (note 127)
-                        if note == 127 and velocity > 0:
-                            import time
-
-                            self.last_ping_response_time = time.time()
-                            if not self.connection_good:
-                                self.connection_good = True
-                                logger.info("LightSoftware connection restored")
-
                         # Only track changes, not repeated states
                         changes[note] = velocity > 0
 
