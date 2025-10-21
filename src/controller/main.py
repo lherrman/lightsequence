@@ -681,6 +681,13 @@ class LightController:
             self.currently_active_scenes.add(scene_tuple)
             self.preset_controlled_scenes.add(scene_tuple)
 
+        # Ensure all target scenes are tracked as preset-controlled even if already active
+        if target_scene_set:
+            self.preset_controlled_scenes.update(target_scene_set)
+            self.currently_active_scenes.update(target_scene_set)
+        else:
+            self.preset_controlled_scenes.clear()
+
         self._update_clear_button_display()
 
     def _clear_all_active_scenes(self) -> None:
