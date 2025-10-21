@@ -79,8 +79,6 @@ class ControllerThread(QThread):
                         if button_event:
                             self.controller._route_button_event_to_handler(button_event)
 
-                        # Update connection status indicator
-                        self.controller._update_connection_status_display()
 
                         # Process MIDI feedback
                         self.controller.process_midi_feedback_from_external()

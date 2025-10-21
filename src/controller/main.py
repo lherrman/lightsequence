@@ -43,6 +43,7 @@ class LightController:
         self.current_app_state = AppState.NORMAL
         self.currently_active_preset: t.Optional[t.List[int]] = None
         self.currently_active_scenes: t.Set[t.Tuple[int, int]] = set()
+        self.preset_controlled_scenes: t.Set[t.Tuple[int, int]] = set()
         self.is_playback_enabled = True  # Default to playback enabled
 
         # Configuration
@@ -84,8 +85,8 @@ class LightController:
         else:
             logger.error("Failed to connect to DasLight")
 
-        # Update connection status immediately after connection attempt
-        self._update_connection_status_display()
+        # Update clear button status immediately after connection attempt
+        self._update_clear_button_display()
 
         return midi_connection_successful and self.launchpad_controller.is_connected
 
@@ -97,8 +98,8 @@ class LightController:
 
         logger.info("Light controller started. Press Ctrl+C to exit.")
 
-        # Initialize connection status display
-        self._update_connection_status_display()
+        # Initialize clear button display
+        self._update_clear_button_display()
 
         try:
             while True:
@@ -154,6 +155,7 @@ class LightController:
                     self.currently_active_scenes.add(scene_coordinates)
                 else:
                     self.currently_active_scenes.discard(scene_coordinates)
+                    self.preset_controlled_scenes.discard(scene_coordinates)
 
                 # Update the corresponding LED on the launchpad
                 scene_color = self._determine_scene_led_color(
@@ -173,8 +175,8 @@ class LightController:
         # Update background animation
         self._update_background_display()
 
-        # Update connection status indicator
-        self._update_connection_status_display()
+        # Update clear button indicator
+        self._update_clear_button_display()
 
     def _update_background_display(self) -> None:
         """Update the background animation display on the launchpad."""
@@ -183,20 +185,17 @@ class LightController:
             current_background, app_state=self.current_app_state
         )
 
-    def _update_connection_status_display(self) -> None:
-        """Update the connection status LED using current connection state."""
-        current_status = self.light_software.connection_good
-        status_color = (
-            self.app_config.data["colors"]["connection_good"]
-            if current_status
-            else self.app_config.data["colors"]["connection_bad"]
-        )
-        binding = self.app_config.data["key_bindings"]["connection_status_button"]
+    def _update_clear_button_display(self) -> None:
+        """Reflect whether there are active scenes on the clear button LED."""
+        binding = self.app_config.data["key_bindings"]["clear_button"]
         from config import get_button_type_enum
 
         button_type = get_button_type_enum(binding["button_type"])
+        color_key = "success_flash" if self.currently_active_scenes else "off"
         self.launchpad_controller.set_button_led(
-            button_type, binding["coordinates"], status_color
+            button_type,
+            binding["coordinates"],
+            self.app_config.data["colors"][color_key],
         )
 
     def _matches_key_binding(self, coordinates: list[int], key_name: str) -> bool:
@@ -275,6 +274,8 @@ class LightController:
             self._toggle_sequence_playback()
         elif self._matches_key_binding(coordinates, "next_step_button"):
             self._advance_to_next_sequence_step()
+        elif self._matches_key_binding(coordinates, "clear_button"):
+            self._clear_all_active_scenes()
         else:
             # Treat other right column buttons as scene buttons
             self._handle_scene_button_press(coordinates, is_pressed)
@@ -643,10 +644,10 @@ class LightController:
         self, target_scene_set: t.Set[t.Tuple[int, int]]
     ) -> None:
         """Smart scene transition that only toggles scenes that need to change."""
-        # Calculate which scenes need to be deactivated
-        scenes_to_deactivate = self.currently_active_scenes - target_scene_set
+        # Determine preset-controlled scenes that should be deactivated
+        scenes_to_deactivate = self.preset_controlled_scenes - target_scene_set
 
-        # Calculate which scenes need to be activated
+        # Determine scenes that need activation (and aren't already active)
         scenes_to_activate = target_scene_set - self.currently_active_scenes
 
         logger.debug(
@@ -663,6 +664,9 @@ class LightController:
                 self.app_config.data["colors"]["off"],
             )
 
+            self.currently_active_scenes.discard(scene_tuple)
+            self.preset_controlled_scenes.discard(scene_tuple)
+
         # Activate scenes that should be turned on
         for scene_tuple in scenes_to_activate:
             self.light_software.send_scene_command(scene_tuple)  # Toggle on
@@ -674,8 +678,29 @@ class LightController:
                 ButtonType.SCENE, coordinates_list, scene_led_color
             )
 
-        # Update our internal tracking to the expected final state
-        self.currently_active_scenes = target_scene_set.copy()
+            self.currently_active_scenes.add(scene_tuple)
+            self.preset_controlled_scenes.add(scene_tuple)
+
+        self._update_clear_button_display()
+
+    def _clear_all_active_scenes(self) -> None:
+        """Turn off every active scene regardless of origin."""
+        if not self.currently_active_scenes:
+            logger.debug("Clear button pressed but no scenes are active")
+            return
+
+        active_scenes_snapshot = list(self.currently_active_scenes)
+        for scene_tuple in active_scenes_snapshot:
+            self.light_software.send_scene_command(scene_tuple)
+            self.launchpad_controller.set_button_led(
+                ButtonType.SCENE,
+                [scene_tuple[0], scene_tuple[1]],
+                self.app_config.data["colors"]["off"],
+            )
+
+        self.currently_active_scenes.clear()
+        self.preset_controlled_scenes.clear()
+        self._update_clear_button_display()
 
     def _determine_scene_led_color(
         self, scene_coordinates: t.Tuple[int, int], is_active: bool

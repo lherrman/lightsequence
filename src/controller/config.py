@@ -66,7 +66,7 @@ class KeyBindings(TypedDict):
     background_button: KeyBinding
     playback_toggle_button: KeyBinding
     next_step_button: KeyBinding
-    connection_status_button: KeyBinding
+    clear_button: KeyBinding
     background_brightness_down: KeyBinding
     background_brightness_up: KeyBinding
 
@@ -141,7 +141,7 @@ class ConfigManager:
                 "button_type": "RIGHT",
                 "coordinates": [0, 6]
             },
-            "connection_status_button": {
+            "clear_button": {
                 "button_type": "RIGHT",
                 "coordinates": [0, 7]
             },
@@ -173,6 +173,16 @@ class ConfigManager:
                     merged_config = self._deep_merge_config(
                         self.DEFAULT_CONFIG, config_data
                     )
+
+                    # Migrate legacy connection status button to clear button
+                    key_bindings = merged_config.get("key_bindings", {})
+                    if (
+                        "connection_status_button" in key_bindings
+                        and "clear_button" not in key_bindings
+                    ):
+                        key_bindings["clear_button"] = key_bindings.pop(
+                            "connection_status_button"
+                        )
 
                     # Save back to file if new keys were added
                     if merged_config != config_data:
