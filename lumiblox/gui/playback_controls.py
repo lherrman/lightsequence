@@ -4,12 +4,11 @@ Playback Controls Widget
 Compact control bar for sequence playback.
 """
 
-import typing as t
+import qtawesome as qta
 from PySide6.QtWidgets import (
     QWidget,
     QHBoxLayout,
     QPushButton,
-    QLabel,
 )
 from PySide6.QtCore import Signal
 
@@ -29,47 +28,42 @@ class PlaybackControls(QWidget):
     def setup_ui(self):
         """Setup the UI."""
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(5, 3, 5, 3)
+        layout.setContentsMargins(5, 5, 5, 5)
         layout.setSpacing(8)
         
-        # Label
-        label = QLabel("Playback:")
-        label.setStyleSheet("color: #cccccc; font-weight: bold; font-size: 11px;")
-        layout.addWidget(label)
+        # Play/Pause button with icon
+        self.play_icon = qta.icon('fa5s.play', color='white')
+        self.pause_icon = qta.icon('fa5s.pause', color='white')
         
-        # Play/Pause button
-        self.play_pause_btn = QPushButton("▶ Play")
-        self.play_pause_btn.setFixedHeight(28)
+        self.play_pause_btn = QPushButton()
+        self.play_pause_btn.setIcon(self.play_icon)
+        self.play_pause_btn.setFixedSize(34, 30)
         self.play_pause_btn.setStyleSheet("""
             QPushButton {
-                background-color: #4a9eff;
-                color: white;
-                font-weight: bold;
-                font-size: 11px;
+                background-color: #555555;
                 border-radius: 3px;
-                padding: 0 15px;
+                border: 1px solid #666666;
             }
             QPushButton:hover {
-                background-color: #5fadff;
+                background-color: #666666;
             }
             QPushButton:pressed {
-                background-color: #3a8eef;
+                background-color: #444444;
             }
         """)
         self.play_pause_btn.clicked.connect(self._on_play_pause_clicked)
         layout.addWidget(self.play_pause_btn)
         
-        # Next Step button
-        self.next_step_btn = QPushButton("⏭ Next")
-        self.next_step_btn.setFixedHeight(28)
+        # Next Step button with icon
+        next_icon = qta.icon('fa5s.step-forward', color='white')
+        self.next_step_btn = QPushButton()
+        self.next_step_btn.setIcon(next_icon)
+        self.next_step_btn.setFixedSize(34, 30)
         self.next_step_btn.setStyleSheet("""
             QPushButton {
                 background-color: #555555;
-                color: white;
-                font-weight: bold;
-                font-size: 11px;
                 border-radius: 3px;
-                padding: 0 12px;
+                border: 1px solid #666666;
             }
             QPushButton:hover {
                 background-color: #666666;
@@ -81,23 +75,22 @@ class PlaybackControls(QWidget):
         self.next_step_btn.clicked.connect(self.next_step_clicked.emit)
         layout.addWidget(self.next_step_btn)
         
-        # Clear button
-        self.clear_btn = QPushButton("✕ Clear")
-        self.clear_btn.setFixedHeight(28)
+        # Clear button with icon
+        clear_icon = qta.icon('fa5s.stop', color='white')
+        self.clear_btn = QPushButton()
+        self.clear_btn.setIcon(clear_icon)
+        self.clear_btn.setFixedSize(34, 30)
         self.clear_btn.setStyleSheet("""
             QPushButton {
-                background-color: #cc4444;
-                color: white;
-                font-weight: bold;
-                font-size: 11px;
+                background-color: #555555;
                 border-radius: 3px;
-                padding: 0 12px;
+                border: 1px solid #666666;
             }
             QPushButton:hover {
-                background-color: #dd5555;
+                background-color: #666666;
             }
             QPushButton:pressed {
-                background-color: #bb3333;
+                background-color: #444444;
             }
         """)
         self.clear_btn.clicked.connect(self.clear_clicked.emit)
@@ -114,39 +107,33 @@ class PlaybackControls(QWidget):
     def update_play_pause_button(self):
         """Update play/pause button appearance."""
         if self.is_playing:
-            self.play_pause_btn.setText("⏸ Pause")
-            self.play_pause_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #ff9944;
-                    color: white;
-                    font-weight: bold;
-                    font-size: 11px;
-                    border-radius: 3px;
-                    padding: 0 15px;
-                }
-                QPushButton:hover {
-                    background-color: #ffaa55;
-                }
-                QPushButton:pressed {
-                    background-color: #ee8833;
-                }
-            """)
-        else:
-            self.play_pause_btn.setText("▶ Play")
+            self.play_pause_btn.setIcon(self.pause_icon)
             self.play_pause_btn.setStyleSheet("""
                 QPushButton {
                     background-color: #4a9eff;
-                    color: white;
-                    font-weight: bold;
-                    font-size: 11px;
                     border-radius: 3px;
-                    padding: 0 15px;
+                    border: 1px solid #5fadff;
                 }
                 QPushButton:hover {
                     background-color: #5fadff;
                 }
                 QPushButton:pressed {
                     background-color: #3a8eef;
+                }
+            """)
+        else:
+            self.play_pause_btn.setIcon(self.play_icon)
+            self.play_pause_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #555555;
+                    border-radius: 3px;
+                    border: 1px solid #666666;
+                }
+                QPushButton:hover {
+                    background-color: #666666;
+                }
+                QPushButton:pressed {
+                    background-color: #444444;
                 }
             """)
     

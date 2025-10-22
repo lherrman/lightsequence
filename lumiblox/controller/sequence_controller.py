@@ -26,8 +26,7 @@ class SequenceStep:
 
 
 class PlaybackState(str, Enum):
-    """Playback states for sequences."""
-    STOPPED = "stopped"
+    """Playback states."""
     PLAYING = "playing"
     PAUSED = "paused"
 
@@ -51,14 +50,14 @@ class SequenceController:
         # Playback state
         self.active_sequence: t.Optional[t.Tuple[int, int]] = None
         self.current_step_index: int = 0
-        self.playback_state = PlaybackState.STOPPED
+        self.playback_state = PlaybackState.PLAYING
         self.playback_thread: t.Optional[threading.Thread] = None
         self.stop_event = threading.Event()
         
         # Callbacks
         self.on_step_change: t.Optional[t.Callable[[t.List[t.Tuple[int, int]]], None]] = None
         self.on_sequence_complete: t.Optional[t.Callable[[], None]] = None
-        self.on_playback_state_change: t.Optional[t.Callable[[PlaybackState], None]] = None
+        self.on_playback_state_change: t.Optional[t.Callable[[bool], None]] = None
         
         # Load sequences from storage
         self._load_from_storage()
@@ -202,105 +201,92 @@ class SequenceController:
     # PLAYBACK CONTROL
     # ============================================================================
     
-    def start_playback(self, index: t.Tuple[int, int], keep_state: bool = False) -> bool:
+    def activate_sequence(self, index: t.Tuple[int, int]) -> bool:
         """
-        Start playing a sequence.
+        Activate a sequence (switch to it, maintain play/pause state).
         
         Args:
-            index: The sequence to play
-            keep_state: If True, maintain current playback state when switching sequences
+            index: The sequence to activate
         """
         if index not in self.sequences:
             logger.warning(f"Sequence {index} not found")
             return False
         
-        # Store current state
-        was_playing = self.playback_state == PlaybackState.PLAYING
-        
         # Stop any current playback thread
-        if self.playback_state != PlaybackState.STOPPED:
-            self.stop_event.set()
-            if self.playback_thread and self.playback_thread.is_alive():
-                self.playback_thread.join(timeout=1.0)
+        self.stop_event.set()
+        if self.playback_thread and self.playback_thread.is_alive():
+            self.playback_thread.join(timeout=1.0)
         
         # Switch to new sequence
         self.active_sequence = index
         self.current_step_index = 0
         self.stop_event.clear()
         
-        # Determine playback state
-        if keep_state and was_playing:
-            self.playback_state = PlaybackState.PLAYING
-        else:
-            self.playback_state = PlaybackState.PLAYING
-        
-        # Notify state change
-        if self.on_playback_state_change:
-            self.on_playback_state_change(self.playback_state)
-        
-        # For single-step sequences, just trigger the step
+        # Trigger first step
         sequence = self.sequences[index]
-        if len(sequence) == 1:
-            if self.on_step_change:
-                self.on_step_change(sequence[0].scenes)
-            logger.debug(f"Activated single-step sequence {index}")
-            return True
+        if self.on_step_change:
+            self.on_step_change(sequence[0].scenes)
         
-        # For multi-step sequences, start playback thread if playing
-        if self.playback_state == PlaybackState.PLAYING:
+        # Start playback thread if playing (for multi-step sequences)
+        if self.playback_state == PlaybackState.PLAYING and len(sequence) > 1:
             self.playback_thread = threading.Thread(target=self._playback_loop, daemon=True)
             self.playback_thread.start()
-            logger.debug(f"Started playback of sequence {index}")
-        else:
-            # If paused, trigger first step but don't start thread
-            if self.on_step_change:
-                self.on_step_change(sequence[0].scenes)
         
+        logger.debug(f"Activated sequence {index}")
         return True
     
-    def stop_playback(self) -> None:
-        """Stop current playback."""
-        if self.playback_state != PlaybackState.STOPPED:
-            self.playback_state = PlaybackState.STOPPED
-            self.stop_event.set()
-            
-            if self.playback_thread and self.playback_thread.is_alive():
-                self.playback_thread.join(timeout=1.0)
-            
-            self.active_sequence = None
-            self.current_step_index = 0
+    def play(self) -> None:
+        """Start playing."""
+        if self.playback_state != PlaybackState.PLAYING:
+            self.playback_state = PlaybackState.PLAYING
             
             # Notify state change
             if self.on_playback_state_change:
-                self.on_playback_state_change(self.playback_state)
+                self.on_playback_state_change(True)
             
-            logger.debug("Playback stopped")
+            # Start playback thread if there's an active multi-step sequence
+            if self.active_sequence:
+                sequence = self.sequences.get(self.active_sequence)
+                if sequence and len(sequence) > 1:
+                    self.stop_event.clear()
+                    self.playback_thread = threading.Thread(target=self._playback_loop, daemon=True)
+                    self.playback_thread.start()
+            
+            logger.debug("Playback started")
     
-    def pause_playback(self) -> None:
-        """Pause current playback."""
+    def pause(self) -> None:
+        """Pause playback."""
         if self.playback_state == PlaybackState.PLAYING:
             self.playback_state = PlaybackState.PAUSED
             
             # Notify state change
             if self.on_playback_state_change:
-                self.on_playback_state_change(self.playback_state)
+                self.on_playback_state_change(False)
             
             logger.debug("Playback paused")
     
-    def resume_playback(self) -> None:
-        """Resume paused playback."""
-        if self.playback_state == PlaybackState.PAUSED:
-            self.playback_state = PlaybackState.PLAYING
-            
-            # Notify state change
-            if self.on_playback_state_change:
-                self.on_playback_state_change(self.playback_state)
-            
-            logger.debug("Playback resumed")
+    def toggle_play_pause(self) -> None:
+        """Toggle between play and pause."""
+        if self.playback_state == PlaybackState.PLAYING:
+            self.pause()
+        else:
+            self.play()
+    
+    def clear(self) -> None:
+        """Clear active sequence (keep play/pause state)."""
+        self.stop_event.set()
+        if self.playback_thread and self.playback_thread.is_alive():
+            self.playback_thread.join(timeout=1.0)
+        
+        self.active_sequence = None
+        self.current_step_index = 0
+        
+        # Don't change playback state - it stays as is
+        logger.debug("Cleared sequence")
     
     def next_step(self) -> bool:
         """Advance to next step manually."""
-        if not self.active_sequence or self.playback_state == PlaybackState.STOPPED:
+        if not self.active_sequence:
             return False
         
         sequence = self.sequences.get(self.active_sequence)
@@ -323,7 +309,7 @@ class SequenceController:
         sequence = self.sequences[self.active_sequence]
         should_loop = self.loop_settings.get(self.active_sequence, True)
         
-        while self.playback_state != PlaybackState.STOPPED and not self.stop_event.is_set():
+        while not self.stop_event.is_set():
             # Handle pause
             if self.playback_state == PlaybackState.PAUSED:
                 time.sleep(0.1)
@@ -369,9 +355,10 @@ class SequenceController:
                             self.on_sequence_complete()
                         except Exception as e:
                             logger.error(f"Error in complete callback: {e}")
-                    self.playback_state = PlaybackState.STOPPED
                     break
     
     def cleanup(self) -> None:
         """Clean up resources."""
-        self.stop_playback()
+        self.stop_event.set()
+        if self.playback_thread and self.playback_thread.is_alive():
+            self.playback_thread.join(timeout=1.0)

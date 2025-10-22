@@ -15,6 +15,7 @@ dependencies = [
     "typing-extensions>=4.15.0",
     "isort>=6.1.0",
     "mss>=10.1.0",
+    "qtawesome>=1.4.0",
 ]
 
 [tool.uv]

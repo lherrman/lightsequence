@@ -15,7 +15,7 @@ import time
 import typing as t
 from pathlib import Path
 
-from lumiblox.controller.sequence_controller import SequenceController, SequenceStep, PlaybackState
+from lumiblox.controller.sequence_controller import SequenceController, SequenceStep
 from lumiblox.controller.scene_controller import SceneController
 from lumiblox.controller.input_handler import InputHandler, ButtonEvent, ButtonType
 from lumiblox.controller.led_controller import LEDController
@@ -295,7 +295,7 @@ class LightController:
         """Activate or deactivate a sequence."""
         if self.active_sequence == index:
             # Deactivate
-            self.sequence_ctrl.stop_playback()
+            self.sequence_ctrl.clear()
             self.scene_ctrl.clear_controlled()
             self.active_sequence = None
             self.led_ctrl.update_sequence_led(index, False)
@@ -306,9 +306,9 @@ class LightController:
             if self.active_sequence:
                 self.led_ctrl.update_sequence_led(self.active_sequence, False)
             
-            # Activate new - always keep playback state
+            # Activate new sequence
             self.active_sequence = index
-            self.sequence_ctrl.start_playback(index, keep_state=True)
+            self.sequence_ctrl.activate_sequence(index)
             self.led_ctrl.update_sequence_led(index, True)
             if self.on_sequence_changed:
                 self.on_sequence_changed(index)

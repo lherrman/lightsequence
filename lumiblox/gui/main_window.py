@@ -280,6 +280,11 @@ class LightSequenceGUI(QMainWindow):
                 # Register playback state change callback
                 if hasattr(self.controller, 'sequence_ctrl'):
                     self.controller.sequence_ctrl.on_playback_state_change = self.on_playback_state_changed
+                    
+                    # Update initial playback state
+                    from lumiblox.controller.sequence_controller import PlaybackState
+                    is_playing = self.controller.sequence_ctrl.playback_state == PlaybackState.PLAYING
+                    self.playback_controls.set_playing(is_playing)
                 
                 # Register device state change callback
                 if hasattr(self.controller, 'device_manager'):
@@ -435,32 +440,15 @@ class LightSequenceGUI(QMainWindow):
         # Use signal for thread-safe GUI update
         self.playback_state_changed_signal.emit(state)
     
-    def _update_playback_controls(self, state):
+    def _update_playback_controls(self, is_playing: bool):
         """Update playback controls based on state (runs on GUI thread)."""
-        from lumiblox.controller.sequence_controller import PlaybackState
-        
-        # Update button state to reflect actual playback state
-        is_playing = state == PlaybackState.PLAYING
         self.playback_controls.set_playing(is_playing)
     
     def on_play_pause_clicked(self):
         """Handle play/pause button click."""
         if not self.controller:
             return
-        
-        from lumiblox.controller.sequence_controller import PlaybackState
-        
-        # Toggle between playing and paused
-        if self.controller.sequence_ctrl.playback_state == PlaybackState.PLAYING:
-            self.controller.sequence_ctrl.pause_playback()
-        elif self.controller.sequence_ctrl.playback_state == PlaybackState.PAUSED:
-            self.controller.sequence_ctrl.resume_playback()
-        elif self.controller.active_sequence:
-            # Start playing the active sequence
-            self.controller.sequence_ctrl.start_playback(
-                self.controller.active_sequence, 
-                keep_state=False
-            )
+        self.controller.sequence_ctrl.toggle_play_pause()
     
     def on_next_step_clicked(self):
         """Handle next step button click."""
@@ -469,14 +457,14 @@ class LightSequenceGUI(QMainWindow):
         self.controller.sequence_ctrl.next_step()
     
     def on_clear_clicked(self):
-        """Handle clear button click - stop and clear sequence."""
+        """Handle clear button click."""
         if not self.controller:
             return
         
-        # Stop playback and clear sequence
-        self.controller.sequence_ctrl.stop_playback()
+        # Clear sequence
+        self.controller.sequence_ctrl.clear()
         
-        # Clear active sequence
+        # Update controller state
         if self.controller.active_sequence:
             old_seq = self.controller.active_sequence
             self.controller.active_sequence = None
