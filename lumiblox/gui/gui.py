@@ -19,11 +19,11 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QSizePolicy,
 )
-from PySide6.QtCore import Qt, Signal, QThread, Slot
+from PySide6.QtCore import Qt, Signal, QThread
 from PySide6.QtGui import QFont
 
-from lumiblox.controller.main import LightController
-from lumiblox.controller.sequence import SequenceStep
+from lumiblox.controller.light_controller import LightController
+from lumiblox.controller.sequence_controller import SequenceStep
 from lumiblox.common.device_state import DeviceType, DeviceState
 
 # Configuration constants
@@ -64,7 +64,7 @@ class ControllerThread(QThread):
         try:
             self.controller = LightController(simulation=self.simulation)
             # Initialize hardware connections (non-blocking)
-            self.controller.initialize_hardware_connections()
+            self.controller.initialize()
             
             # Always emit ready signal - app works without hardware
             self.controller_ready.emit()
@@ -76,22 +76,12 @@ class ControllerThread(QThread):
 
             while not self.should_stop:
                 try:
-                    # Handle button events (only if launchpad connected)
-                    if self.controller.launchpad_controller.is_connected:
-                        button_event = (
-                            self.controller.launchpad_controller.get_button_events()
-                        )
-                        if button_event:
-                            self.controller._route_button_event_to_handler(button_event)
+                    # Process inputs
+                    self.controller._process_launchpad_input()
+                    self.controller._process_midi_feedback()
 
-                    # Process MIDI feedback (only if light software connected)
-                    self.controller.process_midi_feedback_from_external()
-
-                    # Update background animation (only if launchpad connected)
-                    if self.controller.launchpad_controller.is_connected:
-                        self.controller.launchpad_controller.draw_background(
-                            self.controller.background_manager.get_current_background()
-                        )
+                    # Update outputs
+                    self.controller._update_leds()
 
                     time.sleep(0.02)  # Small delay to prevent excessive CPU usage
                 except Exception as e:
@@ -103,7 +93,7 @@ class ControllerThread(QThread):
             self.controller_error.emit(f"Controller error: {e}")
         finally:
             if self.controller:
-                self.controller.cleanup_resources()
+                self.controller.cleanup()
 
     def stop(self):
         """Stop the controller thread."""
@@ -111,8 +101,8 @@ class ControllerThread(QThread):
         if self.controller:
             try:
                 # Clear any callbacks to prevent cross-thread calls during shutdown
-                self.controller.on_preset_changed = None
-                self.controller.on_preset_saved = None
+                self.controller.on_sequence_changed = None
+                self.controller.on_sequence_saved = None
                 # Don't call cleanup here - it's called in the thread's run() finally block
             except Exception as e:
                 logger.error(f"Error clearing callbacks: {e}")
@@ -495,7 +485,7 @@ class SequenceStepWidget(QFrame):
 
     def on_scene_toggled(self, x: int, y: int, active: bool):
         """Called when a scene button is toggled."""
-        scene_coord = [x, y]
+        scene_coord = (x, y)  # Use tuple for consistency
 
         if active:
             if scene_coord not in self.step.scenes:
@@ -505,10 +495,10 @@ class SequenceStepWidget(QFrame):
 
         self.step_changed.emit()
 
-    def get_active_scenes(self) -> t.List[t.List[int]]:
+    def get_active_scenes(self) -> t.List[t.Tuple[int, int]]:
         """Get currently active scenes."""
         return [
-            list(coord) for coord, btn in self.scene_buttons.items() if btn.is_active
+            coord for coord, btn in self.scene_buttons.items() if btn.is_active
         ]
 
 
@@ -588,11 +578,11 @@ class PresetSequenceEditor(QWidget):
         layout.addLayout(button_layout)
 
     def load_sequence(self):
-        """Load sequence from preset manager."""
+        """Load sequence from sequence controller."""
         if not self.controller:
             return
 
-        steps = self.controller.preset_manager.get_sequence(list(self.preset_index))
+        steps = self.controller.sequence_ctrl.get_sequence(self.preset_index)
         if steps:
             self.sequence_steps = steps
         else:
@@ -601,23 +591,21 @@ class PresetSequenceEditor(QWidget):
                 SequenceStep(scenes=[], duration=DEFAULT_STEP_DURATION, name="Step 1")
             ]
 
-        # Load loop setting
-        loop_setting = self.controller.preset_manager.get_loop_setting(
-            list(self.preset_index)
-        )
+        # Load loop setting from loop_settings dict
+        loop_setting = self.controller.sequence_ctrl.loop_settings.get(self.preset_index, True)
         self.loop_checkbox.setChecked(loop_setting)
 
         self.rebuild_step_widgets()
 
     def save_sequence(self):
-        """Save sequence to preset manager."""
+        """Save sequence to sequence controller."""
         if not self.controller:
             return
 
         try:
             loop_enabled = self.loop_checkbox.isChecked()
-            self.controller.preset_manager.save_sequence(
-                list(self.preset_index), self.sequence_steps, loop_enabled
+            self.controller.sequence_ctrl.save_sequence(
+                self.preset_index, self.sequence_steps, loop_enabled
             )
         except Exception as e:
             logger.error(f"Failed to save sequence: {e}")
@@ -642,10 +630,8 @@ class PresetSequenceEditor(QWidget):
         if not self.controller:
             return
 
-        # Get active scenes from controller
-        active_scenes = [
-            [scene[0], scene[1]] for scene in self.controller.currently_active_scenes
-        ]
+        # Get active scenes from scene controller (keep as tuples)
+        active_scenes = list(self.controller.scene_ctrl.get_active_scenes())
 
         if not active_scenes:
             QMessageBox.information(
@@ -731,9 +717,9 @@ class PresetSequenceEditor(QWidget):
 class LightSequenceGUI(QMainWindow):
     """Main GUI application for light sequence configuration."""
 
-    # Custom signals for thread-safe preset updates and device status updates
-    preset_changed_signal = Signal(object)
-    preset_saved_signal = Signal()
+    # Custom signals for thread-safe sequence updates and device status updates
+    sequence_changed_signal = Signal(object)
+    sequence_saved_signal = Signal()
     device_status_update_signal = Signal()
 
     def __init__(self, simulation: bool = False):
@@ -745,8 +731,8 @@ class LightSequenceGUI(QMainWindow):
         self.simulation = simulation
 
         # Connect the signals to the slots
-        self.preset_changed_signal.connect(self._update_preset_from_launchpad)
-        self.preset_saved_signal.connect(self._handle_preset_saved)
+        self.sequence_changed_signal.connect(self._update_sequence_from_launchpad)
+        self.sequence_saved_signal.connect(self._handle_sequence_saved)
         self.device_status_update_signal.connect(self._update_device_status_display)
 
         self.setWindowTitle("Light Sequence Controller")
@@ -973,10 +959,10 @@ class LightSequenceGUI(QMainWindow):
         """Called when controller is ready."""
         if self.controller_thread:
             self.controller = self.controller_thread.controller
-            # Set up callbacks for preset changes and saves
+            # Set up callbacks for sequence changes and saves
             if self.controller:
-                self.controller.on_preset_changed = self.on_launchpad_preset_changed
-                self.controller.on_preset_saved = self.on_preset_saved
+                self.controller.on_sequence_changed = self.on_launchpad_sequence_changed
+                self.controller.on_sequence_saved = self.on_sequence_saved
                 
                 # Register device state change callback
                 if hasattr(self.controller, 'device_manager'):
@@ -996,14 +982,14 @@ class LightSequenceGUI(QMainWindow):
             self, "Controller Error", f"Failed to start light controller:\n{error}"
         )
 
-    def on_preset_saved(self):
-        """Called when a preset is saved from the launchpad (thread-unsafe callback)."""
+    def on_sequence_saved(self):
+        """Called when a sequence is saved from the launchpad (thread-unsafe callback)."""
         # Use signal to handle this in a thread-safe way
-        self.preset_saved_signal.emit()
+        self.sequence_saved_signal.emit()
 
-    def _handle_preset_saved(self):
-        """Handle preset saved signal (runs on GUI thread)."""
-        # Refresh presets list to show the new/updated preset
+    def _handle_sequence_saved(self):
+        """Handle sequence saved signal (runs on GUI thread)."""
+        # Refresh presets list to show the new/updated sequence
         self.refresh_presets()
 
     def refresh_presets(self):
@@ -1011,15 +997,16 @@ class LightSequenceGUI(QMainWindow):
         if not self.controller:
             return
 
-        # Get all preset indices
-        preset_indices = self.controller.preset_manager.get_all_preset_indices()
+        # Get all sequence indices
+        sequence_indices = self.controller.sequence_ctrl.get_all_indices()
 
         # Update all preset buttons
         for (x, y), btn in self.preset_buttons.items():
-            preset_tuple = (x, y)
-            if preset_tuple in preset_indices:
-                preset_list = [x, y]
-                has_sequence = self.controller.preset_manager.has_sequence(preset_list)
+            sequence_tuple = (x, y)
+            if sequence_tuple in sequence_indices:
+                # Check if it's a single-step sequence (preset) or multi-step
+                seq_steps = self.controller.sequence_ctrl.get_sequence(sequence_tuple)
+                has_sequence = len(seq_steps) > 1 if seq_steps else False
                 btn.set_preset_info(True, has_sequence)
             else:
                 btn.set_preset_info(False, False)
@@ -1029,11 +1016,10 @@ class LightSequenceGUI(QMainWindow):
         if not self.controller:
             return
 
-        preset_coords = [x, y]
-        preset_tuple = (x, y)
+        sequence_tuple = (x, y)
 
-        # Show sequence editor for this preset
-        self.show_sequence_editor(preset_tuple)
+        # Show sequence editor for this sequence
+        self.show_sequence_editor(sequence_tuple)
 
         # Update button states - clear all first
         for btn in self.preset_buttons.values():
@@ -1043,8 +1029,15 @@ class LightSequenceGUI(QMainWindow):
         if (x, y) in self.preset_buttons:
             self.preset_buttons[(x, y)].set_active_preset(True)
 
-        # Also activate on the launchpad
-        self.select_preset_on_launchpad(preset_coords)
+        # Also activate on the launchpad using new input system
+        from lumiblox.controller.input_handler import ButtonEvent, ButtonType
+        event = ButtonEvent(
+            button_type=ButtonType.SEQUENCE,
+            coordinates=sequence_tuple,
+            pressed=True,
+            source="gui"
+        )
+        self.controller.input_handler.handle_button_event(event)
 
     def show_sequence_editor(self, preset_index: t.Tuple[int, int]):
         """Show sequence editor for the selected preset."""
@@ -1060,41 +1053,34 @@ class LightSequenceGUI(QMainWindow):
         self.current_editor = PresetSequenceEditor(preset_index, self.controller)
         self.editor_layout.addWidget(self.current_editor)
 
-    def on_launchpad_preset_changed(self, preset_coords: t.Optional[t.List[int]]):
-        """Called when preset selection changes on the launchpad."""
+    def on_launchpad_sequence_changed(self, sequence_coords: t.Optional[t.Tuple[int, int]]):
+        """Called when sequence selection changes on the launchpad."""
         # Emit signal to handle on GUI thread
-        self.preset_changed_signal.emit(preset_coords)
+        self.sequence_changed_signal.emit(sequence_coords)
 
-    def _update_preset_from_launchpad(self, preset_coords: t.Optional[t.List[int]]):
-        """Update preset selection from launchpad (runs on GUI thread)."""
+    def _update_sequence_from_launchpad(self, sequence_coords: t.Optional[t.Tuple[int, int]]):
+        """Update sequence selection from launchpad (runs on GUI thread)."""
         self._updating_from_launchpad = True
         try:
             # Clear all preset button selections first
             for btn in self.preset_buttons.values():
                 btn.set_active_preset(False)
 
-            if preset_coords is None:
-                # No preset selected - hide editor and show default message
+            if sequence_coords is None:
+                # No sequence selected - hide editor and show default message
                 if self.current_editor:
                     self.current_editor.deleteLater()
                     self.current_editor = None
                 self.default_label.show()
                 return
 
-            # Select the matching preset button
-            preset_tuple = (preset_coords[0], preset_coords[1])
-            if preset_tuple in self.preset_buttons:
-                self.preset_buttons[preset_tuple].set_active_preset(True)
-                # Also show the editor for this preset
-                self.show_sequence_editor(preset_tuple)
+            # Select the matching sequence button
+            if sequence_coords in self.preset_buttons:
+                self.preset_buttons[sequence_coords].set_active_preset(True)
+                # Also show the editor for this sequence
+                self.show_sequence_editor(sequence_coords)
         finally:
             self._updating_from_launchpad = False
-
-    def select_preset_on_launchpad(self, preset_coords: t.List[int]):
-        """Programmatically select a preset on the launchpad (called from GUI)."""
-        if self.controller and self.controller.currently_active_preset != preset_coords:
-            # Simulate a preset button press
-            self.controller._activate_preset(preset_coords)
     
     def _on_device_state_changed(self, device_type: DeviceType, new_state: DeviceState):
         """Handle device state changes (called from device manager)."""
