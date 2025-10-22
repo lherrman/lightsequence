@@ -1,7 +1,7 @@
 
 [project]
 name = "lightsequence"
-version = "1.0.0"
+version = "0.1.0"
 description = "Professional party lighting controller for Novation Launchpad MK2"
 readme = "README.md"
 authors = [{name = "Party Lights"}]
@@ -14,12 +14,18 @@ dependencies = [
     "numpy>=2.0.2",
     "typing-extensions>=4.15.0",
     "isort>=6.1.0",
-    "aalink>=0.1.1",
     "mss>=10.1.0",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "pytest-asyncio>=0.21.0",
+]
+
 [project.scripts]
-lightsequence = "src.controller.main:main"
+lightsequence = "src.controller.controller.main:main"
 
 [project.gui-scripts] 
-lightsequence-gui = "src.gui.main:main"
+lightsequence-gui = "src.controller.gui.gui:main"

@@ -1,9 +1,9 @@
 import numpy as np
 import logging
 import time
-from config import get_config
-from utils import hex_to_rgb
-from enums import AppState
+from controller.common.config import get_config
+from controller.common.utils import hex_to_rgb
+from controller.common.enums import AppState
 
 logger = logging.getLogger(__name__)
 

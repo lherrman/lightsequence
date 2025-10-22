@@ -4,10 +4,10 @@ from enum import Enum
 
 import launchpad_py as lp
 import numpy as np
-from background_animator import BackgroundAnimator as Animator
-from config import get_config
-from enums import AppState
-from utils import hex_to_rgb
+from controller.controller.background_animator import BackgroundAnimator as Animator
+from controller.common.config import get_config
+from controller.common.enums import AppState
+from controller.common.utils import hex_to_rgb
 
 logger = logging.getLogger(__name__)
 

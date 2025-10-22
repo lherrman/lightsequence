@@ -10,11 +10,6 @@ This script can launch either:
 import sys
 import argparse
 import logging
-from pathlib import Path
-
-# Add the controller directory to the path
-controller_dir = Path(__file__).parent / "src" / "controller"
-sys.path.insert(0, str(controller_dir))
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -51,7 +46,7 @@ def main():
     if args.mode == "gui":
         try:
             logger.info("Starting GUI application...")
-            from src.controller.gui import main as gui_main
+            from controller.gui.gui import main as gui_main
 
             gui_main(simulation=args.simulation)
         except ImportError as e:
@@ -65,7 +60,7 @@ def main():
     elif args.mode == "controller":
         try:
             logger.info("Starting standalone controller...")
-            from src.controller.main import main as controller_main
+            from controller.controller.main import main as controller_main
 
             controller_main(simulation=args.simulation)
         except Exception as e:

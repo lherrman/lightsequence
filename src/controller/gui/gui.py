@@ -1,865 +1,1054 @@
-"""
-Modern web-based GUI for Light Sequence Controller using Reflex.
-Provides a clean, responsive interface for controlling lighting scenes and sequences.
-"""
-
-import logging
-import threading
-import typing as t
-from datetime import datetime
 import sys
-import os
+import logging
+import typing as t
 
-# Add the parent controller directory to the path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from PySide6.QtWidgets import (
+    QApplication,
+    QMainWindow,
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QPushButton,
+    QLineEdit,
+    QLabel,
+    QGroupBox,
+    QMessageBox,
+    QFrame,
+    QScrollArea,
+    QGridLayout,
+    QCheckBox,
+    QSizePolicy,
+)
+from PySide6.QtCore import Qt, Signal, QThread
+from PySide6.QtGui import QFont
 
-import reflex as rx
+from src.controller.controller.main import LightController
+from src.controller.controller.sequence import SequenceStep
 
-from main import LightController
-from sequence_manager import SequenceStep, SequenceState
-from enums import AppState
+# Configuration constants
+DEFAULT_STEP_DURATION = 2.0  # Default duration in seconds for new steps
 
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Global controller instance (not serializable, so can't be in state)
-_controller: t.Optional[LightController] = None
 
-def get_controller() -> t.Optional[LightController]:
-    """Get the global controller instance."""
-    return _controller_instance
+class SelectAllLineEdit(QLineEdit):
+    """QLineEdit that automatically selects all text when clicked or focused."""
 
-def set_controller(controller: t.Optional[LightController]) -> None:
-    """Set the global controller instance."""
-    global _controller_instance
-    _controller_instance = controller
+    def mousePressEvent(self, event):
+        """Override mouse press to select all text."""
+        super().mousePressEvent(event)
+        self.selectAll()
 
-# Color constants for modern dark theme
-COLORS = {
-    "bg": "#0d1117",          # GitHub dark background
-    "surface": "#161b22",      # Slightly lighter surface
-    "border": "#30363d",       # Border color
-    "text": "#f0f6fc",         # Primary text
-    "text_muted": "#8b949e",   # Muted text
-    "accent": "#238636",       # Green accent
-    "warning": "#d29922",      # Amber warning
-    "error": "#f85149",        # Red error
-    "scene_active": "#58a6ff", # Blue for active scenes
-    "scene_inactive": "#21262d", # Dark for inactive scenes
-    "preset_active": "#238636", # Green for active presets
-    "preset_inactive": "#30363d", # Gray for inactive presets
-}
+    def focusInEvent(self, event):
+        """Override focus in to select all text."""
+        super().focusInEvent(event)
+        self.selectAll()
 
-class LightControllerState(rx.State):
-    """Main application state for the Light Controller GUI."""
-    
-    # Connection status
-    is_connected: bool = False
-    connection_status: str = "Disconnected"
-    
-    # Scene grid state (8x5 grid) - using lists instead of sets for serialization
-    active_scenes: list[str] = []  # Store as "x,y" strings
-    
-    # Preset state (8x2 grid)
-    active_preset: str = ""  # Store as "x,y" string
-    preset_grid: dict[str, bool] = {}  # Store as {"x,y": bool}
-    
-    # Sequence state
-    sequence_state: str = SequenceState.STOPPED.value
-    current_sequence_preset: str = ""  # Store as "x,y" string
-    current_step_info: dict[str, str] = {}  # Only string values for serialization
-    
-    # App state
-    app_state: str = AppState.NORMAL.value
-    is_simulation: bool = False
-    
-    # Sequence editor state
-    show_sequence_editor: bool = False
-    editing_preset: str = ""  # Store as "x,y" string
-    sequence_steps_count: int = 0  # Just store count, not actual steps
-    selected_step_index: int = -1
-    
-    # UI state
-    last_update: str = ""
-    status_message: str = "Ready"
-    
-    def __init__(self):
+
+class ControllerThread(QThread):
+    """Thread to run the LightController without blocking the GUI."""
+
+    controller_ready = Signal()
+    controller_error = Signal(str)
+
+    def __init__(self, simulation: bool = False):
         super().__init__()
-        # Initialize preset grid with string keys
-        self.preset_grid = {f"{x},{y}": False for x in range(8) for y in range(2)}
-    
-    def initialize_controller(self, simulation: bool = False):
-        """Initialize the light controller in a background thread."""
-        self.is_simulation = simulation
-        self.status_message = "Initializing controller..."
-        
+        self.controller: t.Optional[LightController] = None
+        self.should_stop = False
+        self.simulation = simulation
+
+    def run(self):
+        """Run the controller in a separate thread."""
         try:
-            # Initialize controller in background
-            self._init_controller_async(simulation)
-            self.is_connected = True
-            self.connection_status = "Connected (Simulation)" if simulation else "Connected"
-            self.status_message = "Controller ready"
-            self._sync_state_with_controller()
-        except Exception as e:
-            logger.error(f"Failed to initialize controller: {e}")
-            self.is_connected = False
-            self.connection_status = f"Error: {str(e)}"
-            self.status_message = f"Initialization failed: {str(e)}"
-    
-    def _init_controller_async(self, simulation: bool):
-        """Initialize controller asynchronously."""
-        def init_controller():
-            controller = LightController(simulation=simulation)
-            if hasattr(controller, 'initialize_hardware_connections'):
-                controller.initialize_hardware_connections()
-            set_controller(controller)
-        
-        # Run in thread to avoid blocking UI
-        thread = threading.Thread(target=init_controller, daemon=True)
-        thread.start()
-        thread.join(timeout=10)  # 10 second timeout
-        
-        if not get_controller():
-            raise Exception("Controller initialization timed out")
-    
-    def _sync_state_with_controller(self):
-        """Sync GUI state with controller state."""
-        controller = get_controller()
-        if not controller:
-            return
-            
-        # Sync active scenes - convert to string list
-        self.active_scenes = [f"{x},{y}" for x, y in controller.currently_active_scenes]
-        
-        # Sync active preset - convert to string
-        if controller.currently_active_preset:
-            self.active_preset = f"{controller.currently_active_preset[0]},{controller.currently_active_preset[1]}"
-        else:
-            self.active_preset = ""
-        
-        # Sync preset grid (check which presets have data)
-        for x in range(8):
-            for y in range(2):
-                preset_coords = [x, y]
-                has_preset = controller.preset_manager.has_preset(preset_coords)
-                self.preset_grid[f"{x},{y}"] = has_preset
-        
-        # Sync sequence state
-        if hasattr(controller.sequence_manager, 'sequence_state'):
-            self.sequence_state = controller.sequence_manager.sequence_state.value
-        
-        self.last_update = datetime.now().strftime("%H:%M:%S")
-    
-    def toggle_scene(self, x: int, y: int):
-        """Toggle a scene on/off."""
-        scene_str = f"{x},{y}"
-        if scene_str in self.active_scenes:
-            self.active_scenes.remove(scene_str)
-        else:
-            self.active_scenes.append(scene_str)
-        
-        # Send to controller if connected
-        controller = get_controller()
-        if controller:
-            controller._route_button_event_to_handler({
-                "type": "scene",
-                "index": [x, y],
-                "active": True
-            })
-        
-        self.last_update = datetime.now().strftime("%H:%M:%S")
-    
-    def select_preset(self, x: int, y: int):
-        """Select a preset."""
-        preset_str = f"{x},{y}"
-        
-        if self.active_preset == preset_str:
-            # Deactivate current preset
-            self.active_preset = ""
-            self.active_scenes = []
-        else:
-            # Activate new preset
-            self.active_preset = preset_str
-        
-        # Send to controller if connected
-        controller = get_controller()
-        if controller:
-            controller._route_button_event_to_handler({
-                "type": "preset",
-                "index": [x, y],
-                "active": True
-            })
-        
-        self._sync_state_with_controller()
-    
-    def save_current_scenes_to_preset(self, x: int, y: int):
-        """Save current active scenes to a preset."""
-        controller = get_controller()
-        if not controller:
-            self.status_message = "Controller not connected"
-            return
-            
-        preset_coords = [x, y]
-        # Convert string scenes back to coordinates
-        scene_list = []
-        for scene_str in self.active_scenes:
-            sx, sy = map(int, scene_str.split(','))
-            scene_list.append([sx, sy])
-        
-        controller.preset_manager.save_preset(preset_coords, scene_list)
-        self.preset_grid[f"{x},{y}"] = True
-        self.status_message = f"Saved {len(scene_list)} scenes to preset [{x}, {y}]"
-        
-        # Activate the preset we just saved
-        self.select_preset(x, y)
-    
-    def toggle_sequence_playback(self):
-        """Toggle sequence playback."""
-        controller = get_controller()
-        if not controller:
-            return
-            
-        controller._toggle_sequence_playback()
-        self._sync_state_with_controller()
-    
-    def next_sequence_step(self):
-        """Advance to next sequence step."""
-        controller = get_controller()
-        if not controller:
-            return
-            
-        controller._advance_to_next_sequence_step()
-        self._sync_state_with_controller()
-    
-    def open_sequence_editor(self, x: int, y: int):
-        """Open sequence editor for a preset."""
-        self.editing_preset = f"{x},{y}"
-        self.show_sequence_editor = True
-        
-        # Load existing sequence if any
-        controller = get_controller()
-        if controller:
-            preset_coords = (x, y)
-            sequence = controller.sequence_manager.get_sequence(preset_coords)
-            if sequence:
-                self.sequence_steps_count = len(sequence)
+            self.controller = LightController(simulation=self.simulation)
+            if self.controller.initialize_hardware_connections():
+                self.controller_ready.emit()
+
+                # Modified run loop to work with threading
+                logger.info("Light controller started in thread.")
+
+                import time
+
+                while not self.should_stop:
+                    try:
+                        # Handle button events
+                        button_event = (
+                            self.controller.launchpad_controller.get_button_events()
+                        )
+                        if button_event:
+                            self.controller._route_button_event_to_handler(button_event)
+
+
+                        # Process MIDI feedback
+                        self.controller.process_midi_feedback_from_external()
+
+                        self.controller.launchpad_controller.draw_background(
+                            self.controller.background_manager.get_current_background()
+                        )
+
+                        time.sleep(0.02)  # Small delay to prevent excessive CPU usage
+                    except Exception as e:
+                        logger.error(f"Error in controller loop: {e}")
+                        # Continue running instead of breaking to prevent crashes
+                        time.sleep(0.1)  # Wait a bit longer on error
+
             else:
-                self.sequence_steps_count = 0
-        else:
-            self.sequence_steps_count = 0
-    
-    def close_sequence_editor(self):
-        """Close sequence editor."""
-        self.show_sequence_editor = False
-        self.editing_preset = ""
-        self.sequence_steps_count = 0
-        self.selected_step_index = -1
-    
-    def add_sequence_step(self):
-        """Add a new sequence step."""
-        controller = get_controller()
-        if not controller or not self.editing_preset:
-            return
-        
-        # Convert string coordinates back to tuples for SequenceStep
-        active_scene_tuples = set()
-        for coord_str in self.active_scenes:
-            x, y = map(int, coord_str.split(','))
-            active_scene_tuples.add((x, y))
-        
-        new_step = SequenceStep(
-            scenes=active_scene_tuples,
-            duration=2.0,
-            name=f"Step {self.sequence_steps_count + 1}"
-        )
-        
-        # Add to controller's sequence
-        x, y = map(int, self.editing_preset.split(','))
-        preset_coords = (x, y)
-        sequence = controller.sequence_manager.get_sequence(preset_coords) or []
-        sequence.append(new_step)
-        controller.sequence_manager.set_sequence(preset_coords, sequence)
-        self.sequence_steps_count = len(sequence)
-    
-    def remove_sequence_step(self, index: int):
-        """Remove a sequence step."""
-        controller = get_controller()
-        if not controller or not self.editing_preset:
-            return
-            
-        x, y = map(int, self.editing_preset.split(','))
-        preset_coords = (x, y)
-        sequence = controller.sequence_manager.get_sequence(preset_coords) or []
-        
-        if 0 <= index < len(sequence):
-            sequence.pop(index)
-            controller.sequence_manager.set_sequence(preset_coords, sequence)
-            self.sequence_steps_count = len(sequence)
-    
-    def save_sequence(self):
-        """Save the current sequence."""
-        # Sequence is already saved in real-time
-        self.status_message = f"Saved sequence with {self.sequence_steps_count} steps"
-        self.close_sequence_editor()
-    
-    def clear_all_scenes(self):
-        """Clear all active scenes."""
-        self.active_scenes.clear()
+                self.controller_error.emit("Failed to connect to devices")
+        except Exception as e:
+            self.controller_error.emit(f"Controller error: {e}")
+        finally:
+            if self.controller:
+                self.controller.cleanup_resources()
+
+    def stop(self):
+        """Stop the controller thread."""
+        self.should_stop = True
         if self.controller:
-            # Clear scenes in controller too
-            self.controller._clear_all_scene_button_leds()
-    
-    def enter_save_mode(self):
-        """Enter save mode."""
-        self.app_state = AppState.SAVE_MODE.value
-        self.status_message = "Save mode - select a preset to save current scenes"
-    
-    def exit_save_mode(self):
-        """Exit save mode."""
-        self.app_state = AppState.NORMAL.value
-        self.status_message = "Ready"
+            try:
+                # Clear any callbacks to prevent cross-thread calls during shutdown
+                self.controller.on_preset_changed = None
+                self.controller.on_preset_saved = None
+            except Exception as e:
+                logger.error(f"Error clearing callbacks: {e}")
+        self.wait(3000)  # Wait up to 3 seconds for thread to finish
 
 
-def scene_button(x: int, y: int) -> rx.Component:
-    """Create a scene button for the grid."""
-    coord_str = f"{x},{y}"
-    is_active = coord_str in LightControllerState.active_scenes
-    
-    return rx.button(
-        f"{x},{y}",
-        on_click=LightControllerState.toggle_scene(x, y),
-        bg=rx.cond(is_active, COLORS["scene_active"], COLORS["scene_inactive"]),
-        color=COLORS["text"],
-        border=f"1px solid {COLORS['border']}",
-        border_radius="4px",
-        _hover={"bg": rx.cond(is_active, "#4184e4", "#30363d")},
-        transition="all 0.2s",
-        min_height="40px",
-        font_size="12px",
-        font_weight="500",
-    )
+class SceneButton(QPushButton):
+    """Custom button for scene grid."""
+
+    scene_toggled = Signal(int, int, bool)
+
+    def __init__(self, x: int, y: int):
+        super().__init__(f"{x},{y}")
+        self.coord_x = x
+        self.coord_y = y
+        self.is_active = False
+        self.setCheckable(True)
+        self.setMinimumSize(35, 35)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.clicked.connect(self._on_clicked)
+        self.update_style()
+
+    def _on_clicked(self):
+        self.is_active = self.isChecked()
+        self.update_style()
+        self.scene_toggled.emit(self.coord_x, self.coord_y, self.is_active)
+
+    def set_active(self, active: bool):
+        self.is_active = active
+        self.setChecked(active)
+        self.update_style()
+
+    def update_style(self):
+        if self.is_active:
+            self.setStyleSheet("""
+                QPushButton {
+                    background-color: #4CAF50;
+                    color: white;
+                    border: 2px solid #45a049;
+                    border-radius: 5px;
+                    font-weight: bold;
+                }
+                QPushButton:hover {
+                    background-color: #45a049;
+                }
+            """)
+        else:
+            self.setStyleSheet("""
+                QPushButton {
+                    background-color: #3c3c3c;
+                    color: #cccccc;
+                    border: 1px solid #555555;
+                    border-radius: 5px;
+                }
+                QPushButton:hover {
+                    background-color: #4a4a4a;
+                }
+            """)
 
 
-def preset_button(x: int, y: int) -> rx.Component:
-    """Create a preset button."""
-    coord_str = f"{x},{y}"
-    is_active = LightControllerState.active_preset == coord_str
-    has_preset = LightControllerState.preset_grid[coord_str]
-    
-    # Button text shows preset coordinate and status
-    button_text = rx.cond(
-        has_preset,
-        f"[{x},{y}] ●",  # Dot indicates preset has data
-        f"[{x},{y}]"
-    )
-    
-    return rx.hstack(
-        rx.button(
-            button_text,
-            on_click=LightControllerState.select_preset(x, y),
-            bg=rx.cond(
-                is_active,
-                COLORS["preset_active"],
-                rx.cond(has_preset, COLORS["border"], COLORS["preset_inactive"])
-            ),
-            color=COLORS["text"],
-            border=f"1px solid {COLORS['border']}",
-            border_radius="4px",
-            _hover={"bg": rx.cond(is_active, "#1f6f32", "#40464d")},
-            transition="all 0.2s",
-            flex="1",
-            min_height="36px",
-            font_size="12px",
-            font_weight="500",
-        ),
-        rx.button(
-            "SEQ",
-            on_click=LightControllerState.open_sequence_editor(x, y),
-            bg=COLORS["warning"],
-            color=COLORS["text"],
-            border=f"1px solid {COLORS['border']}",
-            border_radius="4px",
-            _hover={"bg": "#bb8a1f"},
-            transition="all 0.2s",
-            min_height="36px",
-            font_size="10px",
-            font_weight="500",
-            px="8px",
-        ),
-        spacing="4px",
-    )
+class PresetButton(QPushButton):
+    """Custom button for preset grid."""
+
+    preset_selected = Signal(int, int)
+
+    def __init__(self, x: int, y: int):
+        super().__init__()
+        self.coord_x = x
+        self.coord_y = y
+        self.preset_coords = [x, y]
+        self.has_preset = False
+        self.has_sequence = False
+        self.is_active_preset = False
+
+        self.setFixedHeight(32)
+        self.setMinimumWidth(10)
+        self.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )  # Expand horizontally
+        self.setCheckable(True)
+        self.clicked.connect(self._on_preset_clicked)
+        self.update_appearance()
+
+    def _on_preset_clicked(self):
+        """Handle button click."""
+        self.preset_selected.emit(self.coord_x, self.coord_y)
+
+    def set_preset_info(self, has_preset: bool, has_sequence: bool = False):
+        """Update preset information."""
+        self.has_preset = has_preset
+        self.has_sequence = has_sequence
+        self.update_appearance()
+
+    def set_active_preset(self, is_active: bool):
+        """Set whether this preset is currently active."""
+        self.is_active_preset = is_active
+        self.setChecked(is_active)
+        self.update_appearance()
+
+    def update_appearance(self):
+        """Update button appearance based on state."""
+        if not self.has_preset:
+            self.setText(f"{self.coord_x},{self.coord_y}")
+            self.setStyleSheet("""
+                QPushButton {
+                    background-color: #3c3c3c;
+                    color: #666666;
+                    border: 1px solid #555555;
+                    border-radius: 3px;
+                    font-size: 10px;
+                }
+                QPushButton:hover {
+                    background-color: #4a4a4a;
+                }
+            """)
+        else:
+            # Show preset type indicator
+            if self.has_sequence:
+                self.setText(f"{self.coord_x},{self.coord_y}")
+                base_color = "#3f94e9" if not self.is_active_preset else "#569de4"
+            else:
+                self.setText(f"{self.coord_x},{self.coord_y}")
+                base_color = "#03519e" if not self.is_active_preset else "#1b5c9c"
+
+            # Generate hover color more safely
+            if self.has_sequence:
+                hover_color = "#3f94e9" if not self.is_active_preset else "#569de4"
+            else:
+                hover_color = "#03519e" if not self.is_active_preset else "#1b5c9c"
+
+            # Set border color based on active state
+            border_color = "ffffff" if self.is_active_preset else "666666"
+
+            self.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {base_color};
+                    color: #ffffff;
+                    border: 2px solid #{border_color};
+                    border-radius: 3px;
+                    font-size: 9px;
+                    font-weight: bold;
+                }}
+                QPushButton:hover {{
+                    background-color: {hover_color};
+                }}
+                QPushButton:checked {{
+                    border: 2px solid #ffffff;
+                }}
+            """)
 
 
-def scene_grid() -> rx.Component:
-    """Create the 8x5 scene grid."""
-    return rx.box(
-        rx.heading("Scenes", size="md", color=COLORS["text"], mb="12px"),
-        rx.grid(
-            *[
-                scene_button(x, y)
-                for y in range(5)
-                for x in range(8)
-            ],
-            columns="8",
-            gap="8px",
-        ),
-        bg=COLORS["surface"],
-        border=f"1px solid {COLORS['border']}",
-        border_radius="8px",
-        p="16px",
-    )
+class SequenceStepWidget(QFrame):
+    """Widget for editing a single sequence step."""
 
+    step_changed = Signal()
+    remove_step = Signal(object)  # Pass self as parameter
+    move_up = Signal(object)
+    move_down = Signal(object)
 
-def preset_grid() -> rx.Component:
-    """Create the 8x2 preset grid."""
-    return rx.box(
-        rx.heading("Presets", size="md", color=COLORS["text"], mb="12px"),
-        rx.grid(
-            *[
-                preset_button(x, y)
-                for y in range(2)
-                for x in range(8)
-            ],
-            columns="8",
-            gap="8px",
-        ),
-        bg=COLORS["surface"],
-        border=f"1px solid {COLORS['border']}",
-        border_radius="8px",
-        p="16px",
-    )
+    def __init__(self, step: SequenceStep, step_index: int):
+        super().__init__()
+        self.step = step
+        self.step_index = step_index
+        self.scene_buttons: t.Dict[t.Tuple[int, int], SceneButton] = {}
 
+        self.setFrameStyle(QFrame.Shape.Box)
+        self.setStyleSheet("""
+            QFrame {
+                background-color: #2d2d2d;
+                border: 1px solid #555555;
+                border-radius: 3px;
+                margin: 1px;
+                padding: 3px;
+            }
+        """)
+        self.setMaximumHeight(160)  # More height to prevent text cutoff
 
-def control_panel() -> rx.Component:
-    """Create the control panel with playback controls."""
-    return rx.box(
-        rx.heading("Controls", size="md", color=COLORS["text"], mb="12px"),
-        rx.vstack(
-            # Playback controls
-            rx.hstack(
-                rx.button(
-                    rx.cond(
-                        LightControllerState.sequence_state == "playing",
-                        "⏸ Pause",
-                        "▶ Play"
-                    ),
-                    on_click=LightControllerState.toggle_sequence_playback,
-                    bg=COLORS["accent"],
-                    color=COLORS["text"],
-                    border_radius="6px",
-                    _hover={"bg": "#1f6f32"},
-                    transition="all 0.2s",
-                    flex="1",
-                ),
-                rx.button(
-                    "⏭ Next",
-                    on_click=LightControllerState.next_sequence_step,
-                    bg=COLORS["border"],
-                    color=COLORS["text"],
-                    border_radius="6px",
-                    _hover={"bg": "#40464d"},
-                    transition="all 0.2s",
-                    flex="1",
-                ),
-                spacing="8px",
-                width="100%",
-            ),
-            
-            # Scene controls
-            rx.hstack(
-                rx.button(
-                    "Clear All",
-                    on_click=LightControllerState.clear_all_scenes,
-                    bg=COLORS["error"],
-                    color=COLORS["text"],
-                    border_radius="6px",
-                    _hover={"bg": "#d73648"},
-                    transition="all 0.2s",
-                    flex="1",
-                ),
-                rx.button(
-                    rx.cond(
-                        LightControllerState.app_state == "save_mode",
-                        "Exit Save",
-                        "Save Mode"
-                    ),
-                    on_click=rx.cond(
-                        LightControllerState.app_state == "save_mode",
-                        LightControllerState.exit_save_mode,
-                        LightControllerState.enter_save_mode
-                    ),
-                    bg=rx.cond(
-                        LightControllerState.app_state == "save_mode",
-                        COLORS["warning"],
-                        COLORS["accent"]
-                    ),
-                    color=COLORS["text"],
-                    border_radius="6px",
-                    _hover={"bg": rx.cond(
-                        LightControllerState.app_state == "save_mode",
-                        "#bb8a1f",
-                        "#1f6f32"
-                    )},
-                    transition="all 0.2s",
-                    flex="1",
-                ),
-                spacing="8px",
-                width="100%",
-            ),
-            
-            spacing="12px",
-            width="100%",
-        ),
-        bg=COLORS["surface"],
-        border=f"1px solid {COLORS['border']}",
-        border_radius="8px",
-        p="16px",
-    )
+        self.setup_ui()
+        self.update_from_step()
 
+    def setup_ui(self):
+        # Main horizontal layout - scenes on left, parameters on right
+        main_layout = QHBoxLayout(self)
 
-def status_panel() -> rx.Component:
-    """Create the status panel."""
-    return rx.box(
-        rx.heading("Status", size="md", color=COLORS["text"], mb="12px"),
-        rx.vstack(
-            rx.hstack(
-                rx.text("Connection:", color=COLORS["text_muted"], font_size="sm"),
-                rx.text(
-                    LightControllerState.connection_status,
-                    color=rx.cond(
-                        LightControllerState.is_connected,
-                        COLORS["accent"],
-                        COLORS["error"]
-                    ),
-                    font_weight="500",
-                    font_size="sm",
-                ),
-                justify="between",
-                width="100%",
-            ),
-            rx.hstack(
-                rx.text("State:", color=COLORS["text_muted"], font_size="sm"),
-                rx.text(
-                    LightControllerState.sequence_state.title(),
-                    color=COLORS["text"],
-                    font_weight="500",
-                    font_size="sm",
-                ),
-                justify="between",
-                width="100%",
-            ),
-            rx.hstack(
-                rx.text("Active Preset:", color=COLORS["text_muted"], font_size="sm"),
-                rx.text(
-                    rx.cond(
-                        LightControllerState.active_preset.to_string() != "None",
-                        LightControllerState.active_preset.to_string(),
-                        "None"
-                    ),
-                    color=COLORS["text"],
-                    font_weight="500",
-                    font_size="sm",
-                ),
-                justify="between",
-                width="100%",
-            ),
-            rx.hstack(
-                rx.text("Active Scenes:", color=COLORS["text_muted"], font_size="sm"),
-                rx.text(
-                    LightControllerState.active_scenes.length(),
-                    color=COLORS["text"],
-                    font_weight="500",
-                    font_size="sm",
-                ),
-                justify="between",
-                width="100%",
-            ),
-            rx.divider(border_color=COLORS["border"]),
-            rx.text(
-                LightControllerState.status_message,
-                color=COLORS["text_muted"],
-                font_size="sm",
-                font_style="italic",
-            ),
-            rx.text(
-                f"Last update: {LightControllerState.last_update}",
-                color=COLORS["text_muted"],
-                font_size="xs",
-            ),
-            spacing="8px",
-            align_items="start",
-            width="100%",
-        ),
-        bg=COLORS["surface"],
-        border=f"1px solid {COLORS['border']}",
-        border_radius="8px",
-        p="16px",
-    )
+        # Left side: Scene grid widget (no container box)
+        scenes_widget = QWidget()
+        scenes_widget.setFixedWidth(150)
+        scenes_layout = QGridLayout(scenes_widget)
+        scenes_layout.setHorizontalSpacing(2)
+        scenes_layout.setVerticalSpacing(2)
+        scenes_layout.setContentsMargins(5, 5, 5, 5)
 
+        # Create 8x5 grid of scene buttons
+        for y in range(5):
+            for x in range(8):
+                btn = SceneButton(x, y)
+                btn.setFixedSize(14, 14)  # Compact buttons
+                btn.scene_toggled.connect(self.on_scene_toggled)
+                self.scene_buttons[(x, y)] = btn
+                scenes_layout.addWidget(btn, y, x)
 
-def sequence_editor() -> rx.Component:
-    """Create the sequence editor modal."""
-    return rx.cond(
-        LightControllerState.show_sequence_editor,
-        rx.box(
-            # Modal backdrop
-            rx.box(
-                position="fixed",
-                top="0",
-                left="0",
-                width="100vw",
-                height="100vh",
-                bg="rgba(0, 0, 0, 0.5)",
-                z_index="1000",
-                on_click=LightControllerState.close_sequence_editor,
-            ),
-            # Modal content
-            rx.box(
-                rx.vstack(
-                    # Header
-                    rx.hstack(
-                        rx.heading(
-                            f"Sequence Editor - Preset {LightControllerState.editing_preset}",
-                            size="lg",
-                            color=COLORS["text"],
-                        ),
-                        rx.button(
-                            "✕",
-                            on_click=LightControllerState.close_sequence_editor,
-                            bg=COLORS["error"],
-                            color=COLORS["text"],
-                            border_radius="4px",
-                            _hover={"bg": "#d73648"},
-                            size="sm",
-                        ),
-                        justify="between",
-                        width="100%",
-                    ),
-                    
-                    # Sequence steps
-                    rx.box(
-                        rx.text(
-                            f"Steps: {LightControllerState.sequence_steps_count}",
-                            color=COLORS["text_muted"],
-                            font_size="sm",
-                            mb="8px",
-                        ),
-                        rx.cond(
-                            LightControllerState.sequence_steps_count > 0,
-                            rx.vstack(
-                                *[
-                                    rx.box(
-                                        rx.hstack(
-                                            rx.text(f"Step {i + 1}", font_weight="500", color=COLORS["text"]),
-                                            rx.button(
-                                                "Remove",
-                                                on_click=lambda i=i: LightControllerState.remove_sequence_step(i),
-                                                bg=COLORS["error"],
-                                                color=COLORS["text"],
-                                                size="sm",
-                                                _hover={"bg": "#d73648"},
-                                            ),
-                                            justify="between",
-                                        ),
-                                        bg=COLORS["border"],
-                                        p="8px",
-                                        border_radius="4px",
-                                        mb="4px",
-                                    )
-                                    for i in range(10)  # Show up to 10 steps
-                                    if i < LightControllerState.sequence_steps_count
-                                ],
-                                spacing="4px",
-                            ),
-                            rx.text(
-                                "No sequence steps yet",
-                                color=COLORS["text_muted"],
-                                font_style="italic",
-                            ),
-                        ),
-                        max_height="300px",
-                        overflow_y="auto",
-                        mb="16px",
-                    ),
-                    
-                    # Controls
-                    rx.hstack(
-                        rx.button(
-                            "Add Step from Active Scenes",
-                            on_click=LightControllerState.add_sequence_step,
-                            bg=COLORS["accent"],
-                            color=COLORS["text"],
-                            border_radius="6px",
-                            _hover={"bg": "#1f6f32"},
-                        ),
-                        rx.button(
-                            "Save Sequence",
-                            on_click=LightControllerState.save_sequence,
-                            bg=COLORS["warning"],
-                            color=COLORS["text"],
-                            border_radius="6px",
-                            _hover={"bg": "#bb8a1f"},
-                        ),
-                        spacing="8px",
-                    ),
-                    
-                    spacing="16px",
-                    width="100%",
-                ),
-                position="fixed",
-                top="50%",
-                left="50%",
-                transform="translate(-50%, -50%)",
-                bg=COLORS["surface"],
-                border=f"1px solid {COLORS['border']}",
-                border_radius="8px",
-                p="24px",
-                max_width="600px",
-                width="90%",
-                max_height="80vh",
-                overflow="auto",
-                z_index="1001",
-            ),
+        main_layout.addWidget(scenes_widget)
+
+        # Right side: Parameters and controls (compact)
+        controls_widget = QWidget()
+        controls_layout = QVBoxLayout(controls_widget)
+        controls_layout.setContentsMargins(8, 5, 5, 5)
+        controls_layout.setSpacing(4)  # Tighter spacing
+
+        # Step number label
+        step_label = QLabel(f"Step {self.step_index + 1}")
+        step_label.setStyleSheet("font-weight: bold; font-size: 11px; color: #cccccc;")
+        controls_layout.addWidget(step_label)
+
+        # Step name (more compact)
+        name_layout = QHBoxLayout()
+        name_layout.setSpacing(5)
+        name_label = QLabel("Name:")
+        name_label.setFixedWidth(70)
+        name_layout.addWidget(name_label)
+        self.name_edit = QLineEdit()
+        self.name_edit.setMaximumHeight(25)  # Taller input field to prevent cutoff
+        self.name_edit.textChanged.connect(self.on_step_changed)
+        name_layout.addWidget(self.name_edit)
+        controls_layout.addLayout(name_layout)
+
+        # Duration with +/- buttons and manual input
+        duration_layout = QHBoxLayout()
+        duration_layout.setSpacing(5)
+        duration_label = QLabel("Duration:")
+        duration_label.setFixedWidth(70)
+        duration_layout.addWidget(duration_label)
+
+        # Minus button
+        minus_btn = QPushButton("-")
+        minus_btn.setFixedSize(25, 25)
+        minus_btn.setStyleSheet("font-weight: bold; font-size: 12px;")
+        minus_btn.clicked.connect(self.decrease_duration)
+        duration_layout.addWidget(minus_btn)
+
+        # Duration input field (editable)
+        self.duration_input = SelectAllLineEdit()
+        self.duration_input.setFixedWidth(60)
+        self.duration_input.setMaximumHeight(25)
+        self.duration_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.duration_input.setStyleSheet(
+            "border: 1px solid #555; padding: 3px; background: #1e1e1e;"
         )
-    )
+        self.duration_input.textChanged.connect(self.on_duration_text_changed)
+        self.duration_input.editingFinished.connect(self.on_duration_editing_finished)
+        duration_layout.addWidget(self.duration_input)
+
+        # Seconds label
+        sec_label = QLabel("sec")
+        sec_label.setStyleSheet("color: #cccccc; font-size: 10px;")
+        duration_layout.addWidget(sec_label)
+
+        # Plus button
+        plus_btn = QPushButton("+")
+        plus_btn.setFixedSize(25, 25)
+        plus_btn.setStyleSheet("font-weight: bold; font-size: 12px;")
+        plus_btn.clicked.connect(self.increase_duration)
+        duration_layout.addWidget(plus_btn)
+
+        duration_layout.addStretch()
+        controls_layout.addLayout(duration_layout)
+
+        # Bottom: Move and remove buttons (compact)
+        button_layout = QHBoxLayout()
+        button_layout.setSpacing(3)
+
+        # Move buttons with proper triangles
+        self.move_up_btn = QPushButton("▲")
+        self.move_up_btn.setFixedSize(30, 28)
+        self.move_up_btn.setStyleSheet("font-size: 12px; font-weight: bold;")
+        self.move_up_btn.clicked.connect(lambda: self.move_up.emit(self))
+        button_layout.addWidget(self.move_up_btn)
+
+        self.move_down_btn = QPushButton("▼")
+        self.move_down_btn.setFixedSize(30, 28)
+        self.move_down_btn.setStyleSheet("font-size: 12px; font-weight: bold;")
+        self.move_down_btn.clicked.connect(lambda: self.move_down.emit(self))
+        button_layout.addWidget(self.move_down_btn)
+
+        button_layout.addStretch()
+
+        # Remove button with proper height
+        remove_btn = QPushButton("Remove")
+        remove_btn.setFixedHeight(28)
+        remove_btn.setStyleSheet(
+            "background-color: #cc4444; color: white; font-weight: bold; font-size: 12px;"
+        )
+        remove_btn.clicked.connect(lambda: self.remove_step.emit(self))
+        button_layout.addWidget(remove_btn)
+
+        controls_layout.addLayout(button_layout)
+
+        main_layout.addWidget(controls_widget)
+
+        # Set proportional sizes - scenes get more space
+        main_layout.setStretch(0, 2)  # Scenes
+        main_layout.setStretch(1, 1)  # Controls
+
+    def update_from_step(self):
+        """Update widget from step data."""
+        self.name_edit.setText(self.step.name)
+        self.duration_input.setText(f"{self.step.duration:.1f}")
+
+        # Clear all scene buttons first
+        for btn in self.scene_buttons.values():
+            btn.set_active(False)
+
+        # Set active scenes
+        for scene in self.step.scenes:
+            if len(scene) >= 2:
+                key = (scene[0], scene[1])
+                if key in self.scene_buttons:
+                    self.scene_buttons[key].set_active(True)
+
+    def update_step_index(self, new_index: int):
+        """Update the step index display."""
+        self.step_index = new_index
+        # Update the scenes group title instead
+        for child in self.findChildren(QGroupBox):
+            if "Step" in child.title():
+                child.setTitle(f"Step {new_index + 1} - Scenes")
+                break
+
+    def decrease_duration(self):
+        """Decrease duration by 0.5 seconds."""
+        current = self.step.duration
+        new_value = max(0.1, current - 0.5)
+        self.step.duration = new_value
+        self.duration_input.setText(f"{new_value:.1f}")
+        self.step_changed.emit()
+
+    def increase_duration(self):
+        """Increase duration by 0.5 seconds."""
+        current = self.step.duration
+        new_value = min(3600.0, current + 0.5)
+        self.step.duration = new_value
+        self.duration_input.setText(f"{new_value:.1f}")
+        self.step_changed.emit()
+
+    def on_duration_text_changed(self):
+        """Called when duration text is being changed."""
+        # Optional: Add real-time validation visual feedback here
+        pass
+
+    def on_duration_editing_finished(self):
+        """Called when user finishes editing duration text."""
+        try:
+            text = self.duration_input.text().strip()
+            value = float(text)
+
+            # Validate range
+            if value < 0.1:
+                value = 0.1
+            elif value > 3600.0:
+                value = 3600.0
+
+            # Update step and display
+            self.step.duration = value
+            self.duration_input.setText(f"{value:.1f}")
+            self.step_changed.emit()
+
+        except ValueError:
+            # Invalid input - restore previous value
+            self.duration_input.setText(f"{self.step.duration:.1f}")
+            QMessageBox.warning(
+                self,
+                "Invalid Duration",
+                "Please enter a valid number for duration (0.1 - 3600.0 seconds).",
+            )
+
+    def on_step_changed(self):
+        """Called when step details change."""
+        self.step.name = self.name_edit.text()
+        self.step_changed.emit()
+
+    def on_scene_toggled(self, x: int, y: int, active: bool):
+        """Called when a scene button is toggled."""
+        scene_coord = [x, y]
+
+        if active:
+            if scene_coord not in self.step.scenes:
+                self.step.scenes.append(scene_coord)
+        else:
+            self.step.scenes = [s for s in self.step.scenes if s != scene_coord]
+
+        self.step_changed.emit()
+
+    def get_active_scenes(self) -> t.List[t.List[int]]:
+        """Get currently active scenes."""
+        return [
+            list(coord) for coord, btn in self.scene_buttons.items() if btn.is_active
+        ]
 
 
-def index() -> rx.Component:
-    """Main application page."""
-    return rx.box(
+class PresetSequenceEditor(QWidget):
+    """Widget for editing sequences for a specific preset."""
+
+    def __init__(
+        self,
+        preset_index: t.Tuple[int, int],
+        controller: t.Optional[LightController] = None,
+    ):
+        super().__init__()
+        self.preset_index = preset_index
+        self.controller = controller
+        self.sequence_steps: t.List[SequenceStep] = []
+        self.step_widgets: t.List[SequenceStepWidget] = []
+
+        self.setup_ui()
+        self.load_sequence()
+
+    def setup_ui(self):
+        layout = QVBoxLayout(self)
+
         # Header
-        rx.box(
-            rx.hstack(
-                rx.heading(
-                    "Light Sequence Controller",
-                    size="xl",
-                    color=COLORS["text"],
-                ),
-                rx.button(
-                    rx.cond(
-                        LightControllerState.is_connected,
-                        "🟢 Connected",
-                        "🔴 Disconnected"
-                    ),
-                    on_click=lambda: LightControllerState.initialize_controller(True),  # Simulation mode
-                    bg=rx.cond(
-                        LightControllerState.is_connected,
-                        COLORS["accent"],
-                        COLORS["error"]
-                    ),
-                    color=COLORS["text"],
-                    border_radius="6px",
-                    _hover={"opacity": "0.8"},
-                ),
-                justify="between",
-                align="center",
-                width="100%",
-                mb="24px",
-            ),
-            bg=COLORS["surface"],
-            border_bottom=f"1px solid {COLORS['border']}",
-            p="16px",
-        ),
-        
-        # Main content
-        rx.container(
-            rx.grid(
-                # Left column - Scene grid
-                scene_grid(),
-                
-                # Right column - Presets and controls
-                rx.vstack(
-                    preset_grid(),
-                    control_panel(),
-                    status_panel(),
-                    spacing="16px",
-                ),
-                
-                columns="2",
-                gap="24px",
-                width="100%",
-            ),
-            max_width="1200px",
-            px="16px",
-            py="24px",
-        ),
-        
-        # Sequence editor modal
-        sequence_editor(),
-        
-        # Global styles
-        bg=COLORS["bg"],
-        min_height="100vh",
-        color=COLORS["text"],
-        font_family="system-ui, -apple-system, sans-serif",
-    )
+        header_layout = QHBoxLayout()
+        title = QLabel(
+            f"Preset [{self.preset_index[0]}, {self.preset_index[1]}] Sequence"
+        )
+        title.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+        header_layout.addWidget(title)
+
+        header_layout.addStretch()
+
+        # Add step from current scenes button
+        self.add_from_scenes_btn = QPushButton("Add from Active")
+        self.add_from_scenes_btn.clicked.connect(self.add_step_from_active_scenes)
+        self.add_from_scenes_btn.setEnabled(self.controller is not None)
+        header_layout.addWidget(self.add_from_scenes_btn)
+
+        # Add empty step button
+        add_step_btn = QPushButton("Add Empty")
+        add_step_btn.clicked.connect(self.add_empty_step)
+        header_layout.addWidget(add_step_btn)
+
+        layout.addLayout(header_layout)
+
+        # Loop checkbox
+        loop_layout = QHBoxLayout()
+        self.loop_checkbox = QCheckBox("Loop sequence")
+        self.loop_checkbox.setChecked(True)  # Default to loop
+        self.loop_checkbox.stateChanged.connect(self.auto_save_sequence)
+        loop_layout.addWidget(self.loop_checkbox)
+        loop_layout.addStretch()
+        layout.addLayout(loop_layout)
+
+        # Scroll area for steps
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
+        self.steps_widget = QWidget()
+        self.steps_layout = QVBoxLayout(self.steps_widget)
+        self.steps_layout.addStretch()  # Push steps to top
+
+        scroll.setWidget(self.steps_widget)
+        layout.addWidget(scroll)
+
+        # Control buttons
+        button_layout = QHBoxLayout()
+
+        load_btn = QPushButton("Reload from File")
+        load_btn.clicked.connect(self.load_sequence)
+        button_layout.addWidget(load_btn)
+
+        button_layout.addStretch()
+
+        layout.addLayout(button_layout)
+
+    def load_sequence(self):
+        """Load sequence from preset manager."""
+        if not self.controller:
+            return
+
+        steps = self.controller.preset_manager.get_sequence(list(self.preset_index))
+        if steps:
+            self.sequence_steps = steps
+        else:
+            # Create default single step
+            self.sequence_steps = [
+                SequenceStep(scenes=[], duration=DEFAULT_STEP_DURATION, name="Step 1")
+            ]
+
+        # Load loop setting
+        loop_setting = self.controller.preset_manager.get_loop_setting(
+            list(self.preset_index)
+        )
+        self.loop_checkbox.setChecked(loop_setting)
+
+        self.rebuild_step_widgets()
+
+    def save_sequence(self):
+        """Save sequence to preset manager."""
+        if not self.controller:
+            return
+
+        try:
+            loop_enabled = self.loop_checkbox.isChecked()
+            self.controller.preset_manager.save_sequence(
+                list(self.preset_index), self.sequence_steps, loop_enabled
+            )
+        except Exception as e:
+            logger.error(f"Failed to save sequence: {e}")
+
+    def auto_save_sequence(self):
+        """Auto-save sequence after changes."""
+        self.save_sequence()
+
+    def add_empty_step(self):
+        """Add an empty step."""
+        step = SequenceStep(
+            scenes=[],
+            duration=DEFAULT_STEP_DURATION,
+            name=f"Step {len(self.sequence_steps) + 1}",
+        )
+        self.sequence_steps.append(step)
+        self.rebuild_step_widgets()
+        self.auto_save_sequence()
+
+    def add_step_from_active_scenes(self):
+        """Add a step with currently active scenes from the controller."""
+        if not self.controller:
+            return
+
+        # Get active scenes from controller
+        active_scenes = [
+            [scene[0], scene[1]] for scene in self.controller.currently_active_scenes
+        ]
+
+        if not active_scenes:
+            QMessageBox.information(
+                self,
+                "No Active Scenes",
+                "No scenes are currently active. Activate some scenes on the launchpad first.",
+            )
+            return
+
+        step = SequenceStep(
+            scenes=active_scenes,
+            duration=DEFAULT_STEP_DURATION,
+            name=f"Step {len(self.sequence_steps) + 1}",
+        )
+        self.sequence_steps.append(step)
+        self.rebuild_step_widgets()
+        self.auto_save_sequence()
+
+    def rebuild_step_widgets(self):
+        """Rebuild all step widgets."""
+        # Clear existing widgets
+        for widget in self.step_widgets:
+            widget.deleteLater()
+        self.step_widgets.clear()
+
+        # Create new widgets
+        for i, step in enumerate(self.sequence_steps):
+            widget = SequenceStepWidget(step, i)
+            widget.step_changed.connect(self.on_step_changed)
+            widget.remove_step.connect(self.remove_step)
+            widget.move_up.connect(self.move_step_up)
+            widget.move_down.connect(self.move_step_down)
+
+            self.step_widgets.append(widget)
+            self.steps_layout.insertWidget(i, widget)
+
+        self.update_move_buttons()
+
+    def on_step_changed(self):
+        """Called when any step changes."""
+        self.auto_save_sequence()
+
+    def remove_step(self, step_widget: SequenceStepWidget):
+        """Remove a step."""
+        if len(self.sequence_steps) <= 1:
+            QMessageBox.warning(self, "Cannot Remove", "Cannot remove the last step.")
+            return
+
+        index = self.step_widgets.index(step_widget)
+        del self.sequence_steps[index]
+        self.rebuild_step_widgets()
+        self.auto_save_sequence()
+
+    def move_step_up(self, step_widget: SequenceStepWidget):
+        """Move step up."""
+        index = self.step_widgets.index(step_widget)
+        if index > 0:
+            self.sequence_steps[index], self.sequence_steps[index - 1] = (
+                self.sequence_steps[index - 1],
+                self.sequence_steps[index],
+            )
+            self.rebuild_step_widgets()
+            self.auto_save_sequence()
+
+    def move_step_down(self, step_widget: SequenceStepWidget):
+        """Move step down."""
+        index = self.step_widgets.index(step_widget)
+        if index < len(self.sequence_steps) - 1:
+            self.sequence_steps[index], self.sequence_steps[index + 1] = (
+                self.sequence_steps[index + 1],
+                self.sequence_steps[index],
+            )
+            self.rebuild_step_widgets()
+            self.auto_save_sequence()
+
+    def update_move_buttons(self):
+        """Update move button states."""
+        for i, widget in enumerate(self.step_widgets):
+            widget.move_up_btn.setEnabled(i > 0)
+            widget.move_down_btn.setEnabled(i < len(self.step_widgets) - 1)
 
 
-# Initialize and configure the app
-app = rx.App(
-    theme=rx.theme(
-        appearance="dark",
-        accent_color="green",
-    ),
-)
+class LightSequenceGUI(QMainWindow):
+    """Main GUI application for light sequence configuration."""
 
-app.add_page(
-    index,
-    title="Light Sequence Controller",
-    description="Modern web interface for controlling lighting sequences",
-)
+    # Custom signals for thread-safe preset updates
+    preset_changed_signal = Signal(object)
+    preset_saved_signal = Signal()
 
+    def __init__(self, simulation: bool = False):
+        super().__init__()
+        self.controller: t.Optional[LightController] = None
+        self.controller_thread: t.Optional[ControllerThread] = None
+        self.current_editor: t.Optional[PresetSequenceEditor] = None
+        self._updating_from_launchpad = False  # Flag to prevent infinite loops
+        self.simulation = simulation
 
-def initialize_controller(simulation: bool = False):
-    """Initialize the global controller instance."""
-    global _controller
-    if _controller is None:
-        _controller = LightController(simulation=simulation)
-    return _controller
+        # Connect the signals to the slots
+        self.preset_changed_signal.connect(self._update_preset_from_launchpad)
+        self.preset_saved_signal.connect(self._handle_preset_saved)
+
+        self.setWindowTitle("Light Sequence Controller")
+        self.setMinimumSize(470, 200)
+        self.resize(600, 800)
+        self.setup_ui()
+        self.apply_dark_theme()
+        self.start_controller()
+
+    def setup_ui(self):
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+
+        # Main vertical layout - sequence editor on top, preset grid on bottom
+        main_layout = QVBoxLayout(central_widget)
+
+        # Top area - Sequence editor (takes most space)
+        self.editor_stack = QWidget()
+        self.editor_layout = QVBoxLayout(self.editor_stack)
+
+        # Default message
+        self.default_label = QLabel(
+            "Select a preset from the grid below to edit its sequence."
+        )
+        self.default_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.default_label.setStyleSheet("color: #888888; font-size: 14px;")
+        self.editor_layout.addWidget(self.default_label)
+
+        main_layout.addWidget(self.editor_stack, 3)  # Give most space to editor
+
+        # Bottom area - Preset grid (3 rows x 8 columns) - more compact
+        preset_panel = QWidget()  # Use plain widget instead of GroupBox
+        preset_panel.setMaximumHeight(125)  # Slightly more height for better spacing
+        preset_panel.setStyleSheet("""
+            QWidget {
+                background-color: #2d2d2d;
+                border: 1px solid #555555;
+                border-radius: 3px;
+            }
+        """)
+        preset_layout = QVBoxLayout(preset_panel)
+        preset_layout.setContentsMargins(3, 3, 3, 3)  # Very tight margins
+        preset_layout.setSpacing(2)
+
+        # Header with title and refresh button in one line
+        header_layout = QHBoxLayout()
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(5)
+
+        # Title label
+        title_label = QLabel("Presets")
+        title_label.setStyleSheet("color: #cccccc; font-weight: bold; font-size: 11px;")
+        header_layout.addWidget(title_label)
+
+        header_layout.addStretch()  # Push refresh button to right
+
+        # Small refresh icon button in corner
+        refresh_btn = QPushButton("🔄")
+        refresh_btn.clicked.connect(self.refresh_presets)
+        refresh_btn.setFixedSize(18, 18)
+        refresh_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #555555;
+                border: 1px solid #666666;
+                border-radius: 9px;
+                font-size: 10px;
+                padding: 0px;
+            }
+            QPushButton:hover {
+                background-color: #666666;
+            }
+        """)
+        header_layout.addWidget(refresh_btn)
+        preset_layout.addLayout(header_layout)
+
+        # Preset grid
+        self.preset_grid_widget = QWidget()
+        preset_grid_layout = QGridLayout(self.preset_grid_widget)
+        preset_grid_layout.setHorizontalSpacing(3)  # Horizontal spacing between columns
+        preset_grid_layout.setVerticalSpacing(6)  # More vertical spacing between rows
+        preset_grid_layout.setContentsMargins(0, 2, 0, 2)  # Small top/bottom margins
+
+        # Create 3x8 grid of preset buttons
+        self.preset_buttons: t.Dict[t.Tuple[int, int], PresetButton] = {}
+        for y in range(3):  # 3 rows
+            for x in range(8):  # 8 columns
+                btn = PresetButton(x, y)
+                btn.preset_selected.connect(self.on_preset_button_selected)
+                self.preset_buttons[(x, y)] = btn
+                preset_grid_layout.addWidget(btn, y, x)
+
+                # Make columns stretch equally to use full width
+                preset_grid_layout.setColumnStretch(x, 1)
+
+        preset_layout.addWidget(self.preset_grid_widget)
+        main_layout.addWidget(preset_panel, 1)  # Give less space to preset grid
+
+        # Status bar
+        self.statusBar().showMessage("Starting controller...")
+
+    def apply_dark_theme(self):
+        """Apply dark theme to the application."""
+        dark_stylesheet = """
+        QMainWindow {
+            background-color: #2b2b2b;
+            color: #ffffff;
+        }
+        QWidget {
+            background-color: #2b2b2b;
+            color: #ffffff;
+        }
+        QTreeWidget {
+            background-color: #3c3c3c;
+            border: 1px solid #555555;
+            selection-background-color: #4a4a4a;
+        }
+        QTreeWidget::item:selected {
+            background-color: #4a4a4a;
+        }
+        QPushButton {
+            background-color: #4a4a4a;
+            color: #ffffff;
+            border: 1px solid #666666;
+            padding: 8px;
+            border-radius: 4px;
+        }
+        QPushButton:hover {
+            background-color: #5a5a5a;
+        }
+        QPushButton:pressed {
+            background-color: #3a3a3a;
+        }
+        QLineEdit, QSpinBox, QDoubleSpinBox {
+            background-color: #3c3c3c;
+            border: 1px solid #555555;
+            padding: 4px;
+            border-radius: 4px;
+        }
+        QGroupBox {
+            font-weight: bold;
+            border: 2px solid #555555;
+            border-radius: 5px;
+            margin: 10px 0px;
+            padding-top: 10px;
+        }
+        QGroupBox::title {
+            subcontrol-origin: margin;
+            left: 10px;
+            padding: 0 5px 0 5px;
+        }
+        QLabel {
+            color: #ffffff;
+        }
+        QScrollArea {
+            border: none;
+        }
+        """
+        self.setStyleSheet(dark_stylesheet)
+
+    def start_controller(self):
+        """Start the light controller in a separate thread."""
+        self.controller_thread = ControllerThread(simulation=self.simulation)
+        self.controller_thread.controller_ready.connect(self.on_controller_ready)
+        self.controller_thread.controller_error.connect(self.on_controller_error)
+        self.controller_thread.start()
+
+    def on_controller_ready(self):
+        """Called when controller is ready."""
+        if self.controller_thread:
+            self.controller = self.controller_thread.controller
+            # Set up callbacks for preset changes and saves
+            if self.controller:
+                self.controller.on_preset_changed = self.on_launchpad_preset_changed
+                self.controller.on_preset_saved = self.on_preset_saved
+            self.statusBar().showMessage("Controller connected successfully")
+            self.refresh_presets()
+
+    def on_controller_error(self, error: str):
+        """Called when controller fails."""
+        self.statusBar().showMessage(f"Controller error: {error}")
+        QMessageBox.critical(
+            self, "Controller Error", f"Failed to start light controller:\n{error}"
+        )
+
+    def on_preset_saved(self):
+        """Called when a preset is saved from the launchpad (thread-unsafe callback)."""
+        # Use signal to handle this in a thread-safe way
+        self.preset_saved_signal.emit()
+
+    def _handle_preset_saved(self):
+        """Handle preset saved signal (runs on GUI thread)."""
+        # Refresh presets list to show the new/updated preset
+        self.refresh_presets()
+
+    def refresh_presets(self):
+        """Refresh the preset grid."""
+        if not self.controller:
+            return
+
+        # Get all preset indices
+        preset_indices = self.controller.preset_manager.get_all_preset_indices()
+
+        # Update all preset buttons
+        for (x, y), btn in self.preset_buttons.items():
+            preset_tuple = (x, y)
+            if preset_tuple in preset_indices:
+                preset_list = [x, y]
+                has_sequence = self.controller.preset_manager.has_sequence(preset_list)
+                btn.set_preset_info(True, has_sequence)
+            else:
+                btn.set_preset_info(False, False)
+
+    def on_preset_button_selected(self, x: int, y: int):
+        """Handle preset button selection."""
+        if not self.controller:
+            return
+
+        preset_coords = [x, y]
+        preset_tuple = (x, y)
+
+        # Show sequence editor for this preset
+        self.show_sequence_editor(preset_tuple)
+
+        # Update button states - clear all first
+        for btn in self.preset_buttons.values():
+            btn.set_active_preset(False)
+
+        # Set selected button as active
+        if (x, y) in self.preset_buttons:
+            self.preset_buttons[(x, y)].set_active_preset(True)
+
+        # Also activate on the launchpad
+        self.select_preset_on_launchpad(preset_coords)
+
+    def show_sequence_editor(self, preset_index: t.Tuple[int, int]):
+        """Show sequence editor for the selected preset."""
+        # Clear current editor
+        if self.current_editor:
+            self.current_editor.deleteLater()
+            self.current_editor = None
+
+        # Hide default label
+        self.default_label.hide()
+
+        # Create new editor
+        self.current_editor = PresetSequenceEditor(preset_index, self.controller)
+        self.editor_layout.addWidget(self.current_editor)
+
+    def on_launchpad_preset_changed(self, preset_coords: t.Optional[t.List[int]]):
+        """Called when preset selection changes on the launchpad."""
+        # Emit signal to handle on GUI thread
+        self.preset_changed_signal.emit(preset_coords)
+
+    def _update_preset_from_launchpad(self, preset_coords: t.Optional[t.List[int]]):
+        """Update preset selection from launchpad (runs on GUI thread)."""
+        self._updating_from_launchpad = True
+        try:
+            # Clear all preset button selections first
+            for btn in self.preset_buttons.values():
+                btn.set_active_preset(False)
+
+            if preset_coords is None:
+                # No preset selected - hide editor and show default message
+                if self.current_editor:
+                    self.current_editor.deleteLater()
+                    self.current_editor = None
+                self.default_label.show()
+                return
+
+            # Select the matching preset button
+            preset_tuple = (preset_coords[0], preset_coords[1])
+            if preset_tuple in self.preset_buttons:
+                self.preset_buttons[preset_tuple].set_active_preset(True)
+                # Also show the editor for this preset
+                self.show_sequence_editor(preset_tuple)
+        finally:
+            self._updating_from_launchpad = False
+
+    def select_preset_on_launchpad(self, preset_coords: t.List[int]):
+        """Programmatically select a preset on the launchpad (called from GUI)."""
+        if self.controller and self.controller.currently_active_preset != preset_coords:
+            # Simulate a preset button press
+            self.controller._activate_preset(preset_coords)
+
+    def closeEvent(self, event):
+        """Handle application close."""
+        if self.controller_thread:
+            self.controller_thread.stop()
+        event.accept()
 
 
 def main(simulation: bool = False):
-    """Main entry point for the Reflex GUI application."""
-    print("🚀 Starting Light Sequence Controller GUI...")
-    print(f"📡 Mode: {'Simulation' if simulation else 'Hardware'}")
-    print("🌐 Open your browser to: http://localhost:3000")
-    
-    # Initialize the controller
-    initialize_controller(simulation)
-    
-    # Configure the app for the specified mode
-    if simulation:
-        print("⚠️  Running in simulation mode - no hardware required")
-    
-    # Run the Reflex app using the command line interface
-    try:
-        import subprocess
-        import sys
-        import os
-        
-        print("🎯 Starting Reflex development server...")
-        
-        # Get the controller directory path
-        controller_dir = os.path.dirname(os.path.abspath(__file__))
-        print(f"📁 Working directory: {controller_dir}")
-        
-        # Run reflex from the controller directory
-        result = subprocess.run(
-            [sys.executable, "-m", "reflex", "run", "--env", "dev"],
-            cwd=controller_dir,
-            check=False
-        )
-        
-        if result.returncode != 0:
-            print(f"❌ Reflex exited with code {result.returncode}")
-            
-    except KeyboardInterrupt:
-        print("\n🛑 Shutting down Light Sequence Controller GUI...")
-    except Exception as e:
-        print(f"❌ Error starting GUI: {e}")
-        print("💡 Make sure reflex is installed and working directory is correct")
+    """Main entry point for GUI application.
+
+    Args:
+        simulation: If True, use simulated lighting software instead of real one
+    """
+    app = QApplication(sys.argv)
+
+    # Set application properties
+    app.setApplicationName("Light Sequence Controller")
+    app.setApplicationVersion("1.0")
+
+    # Create and show main window
+    window = LightSequenceGUI(simulation=simulation)
+    window.show()
+
+    sys.exit(app.exec())
 
 
 if __name__ == "__main__":
-    import sys
-    simulation = "--simulation" in sys.argv
-    main(simulation=simulation)
+    main()

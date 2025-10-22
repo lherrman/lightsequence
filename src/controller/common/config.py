@@ -17,7 +17,7 @@ def get_button_type_enum(button_type_str: str):
         ButtonType enum value
     """
     # Import here to avoid circular imports
-    from launchpad import ButtonType
+    from src.controller.devices.launchpad import ButtonType
 
     button_type_map = {
         "TOP": ButtonType.TOP,

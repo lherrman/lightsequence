@@ -3,14 +3,14 @@ import time
 import typing as t
 from pathlib import Path
 
-from light_software import LightSoftware
-from light_software_sim import LightSoftwareSim
-from launchpad import LaunchpadMK2, ButtonType
-from preset_manager import PresetManager
-from background_animator import BackgroundManager
-from sequence_manager import SequenceManager, SequenceState
-from config import get_config
-from enums import AppState
+from controller.midi.light_software import LightSoftware
+from controller.midi.light_software_sim import LightSoftwareSim
+from controller.devices.launchpad import LaunchpadMK2, ButtonType
+from controller.controller.preset_manager import PresetManager
+from controller.controller.background_animator import BackgroundManager
+from controller.controller.sequence import SequenceManager, SequenceState
+from controller.common.config import get_config
+from controller.common.enums import AppState
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -188,7 +188,7 @@ class LightController:
     def _update_clear_button_display(self) -> None:
         """Reflect whether there are active scenes on the clear button LED."""
         binding = self.app_config.data["key_bindings"]["clear_button"]
-        from config import get_button_type_enum
+        from controller.common.config import get_button_type_enum
 
         button_type = get_button_type_enum(binding["button_type"])
         color_key = "success_flash" if self.currently_active_scenes else "off"
@@ -395,7 +395,7 @@ class LightController:
     def _set_save_button_led(self, button_key: str, is_on: bool) -> None:
         """Set LED state for save buttons using configuration."""
         binding = self.app_config.data["key_bindings"][button_key]
-        from config import get_button_type_enum
+        from controller.common.config import get_button_type_enum
 
         button_type = get_button_type_enum(binding["button_type"])
         color = (
@@ -523,7 +523,7 @@ class LightController:
     def _set_playback_button_led(self, button_key: str, color_key: str) -> None:
         """Set LED for playback buttons using configuration."""
         binding = self.app_config.data["key_bindings"][button_key]
-        from config import get_button_type_enum
+        from controller.common.config import get_button_type_enum
 
         button_type = get_button_type_enum(binding["button_type"])
         color = self.app_config.data["colors"][color_key]
@@ -781,7 +781,7 @@ class LightController:
                     # Button has no preset
                     if self.current_app_state == AppState.SAVE_MODE:
                         # In save mode: reduced brightness white
-                        from utils import hex_to_rgb
+                        from controller.common.utils import hex_to_rgb
 
                         base_color = hex_to_rgb(
                             self.app_config.data["colors"][
