@@ -13,21 +13,28 @@ import typing as t
 os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"
 import pygame.midi
 
+from lumiblox.common.device_state import DeviceManager, DeviceType
+
 logger = logging.getLogger(__name__)
 
 
 class LightSoftware:
-    def __init__(self):
+    def __init__(self, device_manager: t.Optional[DeviceManager] = None):
         # Scene mapping: relative coordinates (x, y) to MIDI notes
         self._scene_to_note_map = self._build_scene_note_mapping()
 
         # Reverse mapping for feedback processing
         self._note_to_scene_map = {v: k for k, v in self._scene_to_note_map.items()}
+        
         # MIDI connection variables
         self.midi_out = None
         self.midi_in = None
+        
         # Connection state flag
         self.connection_good = False
+        
+        # Device state management
+        self.device_manager = device_manager
 
     def _build_scene_note_mapping(self) -> t.Dict[t.Tuple[int, int], int]:
         """
@@ -52,6 +59,9 @@ class LightSoftware:
             True if connection successful, False otherwise
         """
         try:
+            if self.device_manager:
+                self.device_manager.set_connecting(DeviceType.LIGHT_SOFTWARE)
+            
             pygame.midi.init()
 
             self.midi_out = None
@@ -80,10 +90,18 @@ class LightSoftware:
             # Update connection state if successful
             if self.midi_out and self.midi_in:
                 self.connection_good = True
+                
+                if self.device_manager:
+                    self.device_manager.set_connected(DeviceType.LIGHT_SOFTWARE)
+                
                 logger.info("✅ Successfully connected to LightSoftware MIDI")
                 return True
             else:
                 self.connection_good = False
+                
+                if self.device_manager:
+                    self.device_manager.set_disconnected(DeviceType.LIGHT_SOFTWARE)
+                
                 logger.error(
                     "❌ Failed to connect to LightSoftware - missing MIDI ports"
                 )
@@ -92,6 +110,10 @@ class LightSoftware:
         except Exception as e:
             logger.error(f"LightSoftware MIDI connection failed: {e}")
             self.connection_good = False
+            
+            if self.device_manager:
+                self.device_manager.set_error(DeviceType.LIGHT_SOFTWARE, str(e))
+            
             return False
 
     def send_scene_command(self, scene_index: t.Tuple[int, int]) -> None:
@@ -102,7 +124,7 @@ class LightSoftware:
             scene_index: Tuple of (x, y) coordinates relative to scene area
         """
         if not self.midi_out:
-            logger.warning("MIDI output not connected")
+            logger.debug("MIDI output not connected - skipping scene command")
             return
 
         scene_note = self._scene_to_note_map.get(scene_index)
@@ -117,6 +139,10 @@ class LightSoftware:
             )
         except Exception as e:
             logger.error(f"MIDI send error: {e}")
+            # Mark as disconnected on error
+            self.connection_good = False
+            if self.device_manager:
+                self.device_manager.set_error(DeviceType.LIGHT_SOFTWARE, f"Send error: {e}")
 
     def get_scene_coordinates_for_note(
         self, note: int
@@ -157,6 +183,10 @@ class LightSoftware:
 
         except Exception as e:
             logger.error(f"MIDI feedback processing error: {e}")
+            # Mark as disconnected on error
+            self.connection_good = False
+            if self.device_manager:
+                self.device_manager.set_error(DeviceType.LIGHT_SOFTWARE, f"Feedback error: {e}")
 
         return changes
 
@@ -172,7 +202,13 @@ class LightSoftware:
                 self.midi_in.close()
                 logger.info("✅  MIDI input closed")
             pygame.midi.quit()
+            
+            self.connection_good = False
+            if self.device_manager:
+                self.device_manager.set_disconnected(DeviceType.LIGHT_SOFTWARE)
+                
         except Exception as e:
             logger.error(f"Error closing  MIDI: {e}")
+            
         self.midi_out = None
         self.midi_in = None

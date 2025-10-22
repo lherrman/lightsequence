@@ -19,11 +19,12 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QSizePolicy,
 )
-from PySide6.QtCore import Qt, Signal, QThread
+from PySide6.QtCore import Qt, Signal, QThread, Slot
 from PySide6.QtGui import QFont
 
 from lumiblox.controller.main import LightController
 from lumiblox.controller.sequence import SequenceStep
+from lumiblox.common.device_state import DeviceType, DeviceState
 
 # Configuration constants
 DEFAULT_STEP_DURATION = 2.0  # Default duration in seconds for new steps
@@ -62,39 +63,42 @@ class ControllerThread(QThread):
         """Run the controller in a separate thread."""
         try:
             self.controller = LightController(simulation=self.simulation)
-            if self.controller.initialize_hardware_connections():
-                self.controller_ready.emit()
+            # Initialize hardware connections (non-blocking)
+            self.controller.initialize_hardware_connections()
+            
+            # Always emit ready signal - app works without hardware
+            self.controller_ready.emit()
 
-                # Modified run loop to work with threading
-                logger.info("Light controller started in thread.")
+            # Modified run loop to work with threading
+            logger.info("Light controller started in thread.")
 
-                import time
+            import time
 
-                while not self.should_stop:
-                    try:
-                        # Handle button events
+            while not self.should_stop:
+                try:
+                    # Handle button events (only if launchpad connected)
+                    if self.controller.launchpad_controller.is_connected:
                         button_event = (
                             self.controller.launchpad_controller.get_button_events()
                         )
                         if button_event:
                             self.controller._route_button_event_to_handler(button_event)
 
+                    # Process MIDI feedback (only if light software connected)
+                    self.controller.process_midi_feedback_from_external()
 
-                        # Process MIDI feedback
-                        self.controller.process_midi_feedback_from_external()
-
+                    # Update background animation (only if launchpad connected)
+                    if self.controller.launchpad_controller.is_connected:
                         self.controller.launchpad_controller.draw_background(
                             self.controller.background_manager.get_current_background()
                         )
 
-                        time.sleep(0.02)  # Small delay to prevent excessive CPU usage
-                    except Exception as e:
-                        logger.error(f"Error in controller loop: {e}")
-                        # Continue running instead of breaking to prevent crashes
-                        time.sleep(0.1)  # Wait a bit longer on error
+                    time.sleep(0.02)  # Small delay to prevent excessive CPU usage
+                except Exception as e:
+                    logger.error(f"Error in controller loop: {e}")
+                    # Continue running instead of breaking to prevent crashes
+                    time.sleep(0.1)  # Wait a bit longer on error
 
-            else:
-                self.controller_error.emit("Failed to connect to devices")
         except Exception as e:
             self.controller_error.emit(f"Controller error: {e}")
         finally:
@@ -109,6 +113,7 @@ class ControllerThread(QThread):
                 # Clear any callbacks to prevent cross-thread calls during shutdown
                 self.controller.on_preset_changed = None
                 self.controller.on_preset_saved = None
+                # Don't call cleanup here - it's called in the thread's run() finally block
             except Exception as e:
                 logger.error(f"Error clearing callbacks: {e}")
         self.wait(3000)  # Wait up to 3 seconds for thread to finish
@@ -726,9 +731,10 @@ class PresetSequenceEditor(QWidget):
 class LightSequenceGUI(QMainWindow):
     """Main GUI application for light sequence configuration."""
 
-    # Custom signals for thread-safe preset updates
+    # Custom signals for thread-safe preset updates and device status updates
     preset_changed_signal = Signal(object)
     preset_saved_signal = Signal()
+    device_status_update_signal = Signal()
 
     def __init__(self, simulation: bool = False):
         super().__init__()
@@ -741,6 +747,7 @@ class LightSequenceGUI(QMainWindow):
         # Connect the signals to the slots
         self.preset_changed_signal.connect(self._update_preset_from_launchpad)
         self.preset_saved_signal.connect(self._handle_preset_saved)
+        self.device_status_update_signal.connect(self._update_device_status_display)
 
         self.setWindowTitle("Light Sequence Controller")
         self.setMinimumSize(470, 200)
@@ -753,8 +760,64 @@ class LightSequenceGUI(QMainWindow):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
 
-        # Main vertical layout - sequence editor on top, preset grid on bottom
+        # Main vertical layout - device status, sequence editor, preset grid
         main_layout = QVBoxLayout(central_widget)
+        
+        # === Device Status Bar (Top) ===
+        status_bar_widget = QFrame()
+        status_bar_widget.setFrameStyle(QFrame.Shape.StyledPanel)
+        status_bar_widget.setMaximumHeight(45)
+        status_bar_widget.setStyleSheet("""
+            QFrame {
+                background-color: #1e1e1e;
+                border: 1px solid #555555;
+                border-radius: 3px;
+                padding: 5px;
+            }
+        """)
+        status_bar_layout = QHBoxLayout(status_bar_widget)
+        status_bar_layout.setContentsMargins(10, 5, 10, 5)
+        
+        # Device status label
+        status_label = QLabel("Devices:")
+        status_label.setStyleSheet("color: #cccccc; font-weight: bold; font-size: 11px;")
+        status_bar_layout.addWidget(status_label)
+        
+        # Launchpad status indicator
+        launchpad_container = QHBoxLayout()
+        launchpad_label = QLabel("Launchpad:")
+        launchpad_label.setStyleSheet("color: #aaaaaa; font-size: 10px;")
+        launchpad_container.addWidget(launchpad_label)
+        
+        self.launchpad_status_indicator = QLabel("●")
+        self.launchpad_status_indicator.setStyleSheet("color: #888888; font-size: 16px; font-weight: bold;")
+        self.launchpad_status_text = QLabel("Disconnected")
+        self.launchpad_status_text.setStyleSheet("color: #888888; font-size: 10px;")
+        launchpad_container.addWidget(self.launchpad_status_indicator)
+        launchpad_container.addWidget(self.launchpad_status_text)
+        launchpad_container.addStretch()
+        
+        status_bar_layout.addLayout(launchpad_container)
+        status_bar_layout.addSpacing(20)
+        
+        # LightSoftware status indicator
+        lightsw_container = QHBoxLayout()
+        lightsw_label = QLabel("LightSoftware:")
+        lightsw_label.setStyleSheet("color: #aaaaaa; font-size: 10px;")
+        lightsw_container.addWidget(lightsw_label)
+        
+        self.lightsw_status_indicator = QLabel("●")
+        self.lightsw_status_indicator.setStyleSheet("color: #888888; font-size: 16px; font-weight: bold;")
+        self.lightsw_status_text = QLabel("Disconnected")
+        self.lightsw_status_text.setStyleSheet("color: #888888; font-size: 10px;")
+        lightsw_container.addWidget(self.lightsw_status_indicator)
+        lightsw_container.addWidget(self.lightsw_status_text)
+        lightsw_container.addStretch()
+        
+        status_bar_layout.addLayout(lightsw_container)
+        status_bar_layout.addStretch()
+        
+        main_layout.addWidget(status_bar_widget)
 
         # Top area - Sequence editor (takes most space)
         self.editor_stack = QWidget()
@@ -914,6 +977,15 @@ class LightSequenceGUI(QMainWindow):
             if self.controller:
                 self.controller.on_preset_changed = self.on_launchpad_preset_changed
                 self.controller.on_preset_saved = self.on_preset_saved
+                
+                # Register device state change callback
+                if hasattr(self.controller, 'device_manager'):
+                    self.controller.device_manager.register_state_change_callback(
+                        self._on_device_state_changed
+                    )
+                    # Update initial device statuses
+                    self._update_device_status_display()
+                    
             self.statusBar().showMessage("Controller connected successfully")
             self.refresh_presets()
 
@@ -1023,6 +1095,58 @@ class LightSequenceGUI(QMainWindow):
         if self.controller and self.controller.currently_active_preset != preset_coords:
             # Simulate a preset button press
             self.controller._activate_preset(preset_coords)
+    
+    def _on_device_state_changed(self, device_type: DeviceType, new_state: DeviceState):
+        """Handle device state changes (called from device manager)."""
+        # Emit signal to update GUI on main thread
+        self.device_status_update_signal.emit()
+    
+    def _update_device_status_display(self):
+        """Update device status indicators in GUI."""
+        if not self.controller or not hasattr(self.controller, 'device_manager'):
+            return
+        
+        device_manager = self.controller.device_manager
+        
+        # Update Launchpad status
+        launchpad_state = device_manager.get_state(DeviceType.LAUNCHPAD)
+        self._update_status_indicator(
+            self.launchpad_status_indicator,
+            self.launchpad_status_text,
+            launchpad_state
+        )
+        
+        # Update LightSoftware status
+        lightsw_state = device_manager.get_state(DeviceType.LIGHT_SOFTWARE)
+        self._update_status_indicator(
+            self.lightsw_status_indicator,
+            self.lightsw_status_text,
+            lightsw_state
+        )
+    
+    def _update_status_indicator(
+        self,
+        indicator_label: QLabel,
+        text_label: QLabel,
+        state: DeviceState
+    ):
+        """Update a single status indicator based on device state."""
+        if state == DeviceState.CONNECTED:
+            indicator_label.setStyleSheet("color: #4CAF50; font-size: 16px; font-weight: bold;")
+            text_label.setStyleSheet("color: #4CAF50; font-size: 10px;")
+            text_label.setText("Connected")
+        elif state == DeviceState.CONNECTING:
+            indicator_label.setStyleSheet("color: #FFA726; font-size: 16px; font-weight: bold;")
+            text_label.setStyleSheet("color: #FFA726; font-size: 10px;")
+            text_label.setText("Connecting...")
+        elif state == DeviceState.ERROR:
+            indicator_label.setStyleSheet("color: #F44336; font-size: 16px; font-weight: bold;")
+            text_label.setStyleSheet("color: #F44336; font-size: 10px;")
+            text_label.setText("Error")
+        else:  # DISCONNECTED
+            indicator_label.setStyleSheet("color: #888888; font-size: 16px; font-weight: bold;")
+            text_label.setStyleSheet("color: #888888; font-size: 10px;")
+            text_label.setText("Disconnected")
 
     def closeEvent(self, event):
         """Handle application close."""

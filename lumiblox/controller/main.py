@@ -9,8 +9,10 @@ from lumiblox.devices.launchpad import LaunchpadMK2, ButtonType
 from lumiblox.controller.preset_manager import PresetManager
 from lumiblox.controller.background_animator import BackgroundManager
 from lumiblox.controller.sequence import SequenceManager, SequenceState
+from lumiblox.controller.device_monitor import DeviceMonitor
 from lumiblox.common.config import get_config
 from lumiblox.common.enums import AppState
+from lumiblox.common.device_state import DeviceManager, DeviceType, DeviceState
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -25,19 +27,27 @@ class LightController:
         Args:
             simulation: If True, use simulated lighting software instead of real one
         """
-        # Managers - create these first
+        # Device state management - create first
+        self.device_manager = DeviceManager()
+        self.device_monitor = DeviceMonitor(self.device_manager)
+        
+        # Managers - create these first (don't require hardware)
         preset_file = Path("presets.json")
         self.preset_manager = PresetManager(preset_file)
         self.background_manager = BackgroundManager(self.preset_manager)
         self.sequence_manager = SequenceManager()
 
-        # Hardware connections
+        # Hardware connections - now with device manager
         if simulation:
             logger.info("🔧 Using simulated lighting software")
             self.light_software = LightSoftwareSim()
         else:
-            self.light_software = LightSoftware()
-        self.launchpad_controller = LaunchpadMK2(self.preset_manager)
+            self.light_software = LightSoftware(device_manager=self.device_manager)
+        
+        self.launchpad_controller = LaunchpadMK2(
+            self.preset_manager,
+            device_manager=self.device_manager
+        )
 
         # Application state
         self.current_app_state = AppState.NORMAL
@@ -51,6 +61,7 @@ class LightController:
 
         # Setup callbacks
         self._setup_sequence_callbacks()
+        self._setup_device_monitoring()
 
         # External callbacks (for GUI integration)
         self.on_preset_changed: t.Optional[
@@ -62,44 +73,108 @@ class LightController:
         """Setup callbacks for sequence manager events."""
         self.sequence_manager.on_step_change = self._handle_sequence_step_changed
         self.sequence_manager.on_sequence_complete = self._handle_sequence_completed
+    
+    def _setup_device_monitoring(self) -> None:
+        """Setup device monitoring with reconnection callbacks."""
+        # Register reconnection callbacks for each device
+        self.device_monitor.register_reconnect_callback(
+            DeviceType.LAUNCHPAD,
+            self._reconnect_launchpad
+        )
+        self.device_monitor.register_reconnect_callback(
+            DeviceType.LIGHT_SOFTWARE,
+            self._reconnect_light_software
+        )
+        
+        # Register state change callback for logging/GUI updates
+        self.device_manager.register_state_change_callback(
+            self._on_device_state_changed
+        )
+    
+    def _reconnect_launchpad(self) -> bool:
+        """Attempt to reconnect launchpad. Returns True if successful."""
+        try:
+            return self.launchpad_controller.connect()
+        except Exception as e:
+            logger.error(f"Launchpad reconnection failed: {e}")
+            return False
+    
+    def _reconnect_light_software(self) -> bool:
+        """Attempt to reconnect light software. Returns True if successful."""
+        try:
+            return self.light_software.connect_midi()
+        except Exception as e:
+            logger.error(f"LightSoftware reconnection failed: {e}")
+            return False
+    
+    def _on_device_state_changed(
+        self,
+        device_type: DeviceType,
+        new_state: DeviceState
+    ) -> None:
+        """Handle device state changes."""
+        # This can be extended to trigger GUI updates, etc.
+        logger.debug(f"Device {device_type.value} state changed to {new_state.value}")
 
     def initialize_hardware_connections(self) -> bool:
-        """Connect to all hardware devices and sync initial state."""
-        midi_connection_successful = self.light_software.connect_midi()
+        """
+        Connect to all hardware devices and sync initial state.
+        
+        Returns True if at least one device connected successfully.
+        This is now non-blocking and the app can run without any hardware.
+        """
+        launchpad_connected = self.device_manager.is_connected(DeviceType.LAUNCHPAD)
+        light_software_connected = False
+        
+        # Try to connect to light software if not in simulation mode
+        if hasattr(self.light_software, 'connect_midi'):
+            light_software_connected = self.light_software.connect_midi()
 
-        if midi_connection_successful:
-            # Process initial feedback to sync active scenes
-            initial_changes = self.light_software.process_feedback()
-            for note, is_active in initial_changes.items():
-                scene_coordinates = self.light_software.get_scene_coordinates_for_note(
-                    note
-                )
-                if scene_coordinates and is_active:
-                    self.currently_active_scenes.add(scene_coordinates)
+            if light_software_connected:
+                # Process initial feedback to sync active scenes
+                initial_changes = self.light_software.process_feedback()
+                for note, is_active in initial_changes.items():
+                    scene_coordinates = self.light_software.get_scene_coordinates_for_note(
+                        note
+                    )
+                    if scene_coordinates and is_active:
+                        self.currently_active_scenes.add(scene_coordinates)
 
-            logger.info("Successfully connected to DasLight")
-            if self.currently_active_scenes:
-                logger.info(
-                    f"Found {len(self.currently_active_scenes)} active scenes on startup"
-                )
-        else:
-            logger.error("Failed to connect to DasLight")
-
+                logger.info("Successfully connected to DasLight")
+                if self.currently_active_scenes:
+                    logger.info(
+                        f"Found {len(self.currently_active_scenes)} active scenes on startup"
+                    )
+        
         # Update clear button status immediately after connection attempt
-        self._update_clear_button_display()
+        if launchpad_connected:
+            self._update_clear_button_display()
+        
+        # Start device monitor for automatic reconnection
+        self.device_monitor.start()
 
-        return midi_connection_successful and self.launchpad_controller.is_connected
+        # Log connection status
+        if launchpad_connected and light_software_connected:
+            logger.info("✅ All devices connected successfully")
+        elif launchpad_connected or light_software_connected:
+            logger.warning("⚠️ Partial device connection - some devices not available")
+        else:
+            logger.warning("⚠️ No devices connected - running in software-only mode")
+        
+        # Return True if at least one device connected (for backwards compatibility)
+        return launchpad_connected or light_software_connected
 
     def run_main_loop(self) -> None:
         """Main control loop - clearly separated input processing and output updates."""
-        if not self.initialize_hardware_connections():
-            logger.error("Failed to connect to devices")
-            return
+        # Initialize hardware connections (non-blocking, app continues regardless)
+        self.initialize_hardware_connections()
 
         logger.info("Light controller started. Press Ctrl+C to exit.")
+        logger.info("Application running - devices will auto-reconnect if disconnected")
 
-        # Initialize clear button display
-        self._update_clear_button_display()
+        # Initialize clear button display if launchpad is connected
+        if self.launchpad_controller.is_connected:
+            self._update_clear_button_display()
 
         try:
             while True:
@@ -118,8 +193,20 @@ class LightController:
 
     def cleanup_resources(self) -> None:
         """Clean up all resources and connections."""
+        # Stop device monitor first
+        if hasattr(self, 'device_monitor'):
+            self.device_monitor.stop()
+        
+        # Clean up managers
         self.sequence_manager.cleanup()
-        self.launchpad_controller.close()
+        
+        # Close hardware connections
+        if hasattr(self, 'launchpad_controller'):
+            self.launchpad_controller.close()
+        
+        if hasattr(self, 'light_software') and hasattr(self.light_software, 'close_midi'):
+            self.light_software.close_midi()
+        
         logger.info("Light controller stopped")
 
     # ============================================================================
@@ -136,12 +223,22 @@ class LightController:
 
     def _process_launchpad_button_inputs(self) -> None:
         """Handle button press events from the launchpad controller."""
+        # Skip if launchpad is not connected
+        if not self.launchpad_controller.is_connected:
+            return
+        
         button_event = self.launchpad_controller.get_button_events()
         if button_event:
             self._route_button_event_to_handler(button_event)
 
     def _process_midi_feedback_inputs(self) -> None:
         """Process MIDI feedback from lighting software and update scene tracking."""
+        # Skip if light software is not connected
+        if not hasattr(self.light_software, 'process_feedback'):
+            return
+        if hasattr(self.light_software, 'connection_good') and not self.light_software.connection_good:
+            return
+        
         midi_changes = self.light_software.process_feedback()
 
         for note, is_active in midi_changes.items():
@@ -157,14 +254,15 @@ class LightController:
                     self.currently_active_scenes.discard(scene_coordinates)
                     self.preset_controlled_scenes.discard(scene_coordinates)
 
-                # Update the corresponding LED on the launchpad
-                scene_color = self._determine_scene_led_color(
-                    scene_coordinates, is_active
-                )
-                coordinates_list = [scene_coordinates[0], scene_coordinates[1]]
-                self.launchpad_controller.set_button_led(
-                    ButtonType.SCENE, coordinates_list, scene_color
-                )
+                # Update the corresponding LED on the launchpad (if connected)
+                if self.launchpad_controller.is_connected:
+                    scene_color = self._determine_scene_led_color(
+                        scene_coordinates, is_active
+                    )
+                    coordinates_list = [scene_coordinates[0], scene_coordinates[1]]
+                    self.launchpad_controller.set_button_led(
+                        ButtonType.SCENE, coordinates_list, scene_color
+                    )
 
     # ============================================================================
     # OUTPUT UPDATE METHODS
@@ -172,21 +270,27 @@ class LightController:
 
     def _update_all_outputs(self) -> None:
         """Update all output displays in one consolidated method."""
-        # Update background animation
-        self._update_background_display()
+        # Only update if launchpad is connected
+        if self.launchpad_controller.is_connected:
+            # Update background animation
+            self._update_background_display()
 
-        # Update clear button indicator
-        self._update_clear_button_display()
+            # Update clear button indicator
+            self._update_clear_button_display()
 
     def _update_background_display(self) -> None:
         """Update the background animation display on the launchpad."""
-        current_background = self.background_manager.get_current_background()
-        self.launchpad_controller.draw_background(
-            current_background, app_state=self.current_app_state
-        )
+        if self.launchpad_controller.is_connected:
+            current_background = self.background_manager.get_current_background()
+            self.launchpad_controller.draw_background(
+                current_background, app_state=self.current_app_state
+            )
 
     def _update_clear_button_display(self) -> None:
         """Reflect whether there are active scenes on the clear button LED."""
+        if not self.launchpad_controller.is_connected:
+            return
+        
         binding = self.app_config.data["key_bindings"]["clear_button"]
         from lumiblox.common.config import get_button_type_enum
 
