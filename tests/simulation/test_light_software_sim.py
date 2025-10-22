@@ -1,6 +1,6 @@
 """Test light software simulator"""
 import pytest
-from controller.midi.light_software_sim import LightSoftwareSim
+from lumiblox.midi.light_software_sim import LightSoftwareSim
 
 
 @pytest.fixture

@@ -1,7 +1,7 @@
 """Test sequence management functionality"""
 import pytest
 import time
-from controller.controller.sequence import SequenceManager, SequenceStep, SequenceState
+from lumiblox.controller.sequence import SequenceManager, SequenceStep, SequenceState
 
 
 @pytest.fixture

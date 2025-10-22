@@ -22,8 +22,8 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, QThread
 from PySide6.QtGui import QFont
 
-from controller.controller.main import LightController
-from controller.controller.sequence import SequenceStep
+from lumiblox.controller.main import LightController
+from lumiblox.controller.sequence import SequenceStep
 
 # Configuration constants
 DEFAULT_STEP_DURATION = 2.0  # Default duration in seconds for new steps

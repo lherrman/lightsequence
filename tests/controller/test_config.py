@@ -2,8 +2,8 @@
 import pytest
 import tempfile
 from pathlib import Path
-from controller.common.config import ConfigManager, get_config
-from controller.common.enums import AppState
+from lumiblox.common.config import ConfigManager, get_config
+from lumiblox.common.enums import AppState
 
 
 @pytest.fixture
@@ -94,8 +94,8 @@ def test_reload_config(config_manager, temp_config_file):
 
 def test_get_button_type_enum():
     """Test button type enum conversion"""
-    from controller.common.config import get_button_type_enum
-    from controller.devices.launchpad import ButtonType
+    from lumiblox.common.config import get_button_type_enum
+    from lumiblox.devices.launchpad import ButtonType
     
     assert get_button_type_enum("TOP") == ButtonType.TOP
     assert get_button_type_enum("RIGHT") == ButtonType.RIGHT

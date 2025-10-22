@@ -46,7 +46,7 @@ def main():
     if args.mode == "gui":
         try:
             logger.info("Starting GUI application...")
-            from controller.gui.gui import main as gui_main
+            from lumiblox.gui.gui import main as gui_main
 
             gui_main(simulation=args.simulation)
         except ImportError as e:
@@ -60,7 +60,7 @@ def main():
     elif args.mode == "controller":
         try:
             logger.info("Starting standalone controller...")
-            from controller.controller.main import main as controller_main
+            from lumiblox.controller.main import main as controller_main
 
             controller_main(simulation=args.simulation)
         except Exception as e:

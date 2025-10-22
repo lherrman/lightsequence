@@ -1,9 +1,9 @@
 import numpy as np
 import logging
 import time
-from controller.common.config import get_config
-from controller.common.utils import hex_to_rgb
-from controller.common.enums import AppState
+from lumiblox.common.config import get_config
+from lumiblox.common.utils import hex_to_rgb
+from lumiblox.common.enums import AppState
 
 logger = logging.getLogger(__name__)
 

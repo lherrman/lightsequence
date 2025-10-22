@@ -1,6 +1,6 @@
 """Test utility functions"""
 import pytest
-from controller.common.utils import hex_to_rgb
+from lumiblox.common.utils import hex_to_rgb
 
 
 def test_hex_to_rgb_with_hash():

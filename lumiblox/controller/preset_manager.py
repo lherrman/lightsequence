@@ -2,7 +2,7 @@ import json
 import logging
 import typing as t
 from pathlib import Path
-from controller.controller.sequence import SequenceStep
+from lumiblox.controller.sequence import SequenceStep
 
 logger = logging.getLogger(__name__)
 

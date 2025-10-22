@@ -25,7 +25,7 @@ dev = [
 ]
 
 [project.scripts]
-lightsequence = "src.controller.controller.main:main"
+lightsequence = "lumiblox.controller.main:main"
 
 [project.gui-scripts] 
-lightsequence-gui = "src.controller.gui.gui:main"
+lightsequence-gui = "lumiblox.controller.gui.gui:main"

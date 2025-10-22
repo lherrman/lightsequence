@@ -2,8 +2,8 @@
 import pytest
 import tempfile
 from pathlib import Path
-from controller.controller.preset_manager import PresetManager
-from controller.controller.sequence import SequenceStep
+from lumiblox.controller.preset_manager import PresetManager
+from lumiblox.controller.sequence import SequenceStep
 
 
 @pytest.fixture
