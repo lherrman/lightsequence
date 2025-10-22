@@ -1,6 +1,6 @@
 
 [project]
-name = "lightsequence"
+name = "lumiblox"
 version = "0.1.0"
 description = "Professional party lighting controller for Novation Launchpad MK2"
 readme = "README.md"
@@ -17,6 +17,9 @@ dependencies = [
     "mss>=10.1.0",
 ]
 
+[tool.uv]
+package = true
+
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0.0",
@@ -25,7 +28,6 @@ dev = [
 ]
 
 [project.scripts]
-lightsequence = "lumiblox.controller.main:main"
+lumiblox-cli = "lumiblox.controller.main:main"
+lumiblox = "lumiblox.gui.gui:main"
 
-[project.gui-scripts] 
-lightsequence-gui = "lumiblox.controller.gui.gui:main"

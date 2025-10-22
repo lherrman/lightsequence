@@ -320,9 +320,9 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/60/c1/be10a6cc85481db07af9327a3a70e70f68197a86cb29adf910d7f9765c9e/launchpad_py-0.9.1.tar.gz", hash = "sha256:9c70885a9079d9960a066515f4b83727e7c475543da8ef68786f00a8ef10727c", size = 549666, upload-time = "2021-01-24T22:08:26.299Z" }
 
 [[package]]
-name = "lightsequence"
+name = "lumiblox"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "isort" },
     { name = "launchpad-py" },
