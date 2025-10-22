@@ -25,6 +25,7 @@ from lumiblox.gui.controller_thread import ControllerThread
 from lumiblox.gui.device_status import DeviceStatusBar
 from lumiblox.gui.widgets import PresetButton
 from lumiblox.gui.sequence_editor import PresetSequenceEditor
+from lumiblox.gui.playback_controls import PlaybackControls
 from lumiblox.controller.input_handler import ButtonEvent, ButtonType
 from lumiblox.common.device_state import DeviceType
 
@@ -39,6 +40,7 @@ class LightSequenceGUI(QMainWindow):
     sequence_changed_signal = Signal(object)
     sequence_saved_signal = Signal()
     device_status_update_signal = Signal()
+    playback_state_changed_signal = Signal(object)
 
     def __init__(self, simulation: bool = False):
         super().__init__()
@@ -52,6 +54,7 @@ class LightSequenceGUI(QMainWindow):
         self.sequence_changed_signal.connect(self._update_sequence_from_launchpad)
         self.sequence_saved_signal.connect(self._handle_sequence_saved)
         self.device_status_update_signal.connect(self._update_device_status_display)
+        self.playback_state_changed_signal.connect(self._update_playback_controls)
 
         self.setWindowTitle("Light Sequence Controller")
         self.setMinimumSize(470, 200)
@@ -110,6 +113,20 @@ class LightSequenceGUI(QMainWindow):
         self.editor_layout.addWidget(self.default_label)
 
         main_layout.addWidget(self.editor_stack, 1)  # Stretch to fill remaining space
+
+        # === Playback Controls (Between editor and presets) ===
+        self.playback_controls = PlaybackControls()
+        self.playback_controls.setStyleSheet("""
+            QWidget {
+                background-color: #2d2d2d;
+                border: 1px solid #555555;
+                border-radius: 3px;
+            }
+        """)
+        self.playback_controls.play_pause_clicked.connect(self.on_play_pause_clicked)
+        self.playback_controls.next_step_clicked.connect(self.on_next_step_clicked)
+        self.playback_controls.clear_clicked.connect(self.on_clear_clicked)
+        main_layout.addWidget(self.playback_controls)
 
         # Bottom area - Preset grid (3 rows x 8 columns) - more compact
         preset_panel = QWidget()  # Use plain widget instead of GroupBox
@@ -260,6 +277,10 @@ class LightSequenceGUI(QMainWindow):
                 self.controller.on_sequence_changed = self.on_launchpad_sequence_changed
                 self.controller.on_sequence_saved = self.on_sequence_saved
                 
+                # Register playback state change callback
+                if hasattr(self.controller, 'sequence_ctrl'):
+                    self.controller.sequence_ctrl.on_playback_state_change = self.on_playback_state_changed
+                
                 # Register device state change callback
                 if hasattr(self.controller, 'device_manager'):
                     self.controller.device_manager.register_state_change_callback(
@@ -404,6 +425,65 @@ class LightSequenceGUI(QMainWindow):
         # Update LightSoftware status
         lightsw_state = device_manager.get_state(DeviceType.LIGHT_SOFTWARE)
         self.device_status_bar.update_lightsw_status(lightsw_state)
+
+    # ============================================================================
+    # PLAYBACK CONTROLS
+    # ============================================================================
+    
+    def on_playback_state_changed(self, state):
+        """Called when playback state changes (from any source - launchpad or GUI)."""
+        # Use signal for thread-safe GUI update
+        self.playback_state_changed_signal.emit(state)
+    
+    def _update_playback_controls(self, state):
+        """Update playback controls based on state (runs on GUI thread)."""
+        from lumiblox.controller.sequence_controller import PlaybackState
+        
+        # Update button state to reflect actual playback state
+        is_playing = state == PlaybackState.PLAYING
+        self.playback_controls.set_playing(is_playing)
+    
+    def on_play_pause_clicked(self):
+        """Handle play/pause button click."""
+        if not self.controller:
+            return
+        
+        from lumiblox.controller.sequence_controller import PlaybackState
+        
+        # Toggle between playing and paused
+        if self.controller.sequence_ctrl.playback_state == PlaybackState.PLAYING:
+            self.controller.sequence_ctrl.pause_playback()
+        elif self.controller.sequence_ctrl.playback_state == PlaybackState.PAUSED:
+            self.controller.sequence_ctrl.resume_playback()
+        elif self.controller.active_sequence:
+            # Start playing the active sequence
+            self.controller.sequence_ctrl.start_playback(
+                self.controller.active_sequence, 
+                keep_state=False
+            )
+    
+    def on_next_step_clicked(self):
+        """Handle next step button click."""
+        if not self.controller:
+            return
+        self.controller.sequence_ctrl.next_step()
+    
+    def on_clear_clicked(self):
+        """Handle clear button click - stop and clear sequence."""
+        if not self.controller:
+            return
+        
+        # Stop playback and clear sequence
+        self.controller.sequence_ctrl.stop_playback()
+        
+        # Clear active sequence
+        if self.controller.active_sequence:
+            old_seq = self.controller.active_sequence
+            self.controller.active_sequence = None
+            self.controller.scene_ctrl.clear_controlled()
+            self.controller.led_ctrl.update_sequence_led(old_seq, False)
+            if self.controller.on_sequence_changed:
+                self.controller.on_sequence_changed(None)
 
     # ============================================================================
     # LIFECYCLE
