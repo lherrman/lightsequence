@@ -64,18 +64,44 @@ class LightSequenceGUI(QMainWindow):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
 
-        # Main vertical layout - device status, sequence editor, preset grid
+        # Main vertical layout - device status, pilot, sequence editor, preset grid
         main_layout = QVBoxLayout(central_widget)
         
         # === Device Status Bar (Top) ===
         self.device_status_bar = DeviceStatusBar()
         main_layout.addWidget(self.device_status_bar)
 
-        # Top area - Sequence editor (takes most space)
-        self.editor_stack = QWidget()
-        self.editor_layout = QVBoxLayout(self.editor_stack)
+        # === Pilot Widget Mock (Fixed height) ===
+        self.pilot_widget = QWidget()
+        self.pilot_widget.setMinimumHeight(300)
+        self.pilot_widget.setMaximumHeight(300)
+        self.pilot_widget.setStyleSheet("""
+            QWidget {
+                background-color: #1e1e1e;
+                border: 2px solid #555555;
+                border-radius: 5px;
+            }
+        """)
+        pilot_layout = QVBoxLayout(self.pilot_widget)
+        pilot_label = QLabel("🎯 Pilot Section\n(Widget to be implemented)")
+        pilot_label.setAlignment(pilot_label.alignment() | pilot_label.alignment())
+        pilot_label.setStyleSheet("color: #888888; font-size: 16px; font-weight: bold;")
+        pilot_layout.addWidget(pilot_label)
+        main_layout.addWidget(self.pilot_widget)  # No stretch, fixed height
 
-        # Default message
+        # === Sequence Editor (Takes remaining space) ===
+        self.editor_stack = QWidget()
+        self.editor_stack.setStyleSheet("""
+            QWidget {
+                background-color: #2d2d2d;
+                border: 1px solid #555555;
+                border-radius: 3px;
+            }
+        """)
+        self.editor_layout = QVBoxLayout(self.editor_stack)
+        self.editor_layout.setContentsMargins(5, 5, 5, 5)
+
+        # Default message (shown when no sequence selected)
         self.default_label = QLabel(
             "Select a preset from the grid below to edit its sequence."
         )
@@ -83,7 +109,7 @@ class LightSequenceGUI(QMainWindow):
         self.default_label.setStyleSheet("color: #888888; font-size: 14px;")
         self.editor_layout.addWidget(self.default_label)
 
-        main_layout.addWidget(self.editor_stack, 3)  # Give most space to editor
+        main_layout.addWidget(self.editor_stack, 1)  # Stretch to fill remaining space
 
         # Bottom area - Preset grid (3 rows x 8 columns) - more compact
         preset_panel = QWidget()  # Use plain widget instead of GroupBox
@@ -340,7 +366,7 @@ class LightSequenceGUI(QMainWindow):
                 btn.set_active_preset(False)
 
             if sequence_coords is None:
-                # No sequence selected - hide editor and show default message
+                # No sequence selected - clear editor and show default message
                 if self.current_editor:
                     self.current_editor.deleteLater()
                     self.current_editor = None

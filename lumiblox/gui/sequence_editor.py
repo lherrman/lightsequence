@@ -2,6 +2,7 @@
 Sequence Editor Components
 
 Widgets for editing sequences and their steps.
+Redesigned with compact list view + detail panel layout.
 """
 
 import logging
@@ -17,9 +18,10 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QMessageBox,
     QFrame,
-    QScrollArea,
     QGridLayout,
     QCheckBox,
+    QListWidget,
+    QListWidgetItem,
 )
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont
@@ -47,13 +49,13 @@ class SequenceStepWidget(QFrame):
         self.step_index = step_index
         self.scene_buttons: t.Dict[t.Tuple[int, int], SceneButton] = {}
 
-        self.setFrameStyle(QFrame.Shape.Box)
+        # Remove frame border - no visible border
+        self.setFrameStyle(QFrame.Shape.NoFrame)
         self.setStyleSheet("""
             QFrame {
-                background-color: #2d2d2d;
-                border: 1px solid #555555;
-                border-radius: 3px;
-                margin: 1px;
+                background-color: transparent;
+                border: none;
+                margin: 0px;
                 padding: 3px;
             }
         """)
@@ -65,14 +67,14 @@ class SequenceStepWidget(QFrame):
     def setup_ui(self):
         # Main horizontal layout - scenes on left, parameters on right
         main_layout = QHBoxLayout(self)
+        main_layout.setContentsMargins(5, 5, 5, 5)
+        main_layout.setSpacing(8)
 
-        # Left side: Scene grid widget (no container box)
-        scenes_widget = QWidget()
-        scenes_widget.setFixedWidth(150)
-        scenes_layout = QGridLayout(scenes_widget)
+        # Left side: Scene grid (directly in main layout, no wrapper widget)
+        scenes_layout = QGridLayout()
         scenes_layout.setHorizontalSpacing(2)
         scenes_layout.setVerticalSpacing(2)
-        scenes_layout.setContentsMargins(5, 5, 5, 5)
+        scenes_layout.setContentsMargins(0, 0, 0, 0)
 
         # Create 8x5 grid of scene buttons
         for y in range(5):
@@ -83,12 +85,11 @@ class SequenceStepWidget(QFrame):
                 self.scene_buttons[(x, y)] = btn
                 scenes_layout.addWidget(btn, y, x)
 
-        main_layout.addWidget(scenes_widget)
+        main_layout.addLayout(scenes_layout)
 
-        # Right side: Parameters and controls (compact)
-        controls_widget = QWidget()
-        controls_layout = QVBoxLayout(controls_widget)
-        controls_layout.setContentsMargins(8, 5, 5, 5)
+        # Right side: Parameters and controls (directly in main layout)
+        controls_layout = QVBoxLayout()
+        controls_layout.setContentsMargins(0, 0, 0, 0)
         controls_layout.setSpacing(4)  # Tighter spacing
 
         # Step number label
@@ -179,11 +180,11 @@ class SequenceStepWidget(QFrame):
 
         controls_layout.addLayout(button_layout)
 
-        main_layout.addWidget(controls_widget)
+        main_layout.addLayout(controls_layout)
 
-        # Set proportional sizes - scenes get more space
-        main_layout.setStretch(0, 2)  # Scenes
-        main_layout.setStretch(1, 1)  # Controls
+        # Set proportional sizes - scenes get less space than controls
+        main_layout.setStretch(0, 0)  # Scenes - natural width
+        main_layout.setStretch(1, 1)  # Controls - stretch to fill
 
     def update_from_step(self):
         """Update widget from step data."""
@@ -282,75 +283,177 @@ class SequenceStepWidget(QFrame):
 
 
 class PresetSequenceEditor(QWidget):
-    """Widget for editing sequences for a specific preset."""
+    """Widget for editing sequences - compact list + detail view."""
 
     def __init__(self, preset_index: t.Tuple[int, int], controller=None):
         super().__init__()
         self.preset_index = preset_index
         self.controller = controller
         self.sequence_steps: t.List[SequenceStep] = []
-        self.step_widgets: t.List[SequenceStepWidget] = []
+        self.current_step_index = 0
+        self.current_step_widget: t.Optional[SequenceStepWidget] = None
+        self.auto_update_enabled = True  # Auto-update during playback
 
         self.setup_ui()
         self.load_sequence()
+        
+        # Connect to controller's step change callback if available
+        if self.controller and hasattr(self.controller, 'sequence_ctrl'):
+            original_callback = self.controller.sequence_ctrl.on_step_change
+            
+            def wrapped_callback(scenes):
+                if original_callback:
+                    original_callback(scenes)
+                # Only update if widget still exists and auto-update is enabled
+                try:
+                    if self.auto_update_enabled and not self.isHidden():
+                        self._on_playback_step_change()
+                except RuntimeError:
+                    # Widget has been deleted, ignore
+                    pass
+            
+            self.controller.sequence_ctrl.on_step_change = wrapped_callback
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(5, 5, 5, 5)
+        layout.setSpacing(5)
 
-        # Header
+        # Header with compact controls
         header_layout = QHBoxLayout()
-        title = QLabel(
-            f"Preset [{self.preset_index[0]}, {self.preset_index[1]}] Sequence"
-        )
-        title.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+        title = QLabel(f"Sequence [{self.preset_index[0]}, {self.preset_index[1]}]")
+        title.setFont(QFont("Arial", 11, QFont.Weight.Bold))
         header_layout.addWidget(title)
-
         header_layout.addStretch()
-
-        # Add step from current scenes button
-        self.add_from_scenes_btn = QPushButton("Add from Active")
-        self.add_from_scenes_btn.clicked.connect(self.add_step_from_active_scenes)
-        self.add_from_scenes_btn.setEnabled(self.controller is not None)
-        header_layout.addWidget(self.add_from_scenes_btn)
-
-        # Add empty step button
-        add_step_btn = QPushButton("Add Empty")
-        add_step_btn.clicked.connect(self.add_empty_step)
-        header_layout.addWidget(add_step_btn)
-
+        
+        # Auto-update checkbox
+        self.auto_update_cb = QCheckBox("Auto-update")
+        self.auto_update_cb.setChecked(True)
+        self.auto_update_cb.setToolTip("Automatically show current step during playback")
+        self.auto_update_cb.stateChanged.connect(self._on_auto_update_changed)
+        header_layout.addWidget(self.auto_update_cb)
+        
+        # Loop checkbox
+        self.loop_checkbox = QCheckBox("Loop")
+        self.loop_checkbox.setChecked(True)
+        self.loop_checkbox.stateChanged.connect(self.auto_save_sequence)
+        header_layout.addWidget(self.loop_checkbox)
+        
         layout.addLayout(header_layout)
 
-        # Loop checkbox
-        loop_layout = QHBoxLayout()
-        self.loop_checkbox = QCheckBox("Loop sequence")
-        self.loop_checkbox.setChecked(True)  # Default to loop
-        self.loop_checkbox.stateChanged.connect(self.auto_save_sequence)
-        loop_layout.addWidget(self.loop_checkbox)
-        loop_layout.addStretch()
-        layout.addLayout(loop_layout)
-
-        # Scroll area for steps
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-
-        self.steps_widget = QWidget()
-        self.steps_layout = QVBoxLayout(self.steps_widget)
-        self.steps_layout.addStretch()  # Push steps to top
-
-        scroll.setWidget(self.steps_widget)
-        layout.addWidget(scroll)
-
-        # Control buttons
-        button_layout = QHBoxLayout()
-
-        load_btn = QPushButton("Reload from File")
-        load_btn.clicked.connect(self.load_sequence)
-        button_layout.addWidget(load_btn)
-
-        button_layout.addStretch()
-
-        layout.addLayout(button_layout)
+        # Main horizontal split: Step list (left) | Step details (right)
+        main_splitter = QHBoxLayout()
+        main_splitter.setSpacing(5)
+        
+        # === LEFT: Step List ===
+        left_panel = QFrame()
+        left_panel.setMaximumWidth(200)
+        left_panel.setStyleSheet("""
+            QFrame {
+                background-color: #2d2d2d;
+                border: 1px solid #555555;
+                border-radius: 3px;
+            }
+        """)
+        left_layout = QVBoxLayout(left_panel)
+        left_layout.setContentsMargins(5, 5, 5, 5)
+        left_layout.setSpacing(3)
+        
+        # Step list header
+        list_header = QHBoxLayout()
+        list_label = QLabel("Steps")
+        list_label.setStyleSheet("font-weight: bold; color: #cccccc;")
+        list_header.addWidget(list_label)
+        list_header.addStretch()
+        left_layout.addLayout(list_header)
+        
+        # Step list widget
+        self.step_list = QListWidget()
+        self.step_list.setStyleSheet("""
+            QListWidget {
+                background-color: #1e1e1e;
+                border: 1px solid #555555;
+                border-radius: 3px;
+                color: #cccccc;
+                font-size: 11px;
+            }
+            QListWidget::item {
+                padding: 5px;
+                border-bottom: 1px solid #333333;
+            }
+            QListWidget::item:selected {
+                background-color: #3f94e9;
+                color: white;
+            }
+            QListWidget::item:hover {
+                background-color: #4a4a4a;
+            }
+        """)
+        self.step_list.currentRowChanged.connect(self._on_step_selected)
+        left_layout.addWidget(self.step_list)
+        
+        # Step list buttons
+        btn_layout = QHBoxLayout()
+        btn_layout.setSpacing(3)
+        
+        add_btn = QPushButton("+")
+        add_btn.setFixedSize(30, 25)
+        add_btn.setToolTip("Add empty step")
+        add_btn.clicked.connect(self.add_empty_step)
+        btn_layout.addWidget(add_btn)
+        
+        add_active_btn = QPushButton("⊕")
+        add_active_btn.setFixedSize(30, 25)
+        add_active_btn.setToolTip("Add from active scenes")
+        add_active_btn.clicked.connect(self.add_step_from_active_scenes)
+        add_active_btn.setEnabled(self.controller is not None)
+        btn_layout.addWidget(add_active_btn)
+        
+        btn_layout.addStretch()
+        
+        remove_btn = QPushButton("−")
+        remove_btn.setFixedSize(30, 25)
+        remove_btn.setToolTip("Remove selected step")
+        remove_btn.clicked.connect(self.remove_current_step)
+        btn_layout.addWidget(remove_btn)
+        
+        left_layout.addLayout(btn_layout)
+        
+        main_splitter.addWidget(left_panel)
+        
+        # === RIGHT: Step Detail Panel ===
+        self.detail_panel = QFrame()
+        self.detail_panel.setStyleSheet("""
+            QFrame {
+                background-color: #2d2d2d;
+                border: 1px solid #555555;
+                border-radius: 3px;
+            }
+        """)
+        self.detail_layout = QVBoxLayout(self.detail_panel)
+        self.detail_layout.setContentsMargins(5, 5, 5, 5)
+        
+        # Placeholder message
+        self.placeholder_label = QLabel("Select a step to edit")
+        self.placeholder_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.placeholder_label.setStyleSheet("color: #888888; font-size: 12px;")
+        self.detail_layout.addWidget(self.placeholder_label)
+        
+        main_splitter.addWidget(self.detail_panel, 1)  # Give more space to detail panel
+        
+        layout.addLayout(main_splitter, 1)  # Main content takes most space
+        
+        # Bottom: Quick actions
+        bottom_layout = QHBoxLayout()
+        
+        reload_btn = QPushButton("Reload")
+        reload_btn.setFixedHeight(25)
+        reload_btn.clicked.connect(self.load_sequence)
+        bottom_layout.addWidget(reload_btn)
+        
+        bottom_layout.addStretch()
+        
+        layout.addLayout(bottom_layout)
 
     def load_sequence(self):
         """Load sequence from sequence controller."""
@@ -372,7 +475,94 @@ class PresetSequenceEditor(QWidget):
         )
         self.loop_checkbox.setChecked(loop_setting)
 
-        self.rebuild_step_widgets()
+        self.rebuild_step_list()
+        
+        # Select first step by default
+        if self.step_list.count() > 0:
+            self.step_list.setCurrentRow(0)
+
+    def rebuild_step_list(self):
+        """Rebuild the step list widget."""
+        current_row = self.step_list.currentRow()
+        self.step_list.clear()
+        
+        for i, step in enumerate(self.sequence_steps):
+            display_text = f"{i+1}. {step.name}" if step.name else f"{i+1}. Step {i+1}"
+            duration_text = f" ({step.duration:.1f}s)"
+            scene_count = f" [{len(step.scenes)} scenes]" if step.scenes else " [empty]"
+            
+            item_text = display_text + duration_text + scene_count
+            item = QListWidgetItem(item_text)
+            self.step_list.addItem(item)
+        
+        # Restore selection or select first
+        if current_row >= 0 and current_row < self.step_list.count():
+            self.step_list.setCurrentRow(current_row)
+        elif self.step_list.count() > 0:
+            self.step_list.setCurrentRow(0)
+    
+    def _on_step_selected(self, row: int):
+        """Handle step selection from list."""
+        if row < 0 or row >= len(self.sequence_steps):
+            return
+        
+        self.current_step_index = row
+        self._show_step_details(row)
+    
+    def _show_step_details(self, step_index: int):
+        """Show details for the specified step."""
+        if step_index < 0 or step_index >= len(self.sequence_steps):
+            return
+        
+        # Clear current widget
+        if self.current_step_widget:
+            self.current_step_widget.deleteLater()
+            self.current_step_widget = None
+        
+        # Hide placeholder
+        self.placeholder_label.hide()
+        
+        # Create new step widget
+        step = self.sequence_steps[step_index]
+        self.current_step_widget = SequenceStepWidget(step, step_index)
+        self.current_step_widget.step_changed.connect(self._on_step_changed)
+        self.current_step_widget.remove_step.connect(lambda: self.remove_step(step_index))
+        self.current_step_widget.move_up.connect(lambda: self.move_step_up(step_index))
+        self.current_step_widget.move_down.connect(lambda: self.move_step_down(step_index))
+        
+        # Update move button states
+        self.current_step_widget.move_up_btn.setEnabled(step_index > 0)
+        self.current_step_widget.move_down_btn.setEnabled(step_index < len(self.sequence_steps) - 1)
+        
+        self.detail_layout.addWidget(self.current_step_widget)
+    
+    def _on_step_changed(self):
+        """Handle step details change."""
+        self.rebuild_step_list()
+        self.auto_save_sequence()
+    
+    def _on_auto_update_changed(self, state):
+        """Handle auto-update checkbox change."""
+        self.auto_update_enabled = state == Qt.CheckState.Checked.value
+    
+    def _on_playback_step_change(self):
+        """Called during playback when step changes."""
+        if not self.controller or not hasattr(self.controller, 'sequence_ctrl'):
+            return
+        
+        # Check if this sequence is currently playing
+        if self.controller.active_sequence != self.preset_index:
+            return
+        
+        # Get current step index from controller
+        current_step = self.controller.sequence_ctrl.current_step_index
+        if 0 <= current_step < len(self.sequence_steps):
+            # Update selection in list (will trigger detail update)
+            try:
+                self.step_list.setCurrentRow(current_step)
+            except RuntimeError:
+                # Widget has been deleted
+                pass
 
     def save_sequence(self):
         """Save sequence to sequence controller."""
@@ -399,8 +589,11 @@ class PresetSequenceEditor(QWidget):
             name=f"Step {len(self.sequence_steps) + 1}",
         )
         self.sequence_steps.append(step)
-        self.rebuild_step_widgets()
+        self.rebuild_step_list()
         self.auto_save_sequence()
+        
+        # Select the new step
+        self.step_list.setCurrentRow(len(self.sequence_steps) - 1)
 
     def add_step_from_active_scenes(self):
         """Add a step with currently active scenes from the controller."""
@@ -424,68 +617,47 @@ class PresetSequenceEditor(QWidget):
             name=f"Step {len(self.sequence_steps) + 1}",
         )
         self.sequence_steps.append(step)
-        self.rebuild_step_widgets()
+        self.rebuild_step_list()
         self.auto_save_sequence()
-
-    def rebuild_step_widgets(self):
-        """Rebuild all step widgets."""
-        # Clear existing widgets
-        for widget in self.step_widgets:
-            widget.deleteLater()
-        self.step_widgets.clear()
-
-        # Create new widgets
-        for i, step in enumerate(self.sequence_steps):
-            widget = SequenceStepWidget(step, i)
-            widget.step_changed.connect(self.on_step_changed)
-            widget.remove_step.connect(self.remove_step)
-            widget.move_up.connect(self.move_step_up)
-            widget.move_down.connect(self.move_step_down)
-
-            self.step_widgets.append(widget)
-            self.steps_layout.insertWidget(i, widget)
-
-        self.update_move_buttons()
-
-    def on_step_changed(self):
-        """Called when any step changes."""
-        self.auto_save_sequence()
-
-    def remove_step(self, step_widget: SequenceStepWidget):
-        """Remove a step."""
+        
+        # Select the new step
+        self.step_list.setCurrentRow(len(self.sequence_steps) - 1)
+    
+    def remove_current_step(self):
+        """Remove the currently selected step."""
+        current_row = self.step_list.currentRow()
+        if current_row >= 0:
+            self.remove_step(current_row)
+    
+    def remove_step(self, step_index: int):
+        """Remove a specific step."""
         if len(self.sequence_steps) <= 1:
             QMessageBox.warning(self, "Cannot Remove", "Cannot remove the last step.")
             return
+        
+        if 0 <= step_index < len(self.sequence_steps):
+            del self.sequence_steps[step_index]
+            self.rebuild_step_list()
+            self.auto_save_sequence()
 
-        index = self.step_widgets.index(step_widget)
-        del self.sequence_steps[index]
-        self.rebuild_step_widgets()
-        self.auto_save_sequence()
-
-    def move_step_up(self, step_widget: SequenceStepWidget):
+    def move_step_up(self, step_index: int):
         """Move step up."""
-        index = self.step_widgets.index(step_widget)
-        if index > 0:
-            self.sequence_steps[index], self.sequence_steps[index - 1] = (
-                self.sequence_steps[index - 1],
-                self.sequence_steps[index],
+        if step_index > 0:
+            self.sequence_steps[step_index], self.sequence_steps[step_index - 1] = (
+                self.sequence_steps[step_index - 1],
+                self.sequence_steps[step_index],
             )
-            self.rebuild_step_widgets()
+            self.rebuild_step_list()
             self.auto_save_sequence()
+            self.step_list.setCurrentRow(step_index - 1)
 
-    def move_step_down(self, step_widget: SequenceStepWidget):
+    def move_step_down(self, step_index: int):
         """Move step down."""
-        index = self.step_widgets.index(step_widget)
-        if index < len(self.sequence_steps) - 1:
-            self.sequence_steps[index], self.sequence_steps[index + 1] = (
-                self.sequence_steps[index + 1],
-                self.sequence_steps[index],
+        if step_index < len(self.sequence_steps) - 1:
+            self.sequence_steps[step_index], self.sequence_steps[step_index + 1] = (
+                self.sequence_steps[step_index + 1],
+                self.sequence_steps[step_index],
             )
-            self.rebuild_step_widgets()
+            self.rebuild_step_list()
             self.auto_save_sequence()
-
-    def update_move_buttons(self):
-        """Update move button states."""
-        for i, widget in enumerate(self.step_widgets):
-            widget.move_up_btn.setEnabled(i > 0)
-            widget.move_down_btn.setEnabled(i < len(self.step_widgets) - 1)
+            self.step_list.setCurrentRow(step_index + 1)
