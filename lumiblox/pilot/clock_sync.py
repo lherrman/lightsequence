@@ -110,11 +110,14 @@ class ClockSync:
     def close(self) -> None:
         """Close the MIDI device connection."""
         if self.midi_in:
-            self.midi_in.close()
+            try:
+                self.midi_in.close()
+            except Exception as e:
+                logger.error(f"Error closing MIDI input: {e}")
             self.midi_in = None
-        if self.is_open:
-            pygame.midi.quit()
-            self.is_open = False
+        self.is_open = False
+        # Note: Not calling pygame.midi.quit() as it quits the entire subsystem
+        # and may be shared with other components
         logger.info("MIDI clock connection closed")
 
     def _find_device(self) -> Tuple[Optional[int], Optional[str]]:

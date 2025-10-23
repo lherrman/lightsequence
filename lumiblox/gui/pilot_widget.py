@@ -111,223 +111,259 @@ class PilotWidget(QWidget):
     def setup_ui(self) -> None:
         """Set up the UI components."""
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(10)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(8)
 
-        # === Title ===
-        title = QLabel("🎯 PILOT")
-        title.setStyleSheet(
-            "font-size: 18px; font-weight: bold; color: #00aaff; padding: 5px;"
-        )
-        title.setAlignment(Qt.AlignCenter)
-        layout.addWidget(title)
-
-        # === Progress Bar (Phrase Position) ===
-        progress_group = QGroupBox("Phrase Progress")
-        progress_layout = QVBoxLayout(progress_group)
+        # === Progress Bar (Top, no label) ===
         self.phrase_progress_bar = QProgressBar()
         self.phrase_progress_bar.setRange(0, 100)
         self.phrase_progress_bar.setValue(0)
-        self.phrase_progress_bar.setTextVisible(True)
-        self.phrase_progress_bar.setFormat("%p%")
+        self.phrase_progress_bar.setTextVisible(False)
+        self.phrase_progress_bar.setFixedHeight(6)
         self.phrase_progress_bar.setStyleSheet("""
             QProgressBar {
-                border: 2px solid #555555;
-                border-radius: 5px;
-                text-align: center;
-                background-color: #2d2d2d;
-                color: #ffffff;
+                border: none;
+                border-radius: 3px;
+                background-color: #1a1a1a;
             }
             QProgressBar::chunk {
                 background-color: #00aaff;
                 border-radius: 3px;
             }
         """)
-        progress_layout.addWidget(self.phrase_progress_bar)
+        layout.addWidget(self.phrase_progress_bar)
 
-        # Position info label
-        self.position_label = QLabel("Not Aligned")
-        self.position_label.setStyleSheet("color: #888888; padding: 2px;")
-        self.position_label.setAlignment(Qt.AlignCenter)
-        progress_layout.addWidget(self.position_label)
+        # === Main Content Area ===
+        content_layout = QHBoxLayout()
+        content_layout.setSpacing(12)
 
-        layout.addWidget(progress_group)
-
-        # === Phrase Type Display ===
-        phrase_group = QGroupBox("Current Phrase")
-        phrase_layout = QVBoxLayout(phrase_group)
+        # Left side: Phrase type display
         self.phrase_type_label = QLabel("—")
         self.phrase_type_label.setStyleSheet(
-            "font-size: 24px; font-weight: bold; color: #ffffff; "
-            "padding: 10px; background-color: #3d3d3d; border-radius: 5px;"
+            "font-size: 32px; font-weight: 600; color: #ffffff; "
+            "padding: 20px; background-color: #1a1a1a; border-radius: 8px;"
         )
         self.phrase_type_label.setAlignment(Qt.AlignCenter)
-        phrase_layout.addWidget(self.phrase_type_label)
+        self.phrase_type_label.setMinimumWidth(180)
+        content_layout.addWidget(self.phrase_type_label, 1)
 
-        # Next phrase indicator
-        self.next_phrase_label = QLabel("Next: —")
-        self.next_phrase_label.setStyleSheet(
-            "color: #888888; font-size: 11px; padding: 2px;"
-        )
-        self.next_phrase_label.setAlignment(Qt.AlignCenter)
-        phrase_layout.addWidget(self.next_phrase_label)
+        # Right side: Controls
+        controls_layout = QVBoxLayout()
+        controls_layout.setSpacing(6)
 
-        layout.addWidget(phrase_group)
+        # Control buttons row
+        buttons_row = QHBoxLayout()
+        buttons_row.setSpacing(6)
 
-        # === Control Buttons ===
-        control_group = QGroupBox("Control")
-        control_layout = QVBoxLayout(control_group)
-
-        # Enable pilot in config checkbox
-        self.enable_pilot_checkbox = QCheckBox("Enable Pilot in Config")
-        self.enable_pilot_checkbox.setToolTip(
-            "Enable/disable pilot system in configuration (requires restart)"
-        )
-        self.enable_pilot_checkbox.clicked.connect(
-            self._on_enable_pilot_checkbox_changed
-        )
-        control_layout.addWidget(self.enable_pilot_checkbox)
-
-        # Load initial state from config
-        try:
-            config = get_config()
-            pilot_config = config.data.get("pilot", {})
-            self.enable_pilot_checkbox.setChecked(pilot_config.get("enabled", False))
-        except Exception as e:
-            logger.warning(f"Failed to load pilot config state: {e}")
-
-        # Pilot on/off button
-        self.pilot_toggle_btn = QPushButton("Start Pilot")
+        # Pilot toggle button
+        self.pilot_toggle_btn = QPushButton("Pilot")
         self.pilot_toggle_btn.setCheckable(True)
-        self.pilot_toggle_btn.setStyleSheet(self._get_toggle_button_style())
+        self.pilot_toggle_btn.setFixedHeight(40)
+        self.pilot_toggle_btn.setStyleSheet(self._get_modern_toggle_style())
         self.pilot_toggle_btn.clicked.connect(self._on_pilot_toggle)
-        control_layout.addWidget(self.pilot_toggle_btn)
-
-        # Align button
-        self.align_btn = QPushButton("⏱ Align to Beat")
-        self.align_btn.setEnabled(False)
-        self.align_btn.clicked.connect(self._on_align_requested)
-        control_layout.addWidget(self.align_btn)
+        buttons_row.addWidget(self.pilot_toggle_btn)
 
         # Phrase detection toggle
-        self.phrase_detection_btn = QPushButton("Enable Phrase Detection")
+        self.phrase_detection_btn = QPushButton("Detect")
         self.phrase_detection_btn.setCheckable(True)
         self.phrase_detection_btn.setEnabled(False)
-        self.phrase_detection_btn.setStyleSheet(self._get_toggle_button_style())
+        self.phrase_detection_btn.setFixedHeight(40)
+        self.phrase_detection_btn.setStyleSheet(self._get_modern_toggle_style())
         self.phrase_detection_btn.clicked.connect(self._on_phrase_detection_toggle)
-        control_layout.addWidget(self.phrase_detection_btn)
+        buttons_row.addWidget(self.phrase_detection_btn)
 
-        layout.addWidget(control_group)
-
-        # === Screen Capture Configuration ===
-        capture_group = QGroupBox("Screen Capture Setup")
-        capture_layout = QVBoxLayout(capture_group)
-
-        # Deck selector
-        deck_layout = QHBoxLayout()
-        deck_layout.addWidget(QLabel("Deck:"))
-        self.deck_selector = QComboBox()
-        self.deck_selector.addItems(["A", "B", "C", "D"])
-        deck_layout.addWidget(self.deck_selector)
-        capture_layout.addLayout(deck_layout)
-
-        # Region buttons
-        self.set_button_btn = QPushButton("Set Master Button Region")
-        self.set_button_btn.clicked.connect(lambda: self._select_region("button"))
-        capture_layout.addWidget(self.set_button_btn)
-
-        self.set_timeline_btn = QPushButton("Set Timeline Region")
-        self.set_timeline_btn.clicked.connect(lambda: self._select_region("timeline"))
-        capture_layout.addWidget(self.set_timeline_btn)
-
-        layout.addWidget(capture_group)
-
-        # === Status ===
-        self.status_label = QLabel("Pilot: Stopped | BPM: —")
-        self.status_label.setStyleSheet(
-            "color: #888888; font-size: 10px; padding: 5px; "
-            "background-color: #2d2d2d; border-radius: 3px;"
-        )
-        self.status_label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(self.status_label)
-
-        layout.addStretch()
-
-    def _get_toggle_button_style(self) -> str:
-        """Get stylesheet for toggle buttons."""
-        return """
+        # Settings button
+        self.settings_btn = QPushButton("⚙")
+        self.settings_btn.setFixedSize(40, 40)
+        self.settings_btn.setStyleSheet("""
             QPushButton {
-                padding: 8px;
+                background-color: #2d2d2d;
+                color: #888888;
+                border: none;
+                border-radius: 8px;
+                font-size: 18px;
                 font-weight: bold;
-                border-radius: 5px;
+            }
+            QPushButton:hover {
                 background-color: #3d3d3d;
                 color: #ffffff;
             }
+            QPushButton:pressed {
+                background-color: #1a1a1a;
+            }
+        """)
+        self.settings_btn.setToolTip("Open pilot settings")
+        self.settings_btn.clicked.connect(self._on_settings_clicked)
+        buttons_row.addWidget(self.settings_btn)
+
+        controls_layout.addLayout(buttons_row)
+
+        # Align button (full width, below main buttons)
+        self.align_btn = QPushButton("⏱ Align to Beat")
+        self.align_btn.setFixedHeight(32)
+        self.align_btn.setEnabled(False)
+        self.align_btn.setStyleSheet("""
+            QPushButton {
+                padding: 6px 12px;
+                font-weight: 500;
+                font-size: 12px;
+                border: none;
+                border-radius: 6px;
+                background-color: #2d2d2d;
+                color: #888888;
+            }
+            QPushButton:hover:enabled {
+                background-color: #3d3d3d;
+                color: #ffffff;
+            }
+            QPushButton:pressed:enabled {
+                background-color: #1a1a1a;
+            }
+            QPushButton:disabled {
+                background-color: #1a1a1a;
+                color: #444444;
+            }
+        """)
+        self.align_btn.setToolTip("Tap this button on the downbeat to sync with music")
+        self.align_btn.clicked.connect(self._on_align_requested)
+        controls_layout.addWidget(self.align_btn)
+
+        # Status info (compact)
+        self.status_label = QLabel("Not aligned • —")
+        self.status_label.setStyleSheet(
+            "color: #666666; font-size: 11px; padding: 4px;"
+        )
+        self.status_label.setAlignment(Qt.AlignCenter)
+        controls_layout.addWidget(self.status_label)
+
+        # Position label (compact)
+        self.position_label = QLabel("")
+        self.position_label.setStyleSheet(
+            "color: #888888; font-size: 10px; padding: 2px;"
+        )
+        self.position_label.setAlignment(Qt.AlignCenter)
+        controls_layout.addWidget(self.position_label)
+
+        controls_layout.addStretch()
+
+        content_layout.addLayout(controls_layout, 1)
+
+        layout.addLayout(content_layout)
+
+        # Hidden elements (no longer visible but keep for compatibility)
+        self.next_phrase_label = QLabel("")  # Keep for update methods
+        self.deck_selector = QComboBox()  # For settings dialog
+        self.deck_selector.addItems(["A", "B", "C", "D"])
+
+    def _get_modern_toggle_style(self) -> str:
+        """Get modern stylesheet for toggle buttons."""
+        return """
+            QPushButton {
+                padding: 8px 16px;
+                font-weight: 600;
+                font-size: 13px;
+                border: none;
+                border-radius: 8px;
+                background-color: #2d2d2d;
+                color: #888888;
+            }
             QPushButton:hover {
-                background-color: #4d4d4d;
+                background-color: #3d3d3d;
+                color: #ffffff;
             }
             QPushButton:checked {
-                background-color: #00aa00;
+                background-color: #00aaff;
                 color: #ffffff;
             }
             QPushButton:disabled {
-                background-color: #2d2d2d;
-                color: #666666;
+                background-color: #1a1a1a;
+                color: #444444;
+            }
+            QPushButton:pressed {
+                background-color: #0088cc;
             }
         """
 
-    # Control Handlers ------------------------------------------------------
-    def _on_enable_pilot_checkbox_changed(self, checked: bool) -> None:
-        """Handle enable pilot checkbox change - updates config."""
+    # Settings Dialog -------------------------------------------------------
+    def _on_settings_clicked(self) -> None:
+        """Open settings dialog for pilot configuration."""
+        from PySide6.QtWidgets import QDialog, QDialogButtonBox
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Pilot Settings")
+        dialog.setMinimumWidth(400)
+
+        layout = QVBoxLayout(dialog)
+        layout.setSpacing(12)
+
+        # Enable in config checkbox
+        enable_checkbox = QCheckBox("Enable Pilot in Config")
+        enable_checkbox.setToolTip(
+            "Enable/disable pilot system (will take effect on restart)"
+        )
         try:
             config = get_config()
-            config.set_pilot_enabled(checked)
-            logger.info(
-                f"Pilot {'enabled' if checked else 'disabled'} in configuration"
+            pilot_config = config.data.get("pilot", {})
+            enable_checkbox.setChecked(pilot_config.get("enabled", False))
+        except Exception:
+            pass
+        layout.addWidget(enable_checkbox)
+
+        # Align button
+        align_group = QGroupBox("Alignment")
+        align_layout = QVBoxLayout(align_group)
+        align_btn = QPushButton("⏱ Align to Beat (Tap on downbeat)")
+        align_btn.clicked.connect(self._on_align_requested)
+        align_layout.addWidget(align_btn)
+        layout.addWidget(align_group)
+
+        # Screen capture configuration
+        capture_group = QGroupBox("Screen Capture Regions")
+        capture_layout = QVBoxLayout(capture_group)
+
+        # Deck selector
+        deck_row = QHBoxLayout()
+        deck_row.addWidget(QLabel("Deck:"))
+        deck_selector = QComboBox()
+        deck_selector.addItems(["A", "B", "C", "D"])
+        deck_row.addWidget(deck_selector, 1)
+        capture_layout.addLayout(deck_row)
+
+        # Region buttons
+        button_btn = QPushButton("Set Master Button Region")
+        button_btn.clicked.connect(
+            lambda: self._select_region_for_deck("button", deck_selector.currentText())
+        )
+        capture_layout.addWidget(button_btn)
+
+        timeline_btn = QPushButton("Set Timeline Region")
+        timeline_btn.clicked.connect(
+            lambda: self._select_region_for_deck(
+                "timeline", deck_selector.currentText()
             )
-        except Exception as e:
-            logger.error(f"Failed to update pilot config: {e}")
-            # Revert checkbox state on error
-            self.enable_pilot_checkbox.setChecked(not checked)
+        )
+        capture_layout.addWidget(timeline_btn)
 
-    def _on_pilot_toggle(self, checked: bool) -> None:
-        """Handle pilot enable/disable."""
-        self.pilot_enabled = checked
-        if checked:
-            self.pilot_toggle_btn.setText("Stop Pilot")
-            self.align_btn.setEnabled(True)
-            self.phrase_detection_btn.setEnabled(True)
-        else:
-            self.pilot_toggle_btn.setText("Start Pilot")
-            self.align_btn.setEnabled(False)
-            self.phrase_detection_btn.setEnabled(False)
-            self.phrase_detection_btn.setChecked(False)
-            self.phrase_detection_enabled = False
+        layout.addWidget(capture_group)
 
-        self.pilot_enable_requested.emit(checked)
+        # Dialog buttons
+        button_box = QDialogButtonBox(QDialogButtonBox.Ok)
+        button_box.accepted.connect(dialog.accept)
+        layout.addWidget(button_box)
 
-    def _on_phrase_detection_toggle(self, checked: bool) -> None:
-        """Handle phrase detection enable/disable."""
-        self.phrase_detection_enabled = checked
-        if checked:
-            self.phrase_detection_btn.setText("Disable Phrase Detection")
-        else:
-            self.phrase_detection_btn.setText("Enable Phrase Detection")
+        # Save config on close
+        def on_accept():
+            try:
+                config = get_config()
+                config.set_pilot_enabled(enable_checkbox.isChecked())
+            except Exception as e:
+                logger.error(f"Failed to save pilot config: {e}")
 
-        self.phrase_detection_enable_requested.emit(checked)
+        button_box.accepted.connect(on_accept)
+        dialog.exec()
 
-    def _on_align_requested(self) -> None:
-        """Handle align button click."""
-        self.align_requested.emit()
-
-    def _select_region(self, region_type: str) -> None:
-        """
-        Open region selector overlay.
-
-        Args:
-            region_type: "button" or "timeline"
-        """
-        deck_name = self.deck_selector.currentText()
+    def _select_region_for_deck(self, region_type: str, deck_name: str) -> None:
+        """Select region for a specific deck."""
         overlay = RegionSelectorOverlay()
         loop = QEventLoop()
         result: dict[str, Optional[QRect]] = {"rect": None}
@@ -359,6 +395,30 @@ class PilotWidget(QWidget):
                 f"x={rect.x()}, y={rect.y()}, w={rect.width()}, h={rect.height()}"
             )
 
+    # Control Handlers ------------------------------------------------------
+    def _on_pilot_toggle(self, checked: bool) -> None:
+        """Handle pilot enable/disable."""
+        self.pilot_enabled = checked
+        if checked:
+            self.phrase_detection_btn.setEnabled(True)
+            self.align_btn.setEnabled(True)
+        else:
+            self.phrase_detection_btn.setEnabled(False)
+            self.phrase_detection_btn.setChecked(False)
+            self.phrase_detection_enabled = False
+            self.align_btn.setEnabled(False)
+
+        self.pilot_enable_requested.emit(checked)
+
+    def _on_phrase_detection_toggle(self, checked: bool) -> None:
+        """Handle phrase detection enable/disable."""
+        self.phrase_detection_enabled = checked
+        self.phrase_detection_enable_requested.emit(checked)
+
+    def _on_align_requested(self) -> None:
+        """Handle align button click."""
+        self.align_requested.emit()
+
     # Update Methods --------------------------------------------------------
     def update_phrase_progress(self, progress: float) -> None:
         """
@@ -382,7 +442,7 @@ class PilotWidget(QWidget):
             phrase_index: Absolute phrase index
         """
         self.position_label.setText(
-            f"Phrase {phrase_index + 1} | Bar {bar_in_phrase + 1}/8 | Beat {beat_in_bar + 1}/4"
+            f"P{phrase_index + 1} • {bar_in_phrase + 1}/8 • {beat_in_bar + 1}/4"
         )
 
     def update_phrase_type(
@@ -436,19 +496,19 @@ class PilotWidget(QWidget):
             bpm: Current BPM
             aligned: Whether sync is aligned
         """
-        status_parts = [f"Pilot: {pilot_state}"]
-
-        if bpm:
-            status_parts.append(f"BPM: {bpm:.1f}")
-        else:
-            status_parts.append("BPM: —")
+        status_parts = []
 
         if aligned:
-            status_parts.append("✓ Aligned")
-        elif pilot_state != "Stopped":
-            status_parts.append("⚠ Not Aligned")
+            status_parts.append("Aligned")
+        else:
+            status_parts.append("Not aligned")
 
-        self.status_label.setText(" | ".join(status_parts))
+        if bpm:
+            status_parts.append(f"{bpm:.1f} BPM")
+        else:
+            status_parts.append("—")
+
+        self.status_label.setText(" • ".join(status_parts))
 
     def set_not_aligned(self) -> None:
         """Reset display when not aligned."""

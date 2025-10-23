@@ -508,16 +508,33 @@ class LightSequenceGUI(QMainWindow):
         pilot = self.controller_thread.pilot_controller
         if enabled:
             # Try to start the pilot
-            success = pilot.start(enable_phrase_detection=False)
-            if not success:
+            try:
+                success = pilot.start(enable_phrase_detection=False)
+                if not success:
+                    self.pilot_widget.pilot_toggle_btn.setChecked(False)
+                    QMessageBox.warning(
+                        self,
+                        "Pilot Error",
+                        "Failed to start pilot. Check MIDI device connection.",
+                    )
+            except Exception as e:
+                logger.error(f"Error starting pilot: {e}")
                 self.pilot_widget.pilot_toggle_btn.setChecked(False)
                 QMessageBox.warning(
                     self,
                     "Pilot Error",
-                    "Failed to start pilot. Check MIDI device connection.",
+                    f"Failed to start pilot: {e}",
                 )
         else:
-            pilot.stop()
+            try:
+                pilot.stop()
+            except Exception as e:
+                logger.error(f"Error stopping pilot: {e}")
+                QMessageBox.warning(
+                    self,
+                    "Pilot Error",
+                    f"Failed to stop pilot: {e}",
+                )
 
     def _on_phrase_detection_enable_requested(self, enabled: bool) -> None:
         """Handle phrase detection enable/disable request from GUI."""
