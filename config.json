@@ -68,12 +68,32 @@
   "pilot": {
     "decks": {
       "A": {
-        "master_button_region": null,
-        "timeline_region": null
+        "master_button_region": {
+          "height": 22,
+          "width": 64,
+          "x": 75,
+          "y": 236
+        },
+        "timeline_region": {
+          "height": 88,
+          "width": 220,
+          "x": 631,
+          "y": 259
+        }
       },
       "B": {
-        "master_button_region": null,
-        "timeline_region": null
+        "master_button_region": {
+          "height": 22,
+          "width": 64,
+          "x": 1416,
+          "y": 236
+        },
+        "timeline_region": {
+          "height": 88,
+          "width": 220,
+          "x": 1975,
+          "y": 260
+        }
       },
       "C": {
         "master_button_region": null,
@@ -84,7 +104,7 @@
         "timeline_region": null
       }
     },
-    "enabled": false,
+    "enabled": true,
     "midiclock_device": "midiclock",
     "model_path": "pilot-tests/resources/traktor/classifier_traktor.pkl",
     "template_dir": "pilot-tests/resources/traktor",

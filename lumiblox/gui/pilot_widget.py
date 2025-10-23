@@ -8,7 +8,7 @@ GUI component for displaying and controlling the pilot system
 import logging
 from typing import Optional
 
-from PySide6.QtCore import Qt, Signal, QEventLoop, QPoint, QRect, QSize
+from PySide6.QtCore import Qt, Signal, QRect
 from PySide6.QtGui import QColor, QPainter, QGuiApplication
 from PySide6.QtWidgets import (
     QWidget,
@@ -19,8 +19,9 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QGroupBox,
     QComboBox,
-    QRubberBand,
     QCheckBox,
+    QDialog,
+    QDialogButtonBox,
 )
 
 from lumiblox.pilot.phrase_detector import CaptureRegion
@@ -29,66 +30,261 @@ from lumiblox.common.config import get_config
 logger = logging.getLogger(__name__)
 
 
-class RegionSelectorOverlay(QWidget):
-    """Full-screen overlay for selecting screen capture regions."""
+class FixedSizeRegionSelector(QWidget):
+    """Transparent overlay window with fixed size for positioning capture regions."""
 
-    region_selected = Signal(QRect)
+    region_confirmed = Signal(QRect)
     selection_cancelled = Signal()
 
-    def __init__(self) -> None:
-        super().__init__(
-            None, Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint | Qt.Tool
-        )
-        self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setWindowState(Qt.WindowFullScreen)
-        self.setCursor(Qt.CrossCursor)
+    # Region size constants (must match capture requirements)
+    MASTER_BUTTON_WIDTH = 64
+    MASTER_BUTTON_HEIGHT = 22
+    TIMELINE_WIDTH = 220
+    TIMELINE_HEIGHT = 88
 
-        # Cover all screens
-        geometry = QRect()
-        for screen in QGuiApplication.screens():
-            geometry = geometry.united(screen.geometry())
-        self.setGeometry(geometry)
+    def __init__(self, region_type: str, parent=None) -> None:
+        """
+        Create a fixed-size transparent overlay window.
 
-        self._rubber_band = QRubberBand(QRubberBand.Rectangle, self)
-        self._origin = QPoint()
-        self._current = QPoint()
+        Args:
+            region_type: Either "button" or "timeline"
+        """
+        # Create as a standalone window with no parent, stays on top
+        super().__init__(None, Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint)
+
+        # Don't use WA_TranslucentBackground - it blocks mouse events
+        # Instead use a semi-transparent background color via stylesheet
+        self.setWindowOpacity(0.7)  # Make whole window semi-transparent
+
+        self.region_type = region_type
+
+        # Set fixed size based on region type
+        if region_type == "button":
+            width = self.MASTER_BUTTON_WIDTH
+            height = self.MASTER_BUTTON_HEIGHT
+            title = "Master Button Region"
+        else:  # timeline
+            width = self.TIMELINE_WIDTH
+            height = self.TIMELINE_HEIGHT
+            title = "Timeline Region"
+
+        self.setFixedSize(width, height)
+
+        # Position at center of primary screen initially
+        screen = QGuiApplication.primaryScreen().geometry()
+        self.move(screen.center().x() - width // 2, screen.center().y() - height // 2)
+
+        # Store title for display
+        self._title = title
+
+        # Set background color
+        self.setStyleSheet("""
+            QWidget {
+                background-color: rgba(0, 170, 255, 150);
+                border: 3px solid #00aaff;
+            }
+        """)
+
+        # Make window draggable
+        self._drag_position = None
 
     def paintEvent(self, event) -> None:
+        """Draw title bar at top."""
         painter = QPainter(self)
-        painter.fillRect(self.rect(), QColor(0, 0, 0, 120))
+
+        # Draw title bar at top
+        title_height = 20
+        painter.fillRect(0, 0, self.width(), title_height, QColor(0, 120, 200))
+
+        # Draw title text
+        painter.setPen(QColor(255, 255, 255))
+        font = painter.font()
+        font.setBold(True)
+        font.setPixelSize(11)
+        painter.setFont(font)
+        painter.drawText(
+            QRect(0, 0, self.width(), title_height), Qt.AlignCenter, self._title
+        )
+
         painter.end()
 
     def mousePressEvent(self, event) -> None:
-        if event.button() != Qt.LeftButton:
-            return
-        self._origin = event.globalPosition().toPoint()
-        self._current = self._origin
-        self._rubber_band.setGeometry(QRect(self._origin, QSize(0, 0)))
-        self._rubber_band.show()
+        """Start dragging."""
+        if event.button() == Qt.LeftButton:
+            self._drag_position = (
+                event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            )
 
     def mouseMoveEvent(self, event) -> None:
-        if not self._rubber_band.isVisible():
-            return
-        self._current = event.globalPosition().toPoint()
-        rect = QRect(self._origin, self._current).normalized()
-        self._rubber_band.setGeometry(rect)
+        """Handle dragging."""
+        if event.buttons() == Qt.LeftButton and self._drag_position is not None:
+            self.move(event.globalPosition().toPoint() - self._drag_position)
 
     def mouseReleaseEvent(self, event) -> None:
-        if event.button() != Qt.LeftButton or not self._rubber_band.isVisible():
-            return
-        self._rubber_band.hide()
-        rect = QRect(self._origin, event.globalPosition().toPoint()).normalized()
-        if rect.width() < 5 or rect.height() < 5:
-            self.selection_cancelled.emit()
-        else:
-            self.region_selected.emit(rect)
-        self.close()
+        """Stop dragging."""
+        self._drag_position = None
 
     def keyPressEvent(self, event) -> None:
+        """Handle keyboard shortcuts."""
         if event.key() == Qt.Key_Escape:
-            self._rubber_band.hide()
             self.selection_cancelled.emit()
             self.close()
+        elif event.key() == Qt.Key_Return or event.key() == Qt.Key_Enter:
+            self.confirm_region()
+
+    def confirm_region(self) -> None:
+        """Confirm the current position and emit the region."""
+        geometry = self.frameGeometry()
+        self.region_confirmed.emit(geometry)
+        self.close()
+
+
+class RegionConfigDialog(QDialog):
+    """Dialog for configuring both capture regions for a deck."""
+
+    regions_configured = Signal(
+        str, QRect, QRect
+    )  # deck_name, button_rect, timeline_rect
+
+    def __init__(self, deck_name: str, parent=None):
+        super().__init__(parent)
+        self.deck_name = deck_name
+        self.button_rect = None
+        self.timeline_rect = None
+
+        self.setWindowTitle(f"Configure Deck {deck_name} Capture Regions")
+        self.setModal(False)  # Non-modal so overlays can be dragged
+
+        # Ensure the dialog doesn't block input to other windows
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowStaysOnTopHint)
+
+        layout = QVBoxLayout(self)
+
+        # Instructions
+        instructions = QLabel(
+            f"1. Click 'Show Overlay Windows' below\n"
+            f"2. Drag the blue overlay windows to align with Deck {deck_name}\n"
+            f"3. Press Enter on each window when positioned correctly\n"
+            f"4. Click 'Save & Close' when both are set\n"
+            f"(Press Escape on a window to cancel)"
+        )
+        instructions.setWordWrap(True)
+        instructions.setStyleSheet(
+            "padding: 10px; background-color: #2d2d2d; border-radius: 5px;"
+        )
+        layout.addWidget(instructions)
+
+        # Button to show overlays
+        show_btn = QPushButton("Show Overlay Windows")
+        show_btn.clicked.connect(self._show_overlays)
+        layout.addWidget(show_btn)
+
+        # Status labels
+        self.button_status = QLabel("Master Button: Not set")
+        self.timeline_status = QLabel("Timeline: Not set")
+        layout.addWidget(self.button_status)
+        layout.addWidget(self.timeline_status)
+
+        # Dialog buttons
+        button_box = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        self.ok_button = button_box.button(QDialogButtonBox.StandardButton.Ok)
+        self.ok_button.setText("Save & Close")
+        self.ok_button.setEnabled(False)
+        # Connect directly to button clicked signals for modeless dialog
+        self.ok_button.clicked.connect(self.accept)
+        cancel_button = button_box.button(QDialogButtonBox.StandardButton.Cancel)
+        cancel_button.clicked.connect(self.reject)
+        layout.addWidget(button_box)
+
+        self.button_box = button_box
+
+    def _show_overlays(self) -> None:
+        """Show both overlay windows for positioning."""
+        # Create button region overlay
+        self.button_overlay = FixedSizeRegionSelector("button")
+        self.button_overlay.region_confirmed.connect(self._on_button_confirmed)
+        self.button_overlay.selection_cancelled.connect(self._on_cancelled)
+
+        # Create timeline region overlay
+        self.timeline_overlay = FixedSizeRegionSelector("timeline")
+        self.timeline_overlay.region_confirmed.connect(self._on_timeline_confirmed)
+        self.timeline_overlay.selection_cancelled.connect(self._on_cancelled)
+
+        # Position them side by side initially
+        screen = QGuiApplication.primaryScreen().geometry()
+        center_x = screen.center().x()
+        center_y = screen.center().y()
+
+        self.button_overlay.move(center_x - 200, center_y - 50)
+        self.timeline_overlay.move(center_x + 50, center_y - 50)
+
+        # Show both and ensure they're raised above everything
+        self.button_overlay.show()
+        self.button_overlay.raise_()
+        self.button_overlay.activateWindow()
+
+        self.timeline_overlay.show()
+        self.timeline_overlay.raise_()
+        self.timeline_overlay.activateWindow()
+
+    def _on_button_confirmed(self, rect: QRect) -> None:
+        """Handle button region confirmation."""
+        self.button_rect = rect
+        self.button_status.setText(f"Master Button: Set at ({rect.x()}, {rect.y()})")
+        logger.info(
+            f"Button region confirmed: {rect.x()}, {rect.y()}, {rect.width()}x{rect.height()}"
+        )
+        self._check_completion()
+
+    def _on_timeline_confirmed(self, rect: QRect) -> None:
+        """Handle timeline region confirmation."""
+        self.timeline_rect = rect
+        self.timeline_status.setText(f"Timeline: Set at ({rect.x()}, {rect.y()})")
+        logger.info(
+            f"Timeline region confirmed: {rect.x()}, {rect.y()}, {rect.width()}x{rect.height()}"
+        )
+        self._check_completion()
+
+    def _check_completion(self) -> None:
+        """Check if both regions are set and enable save button."""
+        logger.info(
+            f"Checking completion: button={self.button_rect is not None}, timeline={self.timeline_rect is not None}"
+        )
+        if self.button_rect and self.timeline_rect:
+            logger.info("Both regions set, enabling Save & Close button")
+            self.ok_button.setEnabled(True)
+            self.ok_button.update()  # Force visual update
+            # Bring dialog to front so user can click the button
+            self.raise_()
+            self.activateWindow()
+
+    def _on_cancelled(self) -> None:
+        """Handle cancellation of region selection."""
+        # Close any open overlays
+        if hasattr(self, "button_overlay"):
+            self.button_overlay.close()
+        if hasattr(self, "timeline_overlay"):
+            self.timeline_overlay.close()
+
+    def reject(self) -> None:
+        """Override reject to clean up overlays."""
+        # Close any open overlays
+        if hasattr(self, "button_overlay") and self.button_overlay:
+            self.button_overlay.close()
+        if hasattr(self, "timeline_overlay") and self.timeline_overlay:
+            self.timeline_overlay.close()
+        super().reject()
+
+    def accept(self) -> None:
+        """Override accept to clean up overlays."""
+        # Close any open overlays
+        if hasattr(self, "button_overlay") and self.button_overlay:
+            self.button_overlay.close()
+        if hasattr(self, "timeline_overlay") and self.timeline_overlay:
+            self.timeline_overlay.close()
+        super().accept()
 
 
 class PilotWidget(QWidget):
@@ -321,33 +517,76 @@ class PilotWidget(QWidget):
         capture_group = QGroupBox("Screen Capture Regions")
         capture_layout = QVBoxLayout(capture_group)
 
-        # Deck selector
+        # Instructions
+        info_label = QLabel(
+            "Configure capture regions for each deck.\n"
+            "Click 'Configure Deck' to position transparent overlays on your screen."
+        )
+        info_label.setWordWrap(True)
+        capture_layout.addWidget(info_label)
+
+        # Container for region status (will be updated dynamically)
+        regions_status_container = QWidget()
+        regions_status_layout = QVBoxLayout(regions_status_container)
+        regions_status_layout.setContentsMargins(0, 0, 0, 0)
+        regions_status_layout.setSpacing(4)
+        capture_layout.addWidget(regions_status_container)
+
+        # Function to update region display
+        def update_regions_display():
+            # Clear existing labels
+            while regions_status_layout.count():
+                item = regions_status_layout.takeAt(0)
+                if item.widget():
+                    item.widget().deleteLater()
+            
+            # Add current regions
+            try:
+                config = get_config()
+                pilot_config = config.data.get("pilot", {})
+                decks = pilot_config.get("decks", {})
+                
+                for deck_name in ["A", "B", "C", "D"]:
+                    deck_config = decks.get(deck_name, {})
+                    button_region = deck_config.get("master_button_region")
+                    timeline_region = deck_config.get("timeline_region")
+                    
+                    if button_region or timeline_region:
+                        deck_info = QLabel()
+                        deck_info.setStyleSheet("color: #00aa00; font-size: 11px; padding: 4px;")
+                        
+                        status_parts = [f"<b>Deck {deck_name}:</b>"]
+                        if button_region:
+                            status_parts.append(f"Button ({button_region['x']}, {button_region['y']})")
+                        if timeline_region:
+                            status_parts.append(f"Timeline ({timeline_region['x']}, {timeline_region['y']})")
+                        
+                        deck_info.setText(" • ".join(status_parts))
+                        regions_status_layout.addWidget(deck_info)
+            except Exception as e:
+                logger.error(f"Failed to load deck regions: {e}")
+
+        # Initial display
+        update_regions_display()
+
+        # Deck selector and configure button
         deck_row = QHBoxLayout()
         deck_row.addWidget(QLabel("Deck:"))
         deck_selector = QComboBox()
         deck_selector.addItems(["A", "B", "C", "D"])
         deck_row.addWidget(deck_selector, 1)
+
+        configure_deck_btn = QPushButton("Configure Deck Regions")
+        configure_deck_btn.clicked.connect(
+            lambda: self._configure_deck_regions(deck_selector.currentText(), update_regions_display)
+        )
+        deck_row.addWidget(configure_deck_btn)
+
         capture_layout.addLayout(deck_row)
-
-        # Region buttons
-        button_btn = QPushButton("Set Master Button Region")
-        button_btn.clicked.connect(
-            lambda: self._select_region_for_deck("button", deck_selector.currentText())
-        )
-        capture_layout.addWidget(button_btn)
-
-        timeline_btn = QPushButton("Set Timeline Region")
-        timeline_btn.clicked.connect(
-            lambda: self._select_region_for_deck(
-                "timeline", deck_selector.currentText()
-            )
-        )
-        capture_layout.addWidget(timeline_btn)
-
         layout.addWidget(capture_group)
 
         # Dialog buttons
-        button_box = QDialogButtonBox(QDialogButtonBox.Ok)
+        button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
         button_box.accepted.connect(dialog.accept)
         layout.addWidget(button_box)
 
@@ -360,40 +599,66 @@ class PilotWidget(QWidget):
                 logger.error(f"Failed to save pilot config: {e}")
 
         button_box.accepted.connect(on_accept)
-        dialog.exec()
+        dialog.show()  # Use show() instead of exec() to avoid blocking
 
-    def _select_region_for_deck(self, region_type: str, deck_name: str) -> None:
-        """Select region for a specific deck."""
-        overlay = RegionSelectorOverlay()
-        loop = QEventLoop()
-        result: dict[str, Optional[QRect]] = {"rect": None}
+    def _configure_deck_regions(self, deck_name: str, on_regions_updated=None) -> None:
+        """Open dialog to configure both regions for a deck.
+        
+        Args:
+            deck_name: Name of the deck (A, B, C, D)
+            on_regions_updated: Optional callback to call after regions are saved
+        """
+        config_dialog = RegionConfigDialog(deck_name, self)
 
-        def on_selected(rect: QRect) -> None:
-            result["rect"] = rect
-            loop.quit()
+        def on_accepted():
+            if config_dialog.button_rect and config_dialog.timeline_rect:
+                # Convert button region
+                button_region = CaptureRegion(
+                    x=config_dialog.button_rect.x(),
+                    y=config_dialog.button_rect.y(),
+                    width=config_dialog.button_rect.width(),
+                    height=config_dialog.button_rect.height(),
+                )
+                self.deck_region_configured.emit(deck_name, "button", button_region)
 
-        def on_cancelled() -> None:
-            loop.quit()
+                # Convert timeline region
+                timeline_region = CaptureRegion(
+                    x=config_dialog.timeline_rect.x(),
+                    y=config_dialog.timeline_rect.y(),
+                    width=config_dialog.timeline_rect.width(),
+                    height=config_dialog.timeline_rect.height(),
+                )
+                self.deck_region_configured.emit(deck_name, "timeline", timeline_region)
 
-        overlay.region_selected.connect(on_selected)
-        overlay.selection_cancelled.connect(on_cancelled)
-        overlay.show()
-        loop.exec()
-        overlay.deleteLater()
+                logger.info(f"Configured deck {deck_name} regions:")
+                logger.info(f"  Button: x={button_region.x}, y={button_region.y}")
+                logger.info(f"  Timeline: x={timeline_region.x}, y={timeline_region.y}")
+                
+                # Save to config
+                try:
+                    config = get_config()
+                    config.set_deck_region(
+                        deck_name,
+                        "master_button_region",
+                        {"x": button_region.x, "y": button_region.y, 
+                         "width": button_region.width, "height": button_region.height}
+                    )
+                    config.set_deck_region(
+                        deck_name,
+                        "timeline_region",
+                        {"x": timeline_region.x, "y": timeline_region.y,
+                         "width": timeline_region.width, "height": timeline_region.height}
+                    )
+                    logger.info(f"Saved deck {deck_name} regions to config")
+                    
+                    # Call the update callback if provided
+                    if on_regions_updated:
+                        on_regions_updated()
+                except Exception as e:
+                    logger.error(f"Failed to save deck regions to config: {e}")
 
-        if result["rect"]:
-            rect = result["rect"]
-            capture_region = CaptureRegion(
-                x=rect.x(),
-                y=rect.y(),
-                width=rect.width(),
-                height=rect.height(),
-            )
-            self.deck_region_configured.emit(deck_name, region_type, capture_region)
-            logger.info(
-                f"Configured deck {deck_name} {region_type}: "
-                f"x={rect.x()}, y={rect.y()}, w={rect.width()}, h={rect.height()}"
-            )
+        config_dialog.accepted.connect(on_accepted)
+        config_dialog.show()  # Use show() instead of exec() to avoid blocking input
 
     # Control Handlers ------------------------------------------------------
     def _on_pilot_toggle(self, checked: bool) -> None:

@@ -247,6 +247,50 @@ class ConfigManager:
         self.save()
         logger.info(f"Pilot {'enabled' if enabled else 'disabled'} in configuration")
 
+    def set_deck_region(self, deck: str, region_type: str, region_data: Dict[str, int]) -> None:
+        """Set a deck's capture region and save to config.
+        
+        Args:
+            deck: Deck identifier (A, B, C, D)
+            region_type: "master_button_region" or "timeline_region"
+            region_data: Dictionary with keys x, y, width, height
+        """
+        if "pilot" not in self.data:
+            self.data["pilot"] = self.DEFAULT_CONFIG.get("pilot", {}).copy()
+        
+        if "decks" not in self.data["pilot"]:
+            self.data["pilot"]["decks"] = {
+                "A": {"master_button_region": None, "timeline_region": None},
+                "B": {"master_button_region": None, "timeline_region": None},
+                "C": {"master_button_region": None, "timeline_region": None},
+                "D": {"master_button_region": None, "timeline_region": None},
+            }
+        
+        if deck not in self.data["pilot"]["decks"]:
+            self.data["pilot"]["decks"][deck] = {
+                "master_button_region": None,
+                "timeline_region": None,
+            }
+        
+        self.data["pilot"]["decks"][deck][region_type] = region_data
+        self.save()
+        logger.info(f"Saved {region_type} for deck {deck}: {region_data}")
+
+    def get_deck_region(self, deck: str, region_type: str) -> Optional[Dict[str, int]]:
+        """Get a deck's capture region from config.
+        
+        Args:
+            deck: Deck identifier (A, B, C, D)
+            region_type: "master_button_region" or "timeline_region"
+            
+        Returns:
+            Dictionary with keys x, y, width, height or None if not set
+        """
+        pilot_config = self.data.get("pilot", {})
+        decks = pilot_config.get("decks", {})
+        deck_config = decks.get(deck, {})
+        return deck_config.get(region_type)
+
 
 # Global config manager instance
 _config_manager: Optional[ConfigManager] = None
