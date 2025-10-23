@@ -412,7 +412,7 @@ class PilotWidget(QWidget):
         status_layout.setSpacing(1)
         status_layout.setContentsMargins(4, 0, 0, 0)
 
-        # Line 1: BPM + Phrase type + Duration
+        # Line 1: BPM + Duration
         self.status_line1 = QLabel("Not aligned")
         self.status_line1.setStyleSheet(
             "color: #888888; font-size: 11px; font-weight: bold;"
@@ -426,6 +426,35 @@ class PilotWidget(QWidget):
 
         header_layout.addLayout(status_layout)
         header_layout.addStretch()  # Push everything to the left
+
+        # Large visual status indicators
+        visual_status_layout = QHBoxLayout()
+        visual_status_layout.setSpacing(8)
+        visual_status_layout.setContentsMargins(0, 0, 0, 0)
+
+        # Active deck indicator (large letter A, B, C, or D)
+        self.deck_indicator = QLabel("")
+        self.deck_indicator.setStyleSheet(
+            "color: #ffffff; font-size: 32px; font-weight: bold; "
+            "background-color: #2a2a2a; border: 2px solid #444; border-radius: 5px; "
+            "padding: 4px 12px; min-width: 40px;"
+        )
+        self.deck_indicator.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.deck_indicator.setVisible(False)
+        visual_status_layout.addWidget(self.deck_indicator)
+
+        # Phrase type indicator (BODY or BREAKDOWN)
+        self.phrase_type_indicator = QLabel("")
+        self.phrase_type_indicator.setStyleSheet(
+            "color: #ffffff; font-size: 28px; font-weight: bold; "
+            "background-color: #2a2a2a; border: 2px solid #444; border-radius: 5px; "
+            "padding: 4px 16px;"
+        )
+        self.phrase_type_indicator.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.phrase_type_indicator.setVisible(False)
+        visual_status_layout.addWidget(self.phrase_type_indicator)
+
+        header_layout.addLayout(visual_status_layout)
 
         main_layout.addLayout(header_layout)
 
@@ -625,20 +654,51 @@ class PilotWidget(QWidget):
             if bpm:
                 parts.append(f"{bpm:.1f} BPM")
 
-            if phrase_type:
-                parts.append(f"{phrase_type.upper()}")
+            if phrase_duration:
+                bars, phrases = phrase_duration
+                if phrases > 0:
+                    parts.append(f"({phrases}×8+{bars % 8} bars)")
+                else:
+                    parts.append(f"({bars} bars)")
 
-                if phrase_duration:
-                    bars, phrases = phrase_duration
-                    if phrases > 0:
-                        parts.append(f"({phrases}×8+{bars % 8} bars)")
-                    else:
-                        parts.append(f"({bars} bars)")
+            # Update large phrase type indicator
+            if phrase_type and self.phrase_detection_enabled:
+                self.phrase_type_indicator.setText(phrase_type.upper())
+                self.phrase_type_indicator.setVisible(True)
+                
+                # Color coding: BODY = orange, BREAKDOWN = blue
+                if phrase_type.upper() == "BODY":
+                    self.phrase_type_indicator.setStyleSheet(
+                        "color: #ffffff; font-size: 28px; font-weight: bold; "
+                        "background-color: #ff8800; border: 2px solid #cc6600; border-radius: 5px; "
+                        "padding: 4px 16px;"
+                    )
+                elif phrase_type.upper() == "BREAKDOWN":
+                    self.phrase_type_indicator.setStyleSheet(
+                        "color: #ffffff; font-size: 28px; font-weight: bold; "
+                        "background-color: #0078d4; border: 2px solid #005a9e; border-radius: 5px; "
+                        "padding: 4px 16px;"
+                    )
+                else:
+                    # Default style for other phrase types
+                    self.phrase_type_indicator.setStyleSheet(
+                        "color: #ffffff; font-size: 28px; font-weight: bold; "
+                        "background-color: #2a2a2a; border: 2px solid #444; border-radius: 5px; "
+                        "padding: 4px 16px;"
+                    )
+            else:
+                self.phrase_type_indicator.setVisible(False)
 
+            # Update large deck indicator
             if active_deck and self.phrase_detection_enabled:
-                parts.append(f"Deck {active_deck}")
+                self.deck_indicator.setText(active_deck)
+                self.deck_indicator.setVisible(True)
+            else:
+                self.deck_indicator.setVisible(False)
         else:
             parts.append("Not aligned")
+            self.phrase_type_indicator.setVisible(False)
+            self.deck_indicator.setVisible(False)
 
         self.status_line1.setText(" • ".join(parts) if parts else "Not aligned")
 
@@ -651,6 +711,8 @@ class PilotWidget(QWidget):
         self.status_line1.setText("Not aligned")
         self.status_line2.setText("")
         self.phrase_progress_bar.setValue(0)
+        self.phrase_type_indicator.setVisible(False)
+        self.deck_indicator.setVisible(False)
 
     # Preset management methods
     def _load_presets(self) -> None:

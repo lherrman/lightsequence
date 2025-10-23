@@ -17,7 +17,7 @@
             "action_type": "activate_sequence",
             "sequences": [
               {
-                "sequence_index": "0.0",
+                "sequence_index": "2.0",
                 "weight": 1.0
               }
             ]
