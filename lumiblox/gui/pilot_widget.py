@@ -50,7 +50,9 @@ class FixedSizeRegionSelector(QWidget):
             region_type: Either "button" or "timeline"
         """
         # Create as a standalone window with no parent, stays on top
-        super().__init__(None, Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.FramelessWindowHint)
+        super().__init__(
+            None, Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.FramelessWindowHint
+        )
 
         # Don't use WA_TranslucentBackground - it blocks mouse events
         # Instead use a semi-transparent background color via stylesheet
@@ -119,7 +121,10 @@ class FixedSizeRegionSelector(QWidget):
 
     def mouseMoveEvent(self, event) -> None:
         """Handle dragging."""
-        if event.buttons() == Qt.MouseButton.LeftButton and self._drag_position is not None:
+        if (
+            event.buttons() == Qt.MouseButton.LeftButton
+            and self._drag_position is not None
+        ):
             self.move(event.globalPosition().toPoint() - self._drag_position)
 
     def mouseReleaseEvent(self, event) -> None:

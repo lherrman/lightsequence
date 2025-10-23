@@ -163,7 +163,9 @@ class ControllerThread(QThread):
             try:
                 self.pilot_controller = PilotController(midiclock_device="midiclock")
             except Exception as fallback_error:
-                logger.error(f"Failed to create fallback pilot controller: {fallback_error}")
+                logger.error(
+                    f"Failed to create fallback pilot controller: {fallback_error}"
+                )
                 # Create with defaults - it just won't work until configured
                 self.pilot_controller = PilotController()
 

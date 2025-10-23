@@ -233,6 +233,7 @@ class PhraseDetector:
     def detect_active_deck(self) -> Optional[str]:
         """
         Detect which deck is currently the master (playing).
+        Captures all decks and selects the one with smallest distance to "on" template.
 
         Returns:
             Deck name ("A", "B", "C", "D") or None if none detected
@@ -243,6 +244,9 @@ class PhraseDetector:
             or self.template_off is None
         ):
             return None
+
+        # Capture all decks and calculate distances
+        deck_distances = {}
 
         for deck_name, deck in self.decks.items():
             if deck.master_button_region is None:
@@ -261,25 +265,39 @@ class PhraseDetector:
                 # Resize to 32x32 for comparison
                 img_resized = cv.resize(img, DECK_BUTTON_SIZE)
 
-                # Calculate distance to "on" and "off" templates
+                # Calculate distance to "on" template
                 dist_on = np.linalg.norm(img_resized - self.template_on)
+                deck_distances[deck_name] = dist_on
+
+                # Update deck state (for debugging/info)
                 dist_off = np.linalg.norm(img_resized - self.template_off)
+                deck.is_master = bool(dist_on < dist_off)
 
-                # Update deck state
-                is_on = dist_on < dist_off
-                deck.is_master = bool(is_on)
-
-                if is_on:
-                    logger.debug(
-                        f"Deck {deck_name} is active (dist_on={dist_on:.1f}, dist_off={dist_off:.1f})"
-                    )
-                    return deck_name
+                logger.debug(
+                    f"Deck {deck_name}: dist_on={dist_on:.1f}, dist_off={dist_off:.1f}"
+                )
 
             except Exception as e:
                 logger.error(f"Error detecting deck {deck_name}: {e}")
                 continue
 
-        return None
+        # Select deck with smallest distance to "on" template
+        if not deck_distances:
+            logger.warning("No decks could be captured")
+            return None
+
+        active_deck = min(deck_distances, key=deck_distances.get)  # type: ignore
+        logger.info(
+            f"Active deck: {active_deck} (distance: {deck_distances[active_deck]:.1f})"
+        )
+
+        # Mark the active deck
+        self.decks[active_deck].is_master = True
+        for deck_name in deck_distances:
+            if deck_name != active_deck:
+                self.decks[deck_name].is_master = False
+
+        return active_deck
 
     def classify_phrase(self, deck_name: Optional[str] = None) -> Optional[str]:
         """
