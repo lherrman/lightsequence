@@ -1,14 +1,14 @@
 """
-Pilot Widget
+Pilot Widget (Redesigned)
 
-GUI component for displaying and controlling the pilot system
-(MIDI clock sync and phrase detection).
+Modern, compact GUI for MIDI clock sync and phrase detection with automation rules.
 """
 
 import logging
-from typing import Optional
+from typing import Optional, Callable
 
-from PySide6.QtCore import Qt, Signal, QRect
+import qtawesome as qta
+from PySide6.QtCore import Qt, Signal, QRect, QSize
 from PySide6.QtGui import QColor, QPainter, QGuiApplication
 from PySide6.QtWidgets import (
     QWidget,
@@ -19,97 +19,67 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QGroupBox,
     QComboBox,
-    QCheckBox,
     QDialog,
     QDialogButtonBox,
+    QToolButton,
+    QFrame,
 )
 
 from lumiblox.pilot.phrase_detector import CaptureRegion
+from lumiblox.pilot.pilot_preset import PilotPresetManager
+from lumiblox.gui.rule_editor import PresetEditorDialog
 from lumiblox.common.config import get_config
 
 logger = logging.getLogger(__name__)
 
 
+# Region selector and config dialog remain the same
 class FixedSizeRegionSelector(QWidget):
-    """Transparent overlay window with fixed size for positioning capture regions."""
+    """Draggable fixed-size overlay window for region selection."""
 
     region_confirmed = Signal(QRect)
     selection_cancelled = Signal()
 
-    # Region size constants (must match capture requirements)
-    MASTER_BUTTON_WIDTH = 64
-    MASTER_BUTTON_HEIGHT = 22
-    TIMELINE_WIDTH = 220
-    TIMELINE_HEIGHT = 88
-
-    def __init__(self, region_type: str, parent=None) -> None:
+    def __init__(self, region_type: str):
         """
-        Create a fixed-size transparent overlay window.
+        Create a fixed-size region selector.
 
         Args:
             region_type: Either "button" or "timeline"
         """
-        # Create as a standalone window with no parent, stays on top
         super().__init__(
             None, Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.FramelessWindowHint
         )
-
-        # Don't use WA_TranslucentBackground - it blocks mouse events
-        # Instead use a semi-transparent background color via stylesheet
-        self.setWindowOpacity(0.7)  # Make whole window semi-transparent
-
+        self.setWindowOpacity(0.7)
         self.region_type = region_type
 
         # Set fixed size based on region type
         if region_type == "button":
-            width = self.MASTER_BUTTON_WIDTH
-            height = self.MASTER_BUTTON_HEIGHT
-            title = "Master Button Region"
-        else:  # timeline
-            width = self.TIMELINE_WIDTH
-            height = self.TIMELINE_HEIGHT
-            title = "Timeline Region"
+            self.setFixedSize(64, 22)  # Master button size
+            self._title = "Master Button"
+        else:
+            self.setFixedSize(220, 88)  # Timeline size
+            self._title = "Timeline"
 
-        self.setFixedSize(width, height)
+        # Blue background
+        self.setStyleSheet("background-color: #0078d4;")
 
-        # Position at center of primary screen initially
-        screen = QGuiApplication.primaryScreen().geometry()
-        self.move(screen.center().x() - width // 2, screen.center().y() - height // 2)
-
-        # Store title for display
-        self._title = title
-
-        # Set background color
-        self.setStyleSheet("""
-            QWidget {
-                background-color: rgba(0, 170, 255, 150);
-                border: 3px solid #00aaff;
-            }
-        """)
-
-        # Make window draggable
+        # Dragging state
         self._drag_position = None
 
     def paintEvent(self, event) -> None:
-        """Draw title bar at top."""
+        """Draw title bar."""
         painter = QPainter(self)
+        painter.fillRect(0, 0, self.width(), 20, QColor(0, 120, 200))
 
-        # Draw title bar at top
-        title_height = 20
-        painter.fillRect(0, 0, self.width(), title_height, QColor(0, 120, 200))
-
-        # Draw title text
         painter.setPen(QColor(255, 255, 255))
         font = painter.font()
         font.setBold(True)
         font.setPixelSize(11)
         painter.setFont(font)
         painter.drawText(
-            QRect(0, 0, self.width(), title_height),
-            Qt.AlignmentFlag.AlignCenter,
-            self._title,
+            QRect(0, 0, self.width(), 20), Qt.AlignmentFlag.AlignCenter, self._title
         )
-
         painter.end()
 
     def mousePressEvent(self, event) -> None:
@@ -126,10 +96,6 @@ class FixedSizeRegionSelector(QWidget):
             and self._drag_position is not None
         ):
             self.move(event.globalPosition().toPoint() - self._drag_position)
-
-    def mouseReleaseEvent(self, event) -> None:
-        """Stop dragging."""
-        self._drag_position = None
 
     def keyPressEvent(self, event) -> None:
         """Handle keyboard shortcuts."""
@@ -149,9 +115,7 @@ class FixedSizeRegionSelector(QWidget):
 class RegionConfigDialog(QDialog):
     """Dialog for configuring both capture regions for a deck."""
 
-    regions_configured = Signal(
-        str, QRect, QRect
-    )  # deck_name, button_rect, timeline_rect
+    regions_configured = Signal(str, QRect, QRect)
 
     def __init__(self, deck_name: str, parent=None):
         super().__init__(parent)
@@ -160,9 +124,7 @@ class RegionConfigDialog(QDialog):
         self.timeline_rect = None
 
         self.setWindowTitle(f"Configure Deck {deck_name} Capture Regions")
-        self.setModal(False)  # Non-modal so overlays can be dragged
-
-        # Ensure the dialog doesn't block input to other windows
+        self.setModal(False)
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowStaysOnTopHint)
 
         layout = QVBoxLayout(self)
@@ -199,7 +161,6 @@ class RegionConfigDialog(QDialog):
         self.ok_button = button_box.button(QDialogButtonBox.StandardButton.Ok)
         self.ok_button.setText("Save & Close")
         self.ok_button.setEnabled(False)
-        # Connect directly to button clicked signals for modeless dialog
         self.ok_button.clicked.connect(self.accept)
         cancel_button = button_box.button(QDialogButtonBox.StandardButton.Cancel)
         cancel_button.clicked.connect(self.reject)
@@ -209,12 +170,10 @@ class RegionConfigDialog(QDialog):
 
     def _show_overlays(self) -> None:
         """Show both overlay windows for positioning."""
-        # Create button region overlay
         self.button_overlay = FixedSizeRegionSelector("button")
         self.button_overlay.region_confirmed.connect(self._on_button_confirmed)
         self.button_overlay.selection_cancelled.connect(self._on_cancelled)
 
-        # Create timeline region overlay
         self.timeline_overlay = FixedSizeRegionSelector("timeline")
         self.timeline_overlay.region_confirmed.connect(self._on_timeline_confirmed)
         self.timeline_overlay.selection_cancelled.connect(self._on_cancelled)
@@ -239,7 +198,7 @@ class RegionConfigDialog(QDialog):
         else:
             self.timeline_overlay.move(center_x + 50, center_y - 50)
 
-        # Show both and ensure they're raised above everything
+        # Show both
         self.button_overlay.show()
         self.button_overlay.raise_()
         self.button_overlay.activateWindow()
@@ -252,463 +211,225 @@ class RegionConfigDialog(QDialog):
         """Handle button region confirmation."""
         self.button_rect = rect
         self.button_status.setText(f"Master Button: Set at ({rect.x()}, {rect.y()})")
-        logger.info(
-            f"Button region confirmed: {rect.x()}, {rect.y()}, {rect.width()}x{rect.height()}"
-        )
+        logger.info(f"Button region confirmed: {rect.x()}, {rect.y()}")
         self._check_completion()
 
     def _on_timeline_confirmed(self, rect: QRect) -> None:
         """Handle timeline region confirmation."""
         self.timeline_rect = rect
         self.timeline_status.setText(f"Timeline: Set at ({rect.x()}, {rect.y()})")
-        logger.info(
-            f"Timeline region confirmed: {rect.x()}, {rect.y()}, {rect.width()}x{rect.height()}"
-        )
+        logger.info(f"Timeline region confirmed: {rect.x()}, {rect.y()}")
         self._check_completion()
 
     def _check_completion(self) -> None:
-        """Check if both regions are set and enable save button."""
-        logger.info(
-            f"Checking completion: button={self.button_rect is not None}, timeline={self.timeline_rect is not None}"
-        )
+        """Check if both regions are set."""
         if self.button_rect and self.timeline_rect:
-            logger.info("Both regions set, enabling Save & Close button")
             self.ok_button.setEnabled(True)
-            self.ok_button.update()  # Force visual update
-            # Bring dialog to front so user can click the button
-            self.raise_()
-            self.activateWindow()
 
     def _on_cancelled(self) -> None:
-        """Handle cancellation of region selection."""
-        # Close any open overlays
-        if hasattr(self, "button_overlay"):
-            self.button_overlay.close()
-        if hasattr(self, "timeline_overlay"):
-            self.timeline_overlay.close()
-
-    def reject(self) -> None:
-        """Override reject to clean up overlays."""
-        # Close any open overlays
-        if hasattr(self, "button_overlay") and self.button_overlay:
-            self.button_overlay.close()
-        if hasattr(self, "timeline_overlay") and self.timeline_overlay:
-            self.timeline_overlay.close()
-        super().reject()
+        """Handle cancellation."""
+        self.reject()
 
     def accept(self) -> None:
-        """Override accept to clean up overlays."""
-        # Close any open overlays
-        if hasattr(self, "button_overlay") and self.button_overlay:
-            self.button_overlay.close()
-        if hasattr(self, "timeline_overlay") and self.timeline_overlay:
-            self.timeline_overlay.close()
+        """Handle dialog acceptance."""
+        if self.button_rect and self.timeline_rect:
+            self.regions_configured.emit(
+                self.deck_name, self.button_rect, self.timeline_rect
+            )
         super().accept()
 
 
 class PilotWidget(QWidget):
-    """Widget for controlling and monitoring the pilot system."""
+    """Compact pilot control widget with automation rules."""
 
-    # Signals for requesting actions from the controller
     pilot_enable_requested = Signal(bool)
     phrase_detection_enable_requested = Signal(bool)
     align_requested = Signal()
-    deck_region_configured = Signal(
-        str, str, CaptureRegion
-    )  # deck, region_type, region
+    deck_region_configured = Signal(str, str, CaptureRegion)
 
-    def __init__(self, parent: Optional[QWidget] = None):
-        super().__init__(parent)
-        self.setup_ui()
-        self.pilot_enabled = False
+    def __init__(self, refresh_callback: Optional[Callable[[], None]] = None):
+        super().__init__()
+        self.refresh_callback = refresh_callback
         self.phrase_detection_enabled = False
+        self.preset_manager = PilotPresetManager()
+        self.setup_ui()
+        self._load_presets()
 
     def setup_ui(self) -> None:
-        """Set up the UI components."""
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(8)
+        """Set up the user interface."""
+        main_layout = QVBoxLayout(self)
+        main_layout.setSpacing(4)
+        main_layout.setContentsMargins(6, 6, 6, 6)
 
-        # === Progress Bar (Top, no label) ===
-        self.phrase_progress_bar = QProgressBar()
-        self.phrase_progress_bar.setRange(0, 100)
-        self.phrase_progress_bar.setValue(0)
-        self.phrase_progress_bar.setTextVisible(False)
-        self.phrase_progress_bar.setFixedHeight(6)
-        self.phrase_progress_bar.setStyleSheet("""
-            QProgressBar {
-                border: none;
-                border-radius: 3px;
-                background-color: #1a1a1a;
-            }
-            QProgressBar::chunk {
-                background-color: #00aaff;
-                border-radius: 3px;
-            }
-        """)
-        layout.addWidget(self.phrase_progress_bar)
+        # === HEADER: Control buttons + Status bar ===
+        header_layout = QHBoxLayout()
+        header_layout.setSpacing(4)
+        header_layout.setContentsMargins(0, 0, 0, 0)
 
-        # === Main Content Area ===
-        content_layout = QHBoxLayout()
-        content_layout.setSpacing(12)
-
-        # Left side: Phrase type display
-        self.phrase_type_label = QLabel("—")
-        self.phrase_type_label.setStyleSheet(
-            "font-size: 32px; font-weight: 600; color: #ffffff; "
-            "padding: 20px; background-color: #1a1a1a; border-radius: 8px;"
-        )
-        self.phrase_type_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.phrase_type_label.setMinimumWidth(180)
-        content_layout.addWidget(self.phrase_type_label, 1)
-
-        # Right side: Controls
-        controls_layout = QVBoxLayout()
-        controls_layout.setSpacing(6)
-
-        # Control buttons row
-        buttons_row = QHBoxLayout()
-        buttons_row.setSpacing(6)
-
-        # Pilot toggle button
-        self.pilot_toggle_btn = QPushButton("Pilot")
-        self.pilot_toggle_btn.setCheckable(True)
-        self.pilot_toggle_btn.setFixedHeight(40)
-        self.pilot_toggle_btn.setStyleSheet(self._get_modern_toggle_style())
-        self.pilot_toggle_btn.clicked.connect(self._on_pilot_toggle)
-        buttons_row.addWidget(self.pilot_toggle_btn)
-
-        # Phrase detection toggle
-        self.phrase_detection_btn = QPushButton("Detect")
-        self.phrase_detection_btn.setCheckable(True)
-        self.phrase_detection_btn.setEnabled(False)
-        self.phrase_detection_btn.setFixedHeight(40)
-        self.phrase_detection_btn.setStyleSheet(self._get_modern_toggle_style())
-        self.phrase_detection_btn.clicked.connect(self._on_phrase_detection_toggle)
-        buttons_row.addWidget(self.phrase_detection_btn)
-
-        # Settings button
-        self.settings_btn = QPushButton("⚙")
-        self.settings_btn.setFixedSize(40, 40)
-        self.settings_btn.setStyleSheet("""
+        # Button style for consistent appearance
+        button_style = """
             QPushButton {
-                background-color: #2d2d2d;
-                color: #888888;
-                border: none;
-                border-radius: 8px;
-                font-size: 18px;
-                font-weight: bold;
+                background-color: #2a2a2a;
+                border: 1px solid #444;
+                border-radius: 3px;
+                color: white;
+                font-size: 14px;
+                padding: 2px;
             }
             QPushButton:hover {
-                background-color: #3d3d3d;
-                color: #ffffff;
+                background-color: #3a3a3a;
+                border: 1px solid #666;
             }
             QPushButton:pressed {
                 background-color: #1a1a1a;
-            }
-        """)
-        self.settings_btn.setToolTip("Open pilot settings")
-        self.settings_btn.clicked.connect(self._on_settings_clicked)
-        buttons_row.addWidget(self.settings_btn)
-
-        controls_layout.addLayout(buttons_row)
-
-        # Align button (full width, below main buttons)
-        self.align_btn = QPushButton("⏱ Align to Beat")
-        self.align_btn.setFixedHeight(32)
-        self.align_btn.setEnabled(False)
-        self.align_btn.setStyleSheet("""
-            QPushButton {
-                padding: 6px 12px;
-                font-weight: 500;
-                font-size: 12px;
-                border: none;
-                border-radius: 6px;
-                background-color: #2d2d2d;
-                color: #888888;
-            }
-            QPushButton:hover:enabled {
-                background-color: #3d3d3d;
-                color: #ffffff;
-            }
-            QPushButton:pressed:enabled {
-                background-color: #1a1a1a;
-            }
-            QPushButton:disabled {
-                background-color: #1a1a1a;
-                color: #444444;
-            }
-        """)
-        self.align_btn.setToolTip("Tap this button on the downbeat to sync with music")
-        self.align_btn.clicked.connect(self._on_align_requested)
-        controls_layout.addWidget(self.align_btn)
-
-        # Status info (compact) - shows BPM and active deck
-        self.status_label = QLabel("Not aligned")
-        self.status_label.setStyleSheet(
-            "color: #666666; font-size: 11px; padding: 2px;"
-        )
-        self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        controls_layout.addWidget(self.status_label)
-
-        # Position and detection in one line (compact)
-        self.position_label = QLabel("")
-        self.position_label.setStyleSheet(
-            "color: #888888; font-size: 10px; padding: 2px;"
-        )
-        self.position_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        controls_layout.addWidget(self.position_label)
-
-        controls_layout.addStretch()
-
-        content_layout.addLayout(controls_layout, 1)
-
-        layout.addLayout(content_layout)
-
-        # Hidden elements (no longer visible but keep for compatibility)
-        self.next_phrase_label = QLabel("")  # Keep for update methods
-        self.deck_selector = QComboBox()  # For settings dialog
-        self.deck_selector.addItems(["A", "B", "C", "D"])
-
-    def _get_modern_toggle_style(self) -> str:
-        """Get modern stylesheet for toggle buttons."""
-        return """
-            QPushButton {
-                padding: 8px 16px;
-                font-weight: 600;
-                font-size: 13px;
-                border: none;
-                border-radius: 8px;
-                background-color: #2d2d2d;
-                color: #888888;
-            }
-            QPushButton:hover {
-                background-color: #3d3d3d;
-                color: #ffffff;
             }
             QPushButton:checked {
-                background-color: #00aaff;
-                color: #ffffff;
-            }
-            QPushButton:disabled {
-                background-color: #1a1a1a;
-                color: #444444;
-            }
-            QPushButton:pressed {
-                background-color: #0088cc;
+                background-color: #0078d4;
+                border: 1px solid #005a9e;
             }
         """
 
-    # Settings Dialog -------------------------------------------------------
-    def _on_settings_clicked(self) -> None:
-        """Open settings dialog for pilot configuration."""
-        from PySide6.QtWidgets import QDialog, QDialogButtonBox
+        # Control buttons (proper QPushButton style with icons)
+        self.pilot_toggle_btn = QPushButton()
+        self.pilot_toggle_btn.setCheckable(True)
+        self.pilot_toggle_btn.setToolTip("Start/Stop Pilot")
+        self.pilot_toggle_btn.setFixedSize(QSize(32, 32))
+        self.pilot_toggle_btn.setStyleSheet(button_style)
+        self.pilot_toggle_btn.setIcon(qta.icon("fa5s.play", color="white"))
+        self.pilot_toggle_btn.setIconSize(QSize(16, 16))
+        self.pilot_toggle_btn.toggled.connect(self._on_pilot_toggle)
+        header_layout.addWidget(self.pilot_toggle_btn)
 
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Pilot Settings")
-        dialog.setMinimumWidth(400)
+        self.phrase_detection_btn = QPushButton()
+        self.phrase_detection_btn.setCheckable(True)
+        self.phrase_detection_btn.setToolTip("Enable/Disable Phrase Detection")
+        self.phrase_detection_btn.setFixedSize(QSize(32, 32))
+        self.phrase_detection_btn.setStyleSheet(button_style)
+        self.phrase_detection_btn.setIcon(qta.icon("fa5s.eye", color="white"))
+        self.phrase_detection_btn.setIconSize(QSize(16, 16))
+        self.phrase_detection_btn.toggled.connect(self._on_phrase_detection_toggle)
+        header_layout.addWidget(self.phrase_detection_btn)
 
-        layout = QVBoxLayout(dialog)
-        layout.setSpacing(12)
+        self.align_btn = QPushButton()
+        self.align_btn.setToolTip("Align to Beat (Tap)")
+        self.align_btn.setFixedSize(QSize(32, 32))
+        self.align_btn.setStyleSheet(button_style)
+        self.align_btn.setIcon(qta.icon("fa5s.crosshairs", color="white"))
+        self.align_btn.setIconSize(QSize(16, 16))
+        self.align_btn.clicked.connect(self._on_align_requested)
+        header_layout.addWidget(self.align_btn)
 
-        # Enable in config checkbox
-        enable_checkbox = QCheckBox("Enable Pilot in Config")
-        enable_checkbox.setToolTip(
-            "Enable/disable pilot system (will take effect on restart)"
+        settings_btn = QPushButton()
+        settings_btn.setToolTip("Configure Deck Regions")
+        settings_btn.setFixedSize(QSize(32, 32))
+        settings_btn.setStyleSheet(button_style)
+        settings_btn.setIcon(qta.icon("fa5s.cog", color="white"))
+        settings_btn.setIconSize(QSize(16, 16))
+        settings_btn.clicked.connect(self._on_settings_requested)
+        header_layout.addWidget(settings_btn)
+
+        # Separator
+        separator = QFrame()
+        separator.setFrameShape(QFrame.Shape.VLine)
+        separator.setFrameShadow(QFrame.Shadow.Sunken)
+        separator.setFixedWidth(2)
+        header_layout.addWidget(separator)
+
+        # Status info (compact, only needed space)
+        status_layout = QVBoxLayout()
+        status_layout.setSpacing(1)
+        status_layout.setContentsMargins(4, 0, 0, 0)
+
+        # Line 1: BPM + Phrase type + Duration
+        self.status_line1 = QLabel("Not aligned")
+        self.status_line1.setStyleSheet(
+            "color: #888888; font-size: 11px; font-weight: bold;"
         )
-        try:
-            config = get_config()
-            pilot_config = config.data.get("pilot", {})
-            enable_checkbox.setChecked(pilot_config.get("enabled", False))
-        except Exception:
-            pass
-        layout.addWidget(enable_checkbox)
+        status_layout.addWidget(self.status_line1)
 
-        # Align button
-        align_group = QGroupBox("Alignment")
-        align_layout = QVBoxLayout(align_group)
-        align_btn = QPushButton("⏱ Align to Beat (Tap on downbeat)")
-        align_btn.clicked.connect(self._on_align_requested)
-        align_layout.addWidget(align_btn)
-        layout.addWidget(align_group)
+        # Line 2: Position (Phrase, Bar, Beat)
+        self.status_line2 = QLabel("")
+        self.status_line2.setStyleSheet("color: #666666; font-size: 10px;")
+        status_layout.addWidget(self.status_line2)
 
-        # Screen capture configuration
-        capture_group = QGroupBox("Screen Capture Regions")
-        capture_layout = QVBoxLayout(capture_group)
+        header_layout.addLayout(status_layout)
+        header_layout.addStretch()  # Push everything to the left
 
-        # Instructions
-        info_label = QLabel(
-            "Configure capture regions for each deck.\n"
-            "Click 'Configure Deck' to position transparent overlays on your screen."
+        main_layout.addLayout(header_layout)
+
+        # Progress bar (horizontal, below controls)
+        self.phrase_progress_bar = QProgressBar()
+        self.phrase_progress_bar.setOrientation(Qt.Orientation.Horizontal)
+        self.phrase_progress_bar.setTextVisible(False)
+        self.phrase_progress_bar.setFixedHeight(6)
+        self.phrase_progress_bar.setStyleSheet(
+            """
+            QProgressBar {
+                border: 1px solid #444;
+                border-radius: 2px;
+                background-color: #2a2a2a;
+            }
+            QProgressBar::chunk {
+                background-color: #0078d4;
+                border-radius: 2px;
+            }
+            """
         )
-        info_label.setWordWrap(True)
-        capture_layout.addWidget(info_label)
+        main_layout.addWidget(self.phrase_progress_bar)
 
-        # Container for region status (will be updated dynamically)
-        regions_status_container = QWidget()
-        regions_status_layout = QVBoxLayout(regions_status_container)
-        regions_status_layout.setContentsMargins(0, 0, 0, 0)
-        regions_status_layout.setSpacing(4)
-        capture_layout.addWidget(regions_status_container)
+        # === PILOT PRESETS LIST ===
+        presets_group = QGroupBox("Pilot Presets")
+        presets_layout = QVBoxLayout(presets_group)
+        presets_layout.setSpacing(4)
 
-        # Function to update region display
-        def update_regions_display():
-            # Clear existing labels
-            while regions_status_layout.count():
-                item = regions_status_layout.takeAt(0)
-                if item.widget():
-                    item.widget().deleteLater()
+        # Preset selector
+        preset_header = QHBoxLayout()
+        self.preset_combo = QComboBox()
+        self.preset_combo.currentIndexChanged.connect(self._on_preset_changed)
+        preset_header.addWidget(self.preset_combo, 1)
 
-            # Add current regions
-            try:
-                config = get_config()
-                pilot_config = config.data.get("pilot", {})
-                decks = pilot_config.get("decks", {})
+        self.add_preset_btn = QToolButton()
+        self.add_preset_btn.setText("+")
+        self.add_preset_btn.setToolTip("Add New Pilot")
+        self.add_preset_btn.setFixedSize(QSize(24, 24))
+        self.add_preset_btn.clicked.connect(self._on_add_preset)
+        preset_header.addWidget(self.add_preset_btn)
 
-                for deck_name in ["A", "B", "C", "D"]:
-                    deck_config = decks.get(deck_name, {})
-                    button_region = deck_config.get("master_button_region")
-                    timeline_region = deck_config.get("timeline_region")
+        self.edit_preset_btn = QToolButton()
+        self.edit_preset_btn.setText("✎")
+        self.edit_preset_btn.setToolTip("Edit Pilot Rules")
+        self.edit_preset_btn.setFixedSize(QSize(24, 24))
+        self.edit_preset_btn.clicked.connect(self._on_edit_preset)
+        preset_header.addWidget(self.edit_preset_btn)
 
-                    if button_region or timeline_region:
-                        deck_info = QLabel()
-                        deck_info.setStyleSheet(
-                            "color: #00aa00; font-size: 11px; padding: 4px;"
-                        )
+        self.delete_preset_btn = QToolButton()
+        self.delete_preset_btn.setText("✕")
+        self.delete_preset_btn.setToolTip("Delete Pilot")
+        self.delete_preset_btn.setFixedSize(QSize(24, 24))
+        self.delete_preset_btn.clicked.connect(self._on_delete_preset)
+        preset_header.addWidget(self.delete_preset_btn)
 
-                        status_parts = [f"<b>Deck {deck_name}:</b>"]
-                        if button_region:
-                            status_parts.append(
-                                f"Button ({button_region['x']}, {button_region['y']})"
-                            )
-                        if timeline_region:
-                            status_parts.append(
-                                f"Timeline ({timeline_region['x']}, {timeline_region['y']})"
-                            )
+        presets_layout.addLayout(preset_header)
 
-                        deck_info.setText(" • ".join(status_parts))
-                        regions_status_layout.addWidget(deck_info)
-            except Exception as e:
-                logger.error(f"Failed to load deck regions: {e}")
+        # Rules list with flash indicators
+        self.rules_container = QVBoxLayout()
+        self.rules_container.setSpacing(2)
+        self.rule_widgets = {}  # rule_name -> QLabel widget
+        presets_layout.addLayout(self.rules_container)
 
-        # Initial display
-        update_regions_display()
+        main_layout.addWidget(presets_group, 1)  # Give presets stretch to fill space
 
-        # Deck selector and configure button
-        deck_row = QHBoxLayout()
-        deck_row.addWidget(QLabel("Deck:"))
-        deck_selector = QComboBox()
-        deck_selector.addItems(["A", "B", "C", "D"])
-        deck_row.addWidget(deck_selector, 1)
-
-        configure_deck_btn = QPushButton("Configure Deck Regions")
-        configure_deck_btn.clicked.connect(
-            lambda: self._configure_deck_regions(
-                deck_selector.currentText(), update_regions_display
-            )
-        )
-        deck_row.addWidget(configure_deck_btn)
-
-        capture_layout.addLayout(deck_row)
-        layout.addWidget(capture_group)
-
-        # Dialog buttons
-        button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
-        button_box.accepted.connect(dialog.accept)
-        layout.addWidget(button_box)
-
-        # Save config on close
-        def on_accept():
-            try:
-                config = get_config()
-                config.set_pilot_enabled(enable_checkbox.isChecked())
-            except Exception as e:
-                logger.error(f"Failed to save pilot config: {e}")
-
-        button_box.accepted.connect(on_accept)
-        dialog.show()  # Use show() instead of exec() to avoid blocking
-
-    def _configure_deck_regions(self, deck_name: str, on_regions_updated=None) -> None:
-        """Open dialog to configure both regions for a deck.
-
-        Args:
-            deck_name: Name of the deck (A, B, C, D)
-            on_regions_updated: Optional callback to call after regions are saved
-        """
-        config_dialog = RegionConfigDialog(deck_name, self)
-
-        def on_accepted():
-            if config_dialog.button_rect and config_dialog.timeline_rect:
-                # Convert button region
-                button_region = CaptureRegion(
-                    x=config_dialog.button_rect.x(),
-                    y=config_dialog.button_rect.y(),
-                    width=config_dialog.button_rect.width(),
-                    height=config_dialog.button_rect.height(),
-                )
-                self.deck_region_configured.emit(deck_name, "button", button_region)
-
-                # Convert timeline region
-                timeline_region = CaptureRegion(
-                    x=config_dialog.timeline_rect.x(),
-                    y=config_dialog.timeline_rect.y(),
-                    width=config_dialog.timeline_rect.width(),
-                    height=config_dialog.timeline_rect.height(),
-                )
-                self.deck_region_configured.emit(deck_name, "timeline", timeline_region)
-
-                logger.info(f"Configured deck {deck_name} regions:")
-                logger.info(f"  Button: x={button_region.x}, y={button_region.y}")
-                logger.info(f"  Timeline: x={timeline_region.x}, y={timeline_region.y}")
-
-                # Save to config
-                try:
-                    config = get_config()
-                    config.set_deck_region(
-                        deck_name,
-                        "master_button_region",
-                        {
-                            "x": button_region.x,
-                            "y": button_region.y,
-                            "width": button_region.width,
-                            "height": button_region.height,
-                        },
-                    )
-                    config.set_deck_region(
-                        deck_name,
-                        "timeline_region",
-                        {
-                            "x": timeline_region.x,
-                            "y": timeline_region.y,
-                            "width": timeline_region.width,
-                            "height": timeline_region.height,
-                        },
-                    )
-                    logger.info(f"Saved deck {deck_name} regions to config")
-
-                    # Call the update callback if provided
-                    if on_regions_updated:
-                        on_regions_updated()
-                except Exception as e:
-                    logger.error(f"Failed to save deck regions to config: {e}")
-
-        config_dialog.accepted.connect(on_accepted)
-        config_dialog.show()  # Use show() instead of exec() to avoid blocking input
-
-    # Control Handlers ------------------------------------------------------
     def _on_pilot_toggle(self, checked: bool) -> None:
         """Handle pilot enable/disable."""
-        self.pilot_enabled = checked
-        if checked:
-            self.phrase_detection_btn.setEnabled(True)
-            self.align_btn.setEnabled(True)
-        else:
-            self.phrase_detection_btn.setEnabled(False)
-            self.phrase_detection_btn.setChecked(False)
-            self.phrase_detection_enabled = False
-            self.align_btn.setEnabled(False)
-
         self.pilot_enable_requested.emit(checked)
+        if checked:
+            self.pilot_toggle_btn.setIcon(qta.icon("fa5s.pause", color="white"))
+            # Auto-align after a short delay to allow MIDI clock to start
+            from PySide6.QtCore import QTimer
+
+            QTimer.singleShot(200, self.align_requested.emit)
+        else:
+            self.pilot_toggle_btn.setIcon(qta.icon("fa5s.play", color="white"))
 
     def _on_phrase_detection_toggle(self, checked: bool) -> None:
         """Handle phrase detection enable/disable."""
@@ -716,75 +437,98 @@ class PilotWidget(QWidget):
         self.phrase_detection_enable_requested.emit(checked)
 
     def _on_align_requested(self) -> None:
-        """Handle align button click."""
+        """Handle manual alignment request."""
         self.align_requested.emit()
 
-    # Update Methods --------------------------------------------------------
-    def update_phrase_progress(self, progress: float) -> None:
-        """
-        Update the phrase progress bar.
+    def _on_settings_requested(self) -> None:
+        """Show deck configuration dialog."""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Configure Deck Regions")
+        layout = QVBoxLayout(dialog)
 
-        Args:
-            progress: Progress through phrase (0.0 to 1.0)
-        """
-        self.phrase_progress_bar.setValue(int(progress * 100))
+        label = QLabel("Select which deck to configure:")
+        layout.addWidget(label)
 
+        for deck in ["A", "B", "C", "D"]:
+            btn = QPushButton(f"Deck {deck}")
+            btn.clicked.connect(lambda checked, d=deck: self._configure_deck(d, dialog))
+            layout.addWidget(btn)
+
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(dialog.accept)
+        layout.addWidget(close_btn)
+
+        dialog.exec()
+
+    def _configure_deck(self, deck_name: str, parent_dialog: QDialog) -> None:
+        """Open region configuration for a specific deck."""
+        config_dialog = RegionConfigDialog(deck_name, parent_dialog)
+        config_dialog.regions_configured.connect(self._on_regions_configured)
+        result = config_dialog.exec()
+
+        if result == QDialog.DialogCode.Accepted:
+            if self.refresh_callback:
+                self.refresh_callback()
+
+    def _on_regions_configured(
+        self, deck_name: str, button_rect: QRect, timeline_rect: QRect
+    ) -> None:
+        """Handle deck region configuration."""
+        # Save to config
+        config = get_config()
+        config.set_deck_region(
+            deck_name,
+            "button",
+            {
+                "x": button_rect.x(),
+                "y": button_rect.y(),
+                "width": button_rect.width(),
+                "height": button_rect.height(),
+            },
+        )
+        config.set_deck_region(
+            deck_name,
+            "timeline",
+            {
+                "x": timeline_rect.x(),
+                "y": timeline_rect.y(),
+                "width": timeline_rect.width(),
+                "height": timeline_rect.height(),
+            },
+        )
+
+        # Emit signals for controller
+        self.deck_region_configured.emit(
+            deck_name,
+            "button",
+            CaptureRegion(
+                button_rect.x(),
+                button_rect.y(),
+                button_rect.width(),
+                button_rect.height(),
+            ),
+        )
+        self.deck_region_configured.emit(
+            deck_name,
+            "timeline",
+            CaptureRegion(
+                timeline_rect.x(),
+                timeline_rect.y(),
+                timeline_rect.width(),
+                timeline_rect.height(),
+            ),
+        )
+
+        logger.info(f"Configured regions for deck {deck_name}")
+
+    # Update methods
     def update_position(
         self, beat_in_bar: int, bar_in_phrase: int, bar_index: int, phrase_index: int
     ) -> None:
-        """
-        Update the position display.
-
-        Args:
-            beat_in_bar: Beat within bar (0-3)
-            bar_in_phrase: Bar within phrase (0-7)
-            bar_index: Absolute bar index
-            phrase_index: Absolute phrase index
-        """
-        # Compact display: position only
-        self.position_label.setText(
+        """Update position display."""
+        self.status_line2.setText(
             f"P{phrase_index + 1} • Bar {bar_in_phrase + 1}/8 • Beat {beat_in_bar + 1}/4"
         )
-
-    def update_phrase_type(
-        self, current_type: Optional[str], next_type: Optional[str] = None
-    ) -> None:
-        """
-        Update the phrase type display.
-
-        Args:
-            current_type: Current phrase type ("body" or "breakdown")
-            next_type: Detected next phrase type
-        """
-        if current_type:
-            display_text = current_type.upper()
-            if current_type == "body":
-                bg_color = "#0066aa"
-            else:  # breakdown
-                bg_color = "#aa6600"
-
-            self.phrase_type_label.setText(display_text)
-            self.phrase_type_label.setStyleSheet(
-                f"font-size: 24px; font-weight: bold; color: #ffffff; "
-                f"padding: 10px; background-color: {bg_color}; border-radius: 5px;"
-            )
-        else:
-            self.phrase_type_label.setText("—")
-            self.phrase_type_label.setStyleSheet(
-                "font-size: 24px; font-weight: bold; color: #ffffff; "
-                "padding: 10px; background-color: #3d3d3d; border-radius: 5px;"
-            )
-
-        if next_type and next_type != current_type:
-            self.next_phrase_label.setText(f"Next: {next_type.upper()}")
-            self.next_phrase_label.setStyleSheet(
-                "color: #ffaa00; font-size: 11px; padding: 2px;"
-            )
-        else:
-            self.next_phrase_label.setText("Next: —")
-            self.next_phrase_label.setStyleSheet(
-                "color: #888888; font-size: 11px; padding: 2px;"
-            )
 
     def update_status(
         self,
@@ -792,35 +536,218 @@ class PilotWidget(QWidget):
         bpm: Optional[float] = None,
         aligned: bool = False,
         active_deck: Optional[str] = None,
+        phrase_type: Optional[str] = None,
+        phrase_duration: Optional[tuple[int, int]] = None,
     ) -> None:
-        """
-        Update the status label.
-
-        Args:
-            pilot_state: Pilot state string
-            bpm: Current BPM
-            aligned: Whether sync is aligned
-            active_deck: Currently active deck (A, B, C, D) or None
-        """
-        status_parts = []
+        """Update status display."""
+        parts = []
 
         if aligned:
-            status_parts.append("Aligned")
+            if bpm:
+                parts.append(f"{bpm:.1f} BPM")
+
+            if phrase_type:
+                parts.append(f"{phrase_type.upper()}")
+
+                if phrase_duration:
+                    bars, phrases = phrase_duration
+                    if phrases > 0:
+                        parts.append(f"({phrases}×8+{bars % 8} bars)")
+                    else:
+                        parts.append(f"({bars} bars)")
+
+            if active_deck and self.phrase_detection_enabled:
+                parts.append(f"Deck {active_deck}")
         else:
-            status_parts.append("Not aligned")
+            parts.append("Not aligned")
 
-        if bpm:
-            status_parts.append(f"{bpm:.1f} BPM")
-        else:
-            status_parts.append("—")
+        self.status_line1.setText(" • ".join(parts) if parts else "Not aligned")
 
-        # Add active deck if detection is running
-        if active_deck and self.phrase_detection_enabled:
-            status_parts.append(f"Deck {active_deck}")
-
-        self.status_label.setText(" • ".join(status_parts))
+    def update_phrase_progress(self, progress: float) -> None:
+        """Update phrase progress bar."""
+        self.phrase_progress_bar.setValue(int(progress * 100))
 
     def set_not_aligned(self) -> None:
         """Reset display when not aligned."""
-        self.position_label.setText("Not Aligned")
+        self.status_line1.setText("Not aligned")
+        self.status_line2.setText("")
         self.phrase_progress_bar.setValue(0)
+
+    # Preset management methods
+    def _load_presets(self) -> None:
+        """Load presets from preset manager into combo box."""
+        self.preset_combo.blockSignals(True)
+        self.preset_combo.clear()
+
+        for i, preset in enumerate(self.preset_manager.presets):
+            status = "✓" if preset.enabled else "✗"
+            self.preset_combo.addItem(f"{status} {preset.name}", i)
+
+        # Select first enabled preset
+        for i, preset in enumerate(self.preset_manager.presets):
+            if preset.enabled:
+                self.preset_combo.setCurrentIndex(i)
+                break
+
+        self.preset_combo.blockSignals(False)
+        self._update_rules_preview()
+
+    def _update_rules_preview(self) -> None:
+        """Update the rules list with individual rule widgets."""
+        # Clear existing rule widgets from layout
+        while self.rules_container.count():
+            item = self.rules_container.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.setParent(None)
+                w.deleteLater()
+        self.rule_widgets.clear()
+
+        current_index = self.preset_combo.currentIndex()
+        if 0 <= current_index < len(self.preset_manager.presets):
+            preset = self.preset_manager.presets[current_index]
+            if preset.rules:
+                for rule in preset.rules:
+                    # Create rule label
+                    rule_label = QLabel()
+                    rule_label.setWordWrap(True)
+                    rule_label.setStyleSheet(
+                        "color: #999999; font-size: 10px; padding: 2px 4px; "
+                        "background: #2a2a2a; border-radius: 3px; margin: 1px;"
+                    )
+                    self._update_rule_label(rule_label, rule, False)
+
+                    self.rules_container.addWidget(rule_label)
+                    self.rule_widgets[rule.name] = rule_label
+            else:
+                # Show "no rules" message
+                no_rules_label = QLabel("No rules defined")
+                no_rules_label.setStyleSheet(
+                    "color: #666666; font-size: 10px; padding: 4px;"
+                )
+                self.rules_container.addWidget(no_rules_label)
+        else:
+            # Show "no preset" message
+            no_preset_label = QLabel("No preset selected")
+            no_preset_label.setStyleSheet(
+                "color: #666666; font-size: 10px; padding: 4px;"
+            )
+            self.rules_container.addWidget(no_preset_label)
+
+    def _update_rule_label(self, label: QLabel, rule, is_firing: bool) -> None:
+        """Update rule label text and style."""
+        status = "✓" if rule.enabled else "✗"
+        condition_str = f"{rule.condition.condition_type.value}"
+        if rule.condition.phrase_type:
+            condition_str += f" ({rule.condition.phrase_type})"
+        if rule.condition.duration_bars:
+            condition_str += f" {rule.condition.duration_bars}bars"
+
+        label.setText(f"{status} {rule.name}: {condition_str}")
+
+        # Flash effect when firing
+        if is_firing:
+            label.setStyleSheet(
+                "color: #00ff00; font-size: 10px; padding: 2px 4px; "
+                "background: #004400; border: 1px solid #00ff00; border-radius: 3px; margin: 1px;"
+            )
+        elif rule.enabled:
+            label.setStyleSheet(
+                "color: #cccccc; font-size: 10px; padding: 2px 4px; "
+                "background: #2a2a2a; border-radius: 3px; margin: 1px;"
+            )
+        else:
+            label.setStyleSheet(
+                "color: #666666; font-size: 10px; padding: 2px 4px; "
+                "background: #1a1a1a; border-radius: 3px; margin: 1px;"
+            )
+
+    def flash_rule(self, rule_name: str) -> None:
+        """Flash a rule indicator when it fires."""
+        # Only flash if we have a widget and the rule is enabled
+        widget = self.rule_widgets.get(rule_name)
+        if not widget:
+            return
+
+        current_index = self.preset_combo.currentIndex()
+        if not (0 <= current_index < len(self.preset_manager.presets)):
+            return
+
+        preset = self.preset_manager.presets[current_index]
+        # Find the matching rule object
+        matched_rule = None
+        for rule in preset.rules:
+            if rule.name == rule_name:
+                matched_rule = rule
+                break
+
+        if not matched_rule or not matched_rule.enabled:
+            return
+
+        # Flash on
+        self._update_rule_label(widget, matched_rule, True)
+
+        # Safe closure: capture widget and rule into defaults
+        from PySide6.QtCore import QTimer
+
+        def _flash_off(w=widget, r=matched_rule, rn=rule_name):
+            if rn in self.rule_widgets:
+                self._update_rule_label(w, r, False)
+
+        QTimer.singleShot(200, _flash_off)
+
+    def _on_preset_changed(self, index: int) -> None:
+        """Handle preset selection change."""
+        if 0 <= index < len(self.preset_manager.presets):
+            # Enable this preset, disable others
+            for i, preset in enumerate(self.preset_manager.presets):
+                preset.enabled = i == index
+            self.preset_manager.save()
+            self._update_rules_preview()
+            logger.info(f"Switched to preset: {self.preset_combo.currentText()}")
+
+    def _on_add_preset(self) -> None:
+        """Show dialog to create a new preset."""
+        dialog = PresetEditorDialog(preset=None, parent=self)
+        if dialog.exec():
+            # Get the new preset from dialog
+            new_preset = dialog.get_preset()
+            if new_preset:
+                self.preset_manager.add_preset(new_preset)
+                self._load_presets()
+                # Select the newly added preset (last one)
+                self.preset_combo.setCurrentIndex(self.preset_combo.count() - 1)
+
+    def _on_edit_preset(self) -> None:
+        """Show dialog to edit the current preset."""
+        current_index = self.preset_combo.currentIndex()
+        if 0 <= current_index < len(self.preset_manager.presets):
+            current_preset = self.preset_manager.presets[current_index]
+            dialog = PresetEditorDialog(preset=current_preset, parent=self)
+            if dialog.exec():
+                # Update the preset
+                updated_preset = dialog.get_preset()
+                if updated_preset:
+                    self.preset_manager.update_preset(current_index, updated_preset)
+                    self._load_presets()
+                    # Restore selection
+                    self.preset_combo.setCurrentIndex(current_index)
+
+    def _on_delete_preset(self) -> None:
+        """Delete the current preset."""
+        current_index = self.preset_combo.currentIndex()
+        if 0 <= current_index < len(self.preset_manager.presets):
+            preset = self.preset_manager.presets[current_index]
+            # Confirm deletion
+            from PySide6.QtWidgets import QMessageBox
+
+            reply = QMessageBox.question(
+                self,
+                "Delete Preset",
+                f"Are you sure you want to delete '{preset.name}'?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                self.preset_manager.remove_preset(current_index)
+                self._load_presets()

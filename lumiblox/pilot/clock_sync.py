@@ -58,6 +58,7 @@ class ClockSync:
         self.device_name: Optional[str] = None
         self.midi_in: Optional[pygame.midi.Input] = None  # type: ignore
         self.is_open = False
+        self.is_active = False  # Whether to process clock messages
 
         # Callbacks
         self.on_beat = on_beat
@@ -89,13 +90,23 @@ class ClockSync:
             True if successful, False otherwise
         """
         try:
-            pygame.midi.init()
+            # If already open, just resume
+            if self.is_open and self.midi_in:
+                self.is_active = True
+                logger.info("MIDI clock resumed")
+                return True
+
+            # Only init if not already initialized (shared subsystem)
+            if not pygame.midi.get_init():
+                pygame.midi.init()
+
             self.device_id, self.device_name = self._find_device()
             if self.device_id is None:
                 logger.error(f"No MIDI input matching '{self.device_keyword}' found")
                 return False
             self.midi_in = pygame.midi.Input(self.device_id)
             self.is_open = True
+            self.is_active = True
             logger.info(
                 f"Listening for MIDI clock on '{self.device_name}' (device {self.device_id})"
             )
@@ -104,8 +115,15 @@ class ClockSync:
             logger.error(f"Failed to open MIDI device: {e}")
             return False
 
+    def stop(self) -> None:
+        """Pause processing MIDI clock (keep device open)."""
+        self.is_active = False
+        self._reset_alignment()
+        logger.info("MIDI clock paused")
+
     def close(self) -> None:
-        """Close the MIDI device connection."""
+        """Close the MIDI device connection (only called on shutdown)."""
+        self.is_active = False
         if self.midi_in:
             try:
                 self.midi_in.close()
@@ -117,9 +135,9 @@ class ClockSync:
             except Exception as e:
                 logger.error(f"Error closing MIDI input: {e}")
             self.midi_in = None
+
         self.is_open = False
-        # Note: Not calling pygame.midi.quit() as it quits the entire subsystem
-        # and may be shared with other components
+        self.device_id = None
         logger.info("MIDI clock connection closed")
 
     def _find_device(self) -> Tuple[Optional[int], Optional[str]]:
@@ -161,7 +179,7 @@ class ClockSync:
     # MIDI Processing -------------------------------------------------------
     def poll(self) -> None:
         """Poll for MIDI messages. Call this frequently (e.g., every 1ms)."""
-        if not self.midi_in or not self.is_open:
+        if not self.midi_in or not self.is_open or not self.is_active:
             return
 
         while self.midi_in.poll():

@@ -549,8 +549,15 @@ class LightSequenceGUI(QMainWindow):
                     "Phrase Detection Error",
                     "Failed to enable phrase detection. Check configuration.",
                 )
+            else:
+                # Enable automation with callbacks
+                pilot.enable_automation(
+                    on_sequence_switch=self._on_automation_sequence_switch,
+                    on_rule_fired=self._on_automation_rule_fired,
+                )
         else:
             pilot.disable_phrase_detection()
+            pilot.disable_automation()
 
     def _on_align_requested(self) -> None:
         """Handle manual alignment request from GUI."""
@@ -597,17 +604,59 @@ class LightSequenceGUI(QMainWindow):
         else:
             self.pilot_widget.set_not_aligned()
 
-        # Update phrase type
-        current_type = pilot.get_current_phrase_type()
-        next_type = pilot.get_detected_phrase_type()
-        self.pilot_widget.update_phrase_type(current_type, next_type)
-
-        # Update status (including active deck)
+        # Update status (including active deck and phrase duration)
         state = pilot.get_state()
         bpm = pilot.get_bpm()
         aligned = pilot.is_aligned()
         active_deck = pilot.get_active_deck()
-        self.pilot_widget.update_status(state.value, bpm, aligned, active_deck)
+        phrase_type = pilot.get_current_phrase_type()
+        phrase_duration = pilot.get_phrase_duration()
+        self.pilot_widget.update_status(
+            state.value, bpm, aligned, active_deck, phrase_type, phrase_duration
+        )
+
+    # ============================================================================
+    # AUTOMATION CALLBACKS
+    # ============================================================================
+
+    def _on_automation_sequence_switch(self, sequence_index: str) -> None:
+        """Handle automated sequence activation from pilot rules."""
+        if not self.controller:
+            return
+
+        # Parse sequence index (format: "x.y")
+        if "." in sequence_index:
+            parts = sequence_index.split(".")
+            index = (int(parts[0]), int(parts[1]))
+        else:
+            # Legacy format: single number (shouldn't happen anymore)
+            idx = int(sequence_index)
+            index = (idx % 8, idx // 8)
+
+        logger.info(f"Automation activating sequence {index} (from {sequence_index})")
+
+        # Validate that sequence exists
+        if index not in self.controller.sequence_ctrl.sequences:
+            logger.warning(f"Sequence {index} not found, cannot activate")
+            return
+
+        # Activate sequence using existing logic
+        old_sequence = self.controller.active_sequence
+        if old_sequence:
+            self.controller.led_ctrl.update_sequence_led(old_sequence, False)
+
+        self.controller.active_sequence = index
+        self.controller.sequence_ctrl.activate_sequence(index)
+        self.controller.led_ctrl.update_sequence_led(index, True)
+
+        if self.controller.on_sequence_changed:
+            self.controller.on_sequence_changed(index)
+
+        logger.info(f"Activated sequence {index} (was {old_sequence})")
+
+    def _on_automation_rule_fired(self, rule_name: str) -> None:
+        """Handle rule firing notification - flash UI indicator."""
+        self.pilot_widget.flash_rule(rule_name)
 
     # ============================================================================
     # LIFECYCLE

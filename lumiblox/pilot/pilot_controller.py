@@ -12,6 +12,8 @@ from enum import Enum
 
 from lumiblox.pilot.clock_sync import ClockSync
 from lumiblox.pilot.phrase_detector import PhraseDetector, CaptureRegion
+from lumiblox.pilot.pilot_preset import PilotPresetManager
+from lumiblox.pilot.rule_engine import RuleEngine
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +75,17 @@ class PilotController:
         self.detection_bar = 7  # Detect at 8th bar (0-indexed), start of new phrase
         self.last_detection_phrase = -1
 
+        # Phrase duration tracking
+        self.current_phrase_type: Optional[str] = None
+        self.phrase_start_bar: int = 0  # Bar when current phrase started
+        self.phrase_bars_elapsed: int = 0  # Bars in current phrase
+
+        # Automation system
+        self.preset_manager = PilotPresetManager()
+        self.rule_engine: Optional[RuleEngine] = (
+            None  # Created when automation is enabled
+        )
+
     # Lifecycle -------------------------------------------------------------
     def start(self, enable_phrase_detection: bool = False) -> bool:
         """
@@ -102,11 +115,11 @@ class PilotController:
         return True
 
     def stop(self) -> None:
-        """Stop the pilot system."""
+        """Stop the pilot system (keeps MIDI device open for quick restart)."""
         try:
-            self.clock_sync.close()
+            self.clock_sync.stop()  # Stop processing but keep device open
         except Exception as e:
-            logger.error(f"Error closing clock sync: {e}")
+            logger.error(f"Error stopping clock sync: {e}")
 
         try:
             self.phrase_detector.close()
@@ -177,6 +190,29 @@ class PilotController:
             deck_name, master_button_region, timeline_region
         )
 
+    def enable_automation(
+        self,
+        on_sequence_switch: Optional[Callable[[str], None]] = None,
+        on_rule_fired: Optional[Callable[[str], None]] = None,
+    ) -> None:
+        """
+        Enable automation rule engine.
+
+        Args:
+            on_sequence_switch: Callback when activating a sequence (string format "x.y")
+            on_rule_fired: Callback when a rule fires (receives rule name)
+        """
+        self.rule_engine = RuleEngine(
+            on_sequence_switch=on_sequence_switch,
+            on_rule_fired=on_rule_fired,
+        )
+        logger.info("Automation enabled")
+
+    def disable_automation(self) -> None:
+        """Disable automation rule engine."""
+        self.rule_engine = None
+        logger.info("Automation disabled")
+
     # Control ---------------------------------------------------------------
     def align_to_beat(self) -> None:
         """Manually align to the current beat."""
@@ -201,6 +237,20 @@ class PilotController:
 
     def _on_bar(self, bar_index: int) -> None:
         """Internal bar callback - triggers phrase detection."""
+        # Update phrase duration tracking
+        if self.current_phrase_type:
+            self.phrase_bars_elapsed = bar_index - self.phrase_start_bar
+
+        # Update rule engine state
+        if self.rule_engine and self.current_phrase_type:
+            bars, _ = self.get_phrase_duration()
+            self.rule_engine.update_state(self.current_phrase_type, bars, bar_index)
+
+            # Evaluate rules
+            active_preset = self.preset_manager.get_active_preset()
+            if active_preset:
+                self.rule_engine.evaluate_preset(active_preset)
+
         # Check if we should detect phrase type (at 8th bar / start of new phrase)
         if self.phrase_detection_enabled and self.state == PilotState.FULL:
             bar_in_phrase = bar_index % 8
@@ -222,7 +272,23 @@ class PilotController:
         """Internal phrase callback - commits phrase changes."""
         # Commit phrase change at phrase boundary
         if self.phrase_detection_enabled and self.state == PilotState.FULL:
+            old_type = self.current_phrase_type
             self.phrase_detector.commit_phrase_change()
+            new_type = self.phrase_detector.get_current_phrase_type()
+
+            # Reset duration tracking if phrase type changed
+            if new_type != old_type:
+                self.current_phrase_type = new_type
+                current_bar = (
+                    self.clock_sync.get_current_position()[2]
+                    if self.clock_sync.is_aligned()
+                    else 0
+                )
+                self.phrase_start_bar = current_bar
+                self.phrase_bars_elapsed = 0
+                logger.info(
+                    f"Phrase changed: {old_type} → {new_type}, reset duration tracking"
+                )
 
         # Forward to user callback
         if self.on_phrase_callback:
@@ -257,6 +323,17 @@ class PilotController:
         """Get current phrase type (body/breakdown)."""
         return self.phrase_detector.get_current_phrase_type()
 
+    def get_phrase_duration(self) -> tuple[int, int]:
+        """
+        Get duration of current phrase type.
+
+        Returns:
+            Tuple of (bars_elapsed, phrases_elapsed) in current phrase type
+        """
+        bars = self.phrase_bars_elapsed
+        phrases = bars // 8
+        return (bars, phrases)
+
     def get_detected_phrase_type(self) -> Optional[str]:
         """Get detected next phrase type."""
         return self.phrase_detector.get_detected_phrase_type()
@@ -270,3 +347,17 @@ class PilotController:
     def is_phrase_detection_ready(self) -> bool:
         """Check if phrase detection is ready to use."""
         return self.phrase_detector.is_ready()
+
+    def cleanup(self) -> None:
+        """Clean up resources (called on application shutdown)."""
+        try:
+            self.clock_sync.close()
+        except Exception as e:
+            logger.error(f"Error closing clock sync: {e}")
+
+        try:
+            self.phrase_detector.close()
+        except Exception as e:
+            logger.error(f"Error closing phrase detector: {e}")
+
+        logger.info("Pilot controller cleaned up")
