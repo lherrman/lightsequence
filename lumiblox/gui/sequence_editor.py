@@ -28,6 +28,16 @@ from PySide6.QtGui import QFont
 import qtawesome as qta
 
 from lumiblox.controller.sequence_controller import SequenceStep, SequenceDurationUnit
+from lumiblox.gui.ui_constants import (
+    BUTTON_SIZE_MEDIUM,
+    BUTTON_SIZE_TINY,
+    BUTTON_STYLE,
+    CHECKBOX_STYLE,
+    EDIT_FIELD_STYLE,
+    HEADER_LABEL_STYLE,
+    INPUT_FIELD_HEIGHT_SMALL,
+    INPUT_FIELD_WIDTH_SMALL,
+)
 from lumiblox.gui.widgets import SelectAllLineEdit, SceneButton
 
 # Configuration constants
@@ -80,50 +90,18 @@ class SequenceStepWidget(QFrame):
         # Move up button with icon
         self.move_up_btn = QPushButton()
         self.move_up_btn.setIcon(qta.icon("fa5s.chevron-up", color="#cccccc"))
-        self.move_up_btn.setFixedSize(24, 24)
+        self.move_up_btn.setFixedSize(BUTTON_SIZE_TINY)
         self.move_up_btn.setToolTip("Move step up")
-        self.move_up_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #3a3a3a;
-                border: 1px solid #555555;
-                border-radius: 3px;
-            }
-            QPushButton:hover {
-                background-color: #4a4a4a;
-            }
-            QPushButton:pressed {
-                background-color: #2a2a2a;
-            }
-            QPushButton:disabled {
-                background-color: #2a2a2a;
-                border-color: #444444;
-            }
-        """)
+        self.move_up_btn.setStyleSheet(BUTTON_STYLE)
         self.move_up_btn.clicked.connect(lambda: self.move_up.emit(self))
         buttons_layout.addWidget(self.move_up_btn)
 
         # Move down button with icon
         self.move_down_btn = QPushButton()
         self.move_down_btn.setIcon(qta.icon("fa5s.chevron-down", color="#cccccc"))
-        self.move_down_btn.setFixedSize(24, 24)
+        self.move_down_btn.setFixedSize(BUTTON_SIZE_TINY)
         self.move_down_btn.setToolTip("Move step down")
-        self.move_down_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #3a3a3a;
-                border: 1px solid #555555;
-                border-radius: 3px;
-            }
-            QPushButton:hover {
-                background-color: #4a4a4a;
-            }
-            QPushButton:pressed {
-                background-color: #2a2a2a;
-            }
-            QPushButton:disabled {
-                background-color: #2a2a2a;
-                border-color: #444444;
-            }
-        """)
+        self.move_down_btn.setStyleSheet(BUTTON_STYLE)
         self.move_down_btn.clicked.connect(lambda: self.move_down.emit(self))
         buttons_layout.addWidget(self.move_down_btn)
 
@@ -168,7 +146,7 @@ class SequenceStepWidget(QFrame):
         for y in range(5):
             for x in range(8):
                 btn = SceneButton(x, y)
-                btn.setFixedSize(14, 14)  # Compact buttons
+                btn.setFixedSize(BUTTON_SIZE_TINY)
                 btn.scene_toggled.connect(self.on_scene_toggled)
                 self.scene_buttons[(x, y)] = btn
                 scenes_layout.addWidget(btn, y, x)
@@ -181,94 +159,35 @@ class SequenceStepWidget(QFrame):
         duration_layout.setContentsMargins(0, 5, 0, 0)
 
         # Minus button
-        minus_btn = QPushButton("-")
-        minus_btn.setFixedSize(28, 28)
-        minus_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #3a3a3a;
-                border: 1px solid #555555;
-                border-radius: 3px;
-                color: #cccccc;
-                font-weight: bold;
-                font-size: 14px;
-            }
-            QPushButton:hover {
-                background-color: #4a4a4a;
-            }
-            QPushButton:pressed {
-                background-color: #2a2a2a;
-            }
-        """)
+        minus_btn = QPushButton()
+        minus_btn.setIcon(qta.icon("fa5s.minus", color="white"))
+        minus_btn.setFixedSize(BUTTON_SIZE_MEDIUM)
+        minus_btn.setStyleSheet(BUTTON_STYLE)
         minus_btn.clicked.connect(self.decrease_duration)
         duration_layout.addWidget(minus_btn)
 
         # Duration input field (editable)
         self.duration_input = SelectAllLineEdit()
-        self.duration_input.setFixedWidth(70)
-        self.duration_input.setFixedHeight(28)
+        self.duration_input.setFixedWidth(INPUT_FIELD_WIDTH_SMALL)
+        self.duration_input.setFixedHeight(INPUT_FIELD_HEIGHT_SMALL)
         self.duration_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.duration_input.setStyleSheet("""
-            QLineEdit {
-                background-color: #3a3a3a;
-                border: 1px solid #555555;
-                border-radius: 3px;
-                color: #e0e0e0;
-                font-size: 12px;
-                padding: 3px;
-            }
-            QLineEdit:focus {
-                border: 1px solid #4a9eff;
-            }
-        """)
+        self.duration_input.setStyleSheet(EDIT_FIELD_STYLE)
         self.duration_input.textChanged.connect(self.on_duration_text_changed)
         self.duration_input.editingFinished.connect(self.on_duration_editing_finished)
         duration_layout.addWidget(self.duration_input)
 
         # Plus button
-        plus_btn = QPushButton("+")
-        plus_btn.setFixedSize(28, 28)
-        plus_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #3a3a3a;
-                border: 1px solid #555555;
-                border-radius: 3px;
-                color: #cccccc;
-                font-weight: bold;
-                font-size: 14px;
-            }
-            QPushButton:hover {
-                background-color: #4a4a4a;
-            }
-            QPushButton:pressed {
-                background-color: #2a2a2a;
-            }
-        """)
+        plus_btn = QPushButton()
+        plus_btn.setFixedSize(BUTTON_SIZE_MEDIUM)
+        plus_btn.setIcon(qta.icon("fa5s.plus", color="white"))
+        plus_btn.setStyleSheet(BUTTON_STYLE)
         plus_btn.clicked.connect(self.increase_duration)
         duration_layout.addWidget(plus_btn)
 
-        unit_button_style = """
-            QPushButton {
-                background-color: #2e2e2e;
-                border: 1px solid #555555;
-                border-radius: 3px;
-                color: #cccccc;
-                font-size: 11px;
-                padding: 2px 8px;
-            }
-            QPushButton:hover {
-                background-color: #3a3a3a;
-            }
-            QPushButton:checked {
-                background-color: #0078d4;
-                border-color: #005a9e;
-                color: #ffffff;
-            }
-        """
-
         seconds_btn = QPushButton("Sec")
         seconds_btn.setCheckable(True)
-        seconds_btn.setFixedHeight(28)
-        seconds_btn.setStyleSheet(unit_button_style)
+        seconds_btn.setFixedHeight(BUTTON_SIZE_MEDIUM.height())
+        seconds_btn.setStyleSheet(BUTTON_STYLE)
         seconds_btn.clicked.connect(
             lambda: self._set_duration_unit(SequenceDurationUnit.SECONDS)
         )
@@ -277,8 +196,8 @@ class SequenceStepWidget(QFrame):
 
         bars_btn = QPushButton("Bars")
         bars_btn.setCheckable(True)
-        bars_btn.setFixedHeight(28)
-        bars_btn.setStyleSheet(unit_button_style)
+        bars_btn.setFixedHeight(BUTTON_SIZE_MEDIUM.height())
+        bars_btn.setStyleSheet(BUTTON_STYLE)
         bars_btn.clicked.connect(
             lambda: self._set_duration_unit(SequenceDurationUnit.BARS)
         )
@@ -484,27 +403,16 @@ class PresetSequenceEditor(QWidget):
         # Tiny reload button with icon
         reload_btn = QPushButton()
         reload_btn.setIcon(qta.icon("fa5s.sync-alt", color="#cccccc"))
-        reload_btn.setFixedSize(24, 24)
+        reload_btn.setFixedSize(BUTTON_SIZE_TINY)
         reload_btn.setToolTip("Reload sequence from file")
-        reload_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #3a3a3a;
-                border: 1px solid #555555;
-                border-radius: 3px;
-            }
-            QPushButton:hover {
-                background-color: #4a4a4a;
-            }
-            QPushButton:pressed {
-                background-color: #2a2a2a;
-            }
-        """)
+        reload_btn.setStyleSheet(BUTTON_STYLE)
         reload_btn.clicked.connect(self.load_sequence)
         header_layout.addWidget(reload_btn)
 
         # Auto-update checkbox
         self.auto_update_cb = QCheckBox("Auto-update")
         self.auto_update_cb.setChecked(True)
+        self.auto_update_cb.setStyleSheet(CHECKBOX_STYLE)
         self.auto_update_cb.setToolTip(
             "Automatically show current step during playback"
         )
@@ -541,7 +449,7 @@ class PresetSequenceEditor(QWidget):
         list_header = QHBoxLayout()
         list_header.setAlignment(Qt.AlignmentFlag.AlignTop)
         list_label = QLabel("Steps")
-        list_label.setStyleSheet("font-weight: bold; color: #cccccc;")
+        list_label.setStyleSheet(HEADER_LABEL_STYLE)
         list_header.addWidget(list_label)
         list_header.addStretch()
         left_layout.addLayout(list_header)
@@ -576,64 +484,30 @@ class PresetSequenceEditor(QWidget):
         btn_layout.setSpacing(3)
         btn_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
-        add_btn = QPushButton("+")
-        add_btn.setFixedSize(30, 25)
+        add_btn = QPushButton()
+        add_btn.setIcon(qta.icon("fa5s.plus", color="white"))
+        add_btn.setFixedSize(BUTTON_SIZE_TINY)
         add_btn.setToolTip("Add empty step")
-        add_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #3a3a3a;
-                border: 1px solid #555555;
-                border-radius: 3px;
-                color: #cccccc;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #4a4a4a;
-            }
-        """)
+        add_btn.setStyleSheet(BUTTON_STYLE)
         add_btn.clicked.connect(self.add_empty_step)
         btn_layout.addWidget(add_btn)
 
-        add_active_btn = QPushButton("⊕")
-        add_active_btn.setFixedSize(30, 25)
+        add_active_btn = QPushButton()
+        add_active_btn.setIcon(qta.icon("fa5s.play-circle", color="white"))
+        add_active_btn.setFixedSize(BUTTON_SIZE_TINY)
         add_active_btn.setToolTip("Add from active scenes")
-        add_active_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #3a3a3a;
-                border: 1px solid #555555;
-                border-radius: 3px;
-                color: #cccccc;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #4a4a4a;
-            }
-            QPushButton:disabled {
-                background-color: #2a2a2a;
-                color: #555555;
-            }
-        """)
+        add_active_btn.setStyleSheet(BUTTON_STYLE)
         add_active_btn.clicked.connect(self.add_step_from_active_scenes)
         add_active_btn.setEnabled(self.controller is not None)
         btn_layout.addWidget(add_active_btn)
 
         btn_layout.addStretch()
 
-        remove_btn = QPushButton("−")
-        remove_btn.setFixedSize(30, 25)
+        remove_btn = QPushButton()
+        remove_btn.setIcon(qta.icon("fa5s.minus", color="white"))
+        remove_btn.setFixedSize(BUTTON_SIZE_TINY)
         remove_btn.setToolTip("Remove selected step")
-        remove_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #aa3333;
-                border: 1px solid #cc4444;
-                border-radius: 3px;
-                color: white;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #cc4444;
-            }
-        """)
+        remove_btn.setStyleSheet(BUTTON_STYLE)
         remove_btn.clicked.connect(self.remove_current_step)
         btn_layout.addWidget(remove_btn)
 
@@ -643,13 +517,6 @@ class PresetSequenceEditor(QWidget):
 
         # === RIGHT: Step Detail Panel ===
         self.detail_panel = QFrame()
-        self.detail_panel.setStyleSheet("""
-            QFrame {
-                background-color: #2d2d2d;
-                border: 1px solid #555555;
-                border-radius: 3px;
-            }
-        """)
         self.detail_layout = QVBoxLayout(self.detail_panel)
         self.detail_layout.setContentsMargins(5, 5, 5, 5)
 
@@ -658,9 +525,7 @@ class PresetSequenceEditor(QWidget):
         self.placeholder_label.setAlignment(
             Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter
         )
-        self.placeholder_label.setStyleSheet(
-            "color: #888888; font-size: 12px; padding-top: 20px;"
-        )
+        self.placeholder_label.setStyleSheet(HEADER_LABEL_STYLE)
         self.detail_layout.addWidget(self.placeholder_label)
         self.detail_layout.addStretch()  # Push content to top
 

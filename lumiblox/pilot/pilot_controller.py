@@ -37,6 +37,7 @@ class PilotController:
         on_phrase: Optional[Callable[[int], None]] = None,
         on_phrase_type_change: Optional[Callable[[str], None]] = None,
         on_bpm_change: Optional[Callable[[float], None]] = None,
+        on_capturing: Optional[Callable[[bool], None]] = None,
     ):
         """
         Initialize pilot controller.
@@ -48,6 +49,7 @@ class PilotController:
             on_phrase: Callback for phrase start events
             on_phrase_type_change: Callback when phrase type changes
             on_bpm_change: Callback for BPM updates
+            on_capturing: Callback for capture state changes (True when analyzing)
         """
         self.state = PilotState.STOPPED
 
@@ -70,6 +72,7 @@ class PilotController:
         self.on_beat_callback = on_beat
         self.on_bar_callback = on_bar
         self.on_phrase_callback = on_phrase
+        self.on_capturing_callback = on_capturing
 
         # Phrase detection state
         self.phrase_detection_enabled = False
@@ -280,7 +283,16 @@ class PilotController:
             if should_detect:
                 self.last_detection_phrase = phrase_index
                 self.force_next_detection = False
+
+                # Signal capture start
+                if self.on_capturing_callback:
+                    self.on_capturing_callback(True)
+
                 self.phrase_detector.update_phrase_detection()
+
+                # Signal capture end
+                if self.on_capturing_callback:
+                    self.on_capturing_callback(False)
 
         # Forward to user callback
         if self.on_bar_callback:

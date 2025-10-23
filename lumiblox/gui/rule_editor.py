@@ -6,6 +6,7 @@ UI for creating and editing pilot automation rules.
 
 import logging
 from typing import Optional
+import qtawesome as qta
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
@@ -35,6 +36,10 @@ from lumiblox.pilot.pilot_preset import (
     SequenceChoice,
     ConditionType,
     ActionType,
+)
+from lumiblox.gui.ui_constants import (
+    BUTTON_SIZE_MEDIUM,
+    BUTTON_STYLE,
 )
 
 logger = logging.getLogger(__name__)
@@ -84,13 +89,21 @@ class SequenceChoiceWidget(QWidget):
             self.weight_spin.setValue(1.0)
         layout.addWidget(self.weight_spin)
 
-        weight_minus_btn = QPushButton("-")
-        weight_minus_btn.setFixedSize(20, 20)
+        weight_minus_btn = QPushButton()
+        weight_minus_btn.setFixedSize(BUTTON_SIZE_MEDIUM)
+        weight_minus_btn.setIcon(qta.icon("fa5s.minus", color="white"))
+        weight_minus_btn.setStyleSheet(BUTTON_STYLE)
         weight_minus_btn.clicked.connect(lambda: self.weight_spin.stepDown())
         layout.addWidget(weight_minus_btn)
 
-        weight_plus_btn = QPushButton("+")
-        weight_plus_btn.setFixedSize(20, 20)
+        weight_plus_btn = QPushButton()
+        weight_plus_btn.setFixedSize(BUTTON_SIZE_MEDIUM)
+        weight_plus_btn.setIcon(qta.icon("fa5s.plus", color="white"))
+        weight_plus_btn.setStyleSheet(BUTTON_STYLE)
+        weight_plus_btn.clicked.connect(lambda: self.weight_spin.stepUp())
+        layout.addWidget(weight_plus_btn)
+
+        weight_plus_btn.setFixedSize(BUTTON_SIZE_MEDIUM)
         weight_plus_btn.clicked.connect(lambda: self.weight_spin.stepUp())
         layout.addWidget(weight_plus_btn)
 
@@ -176,13 +189,17 @@ class RuleEditorDialog(QDialog):
         self.duration_bars_spin.setFixedWidth(80)
         bars_layout.addWidget(self.duration_bars_spin)
 
-        bars_minus_btn = QPushButton("-")
-        bars_minus_btn.setFixedSize(20, 20)
+        bars_minus_btn = QPushButton()
+        bars_minus_btn.setIcon(qta.icon("fa5s.minus", color="white"))
+        bars_minus_btn.setFixedSize(BUTTON_SIZE_MEDIUM)
+        bars_minus_btn.setStyleSheet(BUTTON_STYLE)
         bars_minus_btn.clicked.connect(lambda: self.duration_bars_spin.stepDown())
         bars_layout.addWidget(bars_minus_btn)
 
-        bars_plus_btn = QPushButton("+")
-        bars_plus_btn.setFixedSize(20, 20)
+        bars_plus_btn = QPushButton()
+        bars_plus_btn.setIcon(qta.icon("fa5s.plus", color="white"))
+        bars_plus_btn.setFixedSize(BUTTON_SIZE_MEDIUM)
+        bars_plus_btn.setStyleSheet(BUTTON_STYLE)
         bars_plus_btn.clicked.connect(lambda: self.duration_bars_spin.stepUp())
         bars_layout.addWidget(bars_plus_btn)
 
@@ -203,13 +220,17 @@ class RuleEditorDialog(QDialog):
         self.duration_phrases_spin.setFixedWidth(80)
         phrases_layout.addWidget(self.duration_phrases_spin)
 
-        phrases_minus_btn = QPushButton("-")
-        phrases_minus_btn.setFixedSize(20, 20)
+        phrases_minus_btn = QPushButton()
+        phrases_minus_btn.setIcon(qta.icon("fa5s.minus", color="white"))
+        phrases_minus_btn.setFixedSize(BUTTON_SIZE_MEDIUM)
+        phrases_minus_btn.setStyleSheet(BUTTON_STYLE)
         phrases_minus_btn.clicked.connect(lambda: self.duration_phrases_spin.stepDown())
         phrases_layout.addWidget(phrases_minus_btn)
 
-        phrases_plus_btn = QPushButton("+")
-        phrases_plus_btn.setFixedSize(20, 20)
+        phrases_plus_btn = QPushButton()
+        phrases_plus_btn.setIcon(qta.icon("fa5s.plus", color="white"))
+        phrases_plus_btn.setFixedSize(BUTTON_SIZE_MEDIUM)
+        phrases_plus_btn.setStyleSheet(BUTTON_STYLE)
         phrases_plus_btn.clicked.connect(lambda: self.duration_phrases_spin.stepUp())
         phrases_layout.addWidget(phrases_plus_btn)
 
@@ -253,12 +274,14 @@ class RuleEditorDialog(QDialog):
         cooldown_control_layout.addWidget(self.cooldown_spin)
 
         cooldown_minus_btn = QPushButton("-")
-        cooldown_minus_btn.setFixedSize(20, 20)
+        cooldown_minus_btn.setFixedSize(BUTTON_SIZE_MEDIUM)
+        cooldown_minus_btn.setStyleSheet(BUTTON_STYLE)
         cooldown_minus_btn.clicked.connect(lambda: self.cooldown_spin.stepDown())
         cooldown_control_layout.addWidget(cooldown_minus_btn)
 
         cooldown_plus_btn = QPushButton("+")
-        cooldown_plus_btn.setFixedSize(20, 20)
+        cooldown_plus_btn.setFixedSize(BUTTON_SIZE_MEDIUM)
+        cooldown_plus_btn.setStyleSheet(BUTTON_STYLE)
         cooldown_plus_btn.clicked.connect(lambda: self.cooldown_spin.stepUp())
         cooldown_control_layout.addWidget(cooldown_plus_btn)
 

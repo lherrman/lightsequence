@@ -24,6 +24,7 @@ class ControllerThread(QThread):
 
     controller_ready = Signal()
     controller_error = Signal(str)
+    capturing_signal = Signal(bool)  # Signal for capture state changes
 
     def __init__(self, simulation: bool = False):
         super().__init__()
@@ -91,6 +92,10 @@ class ControllerThread(QThread):
         except Exception as exc:
             logger.debug(f"Failed to forward bar event: {exc}")
 
+    def _handle_capturing(self, is_capturing: bool) -> None:
+        """Forward capture state changes to GUI thread."""
+        self.capturing_signal.emit(is_capturing)
+
     def _initialize_pilot(self) -> None:
         """Initialize the pilot controller with configuration."""
         try:
@@ -107,6 +112,7 @@ class ControllerThread(QThread):
                 on_phrase_type_change=lambda phrase_type: logger.info(
                     f"Phrase type: {phrase_type}"
                 ),
+                on_capturing=self._handle_capturing,
             )
 
             # Configure zero signal if enabled

@@ -23,6 +23,7 @@ from PySide6.QtCore import Signal
 
 from lumiblox.gui.controller_thread import ControllerThread
 from lumiblox.gui.device_status import DeviceStatusBar
+from lumiblox.gui.ui_constants import BUTTON_SIZE_TINY, BUTTON_STYLE, HEADER_LABEL_STYLE
 from lumiblox.gui.widgets import PresetButton
 from lumiblox.gui.sequence_editor import PresetSequenceEditor
 from lumiblox.gui.playback_controls import PlaybackControls
@@ -154,7 +155,7 @@ class LightSequenceGUI(QMainWindow):
 
         # Title label
         title_label = QLabel("Presets")
-        title_label.setStyleSheet("color: #cccccc; font-weight: bold; font-size: 11px;")
+        title_label.setStyleSheet(HEADER_LABEL_STYLE)
         header_layout.addWidget(title_label)
 
         header_layout.addStretch()  # Push refresh button to right
@@ -162,19 +163,8 @@ class LightSequenceGUI(QMainWindow):
         # Small refresh icon button in corner
         refresh_btn = QPushButton("🔄")
         refresh_btn.clicked.connect(self.refresh_presets)
-        refresh_btn.setFixedSize(18, 18)
-        refresh_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #555555;
-                border: 1px solid #666666;
-                border-radius: 9px;
-                font-size: 10px;
-                padding: 0px;
-            }
-            QPushButton:hover {
-                background-color: #666666;
-            }
-        """)
+        refresh_btn.setFixedSize(BUTTON_SIZE_TINY)
+        refresh_btn.setStyleSheet(BUTTON_STYLE)
         header_layout.addWidget(refresh_btn)
         preset_layout.addLayout(header_layout)
 
@@ -271,6 +261,7 @@ class LightSequenceGUI(QMainWindow):
         self.controller_thread = ControllerThread(simulation=self.simulation)
         self.controller_thread.controller_ready.connect(self.on_controller_ready)
         self.controller_thread.controller_error.connect(self.on_controller_error)
+        self.controller_thread.capturing_signal.connect(self.pilot_widget.set_capturing)
         self.controller_thread.start()
 
     def on_controller_ready(self):
