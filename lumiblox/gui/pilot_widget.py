@@ -50,7 +50,7 @@ class FixedSizeRegionSelector(QWidget):
             region_type: Either "button" or "timeline"
         """
         # Create as a standalone window with no parent, stays on top
-        super().__init__(None, Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint)
+        super().__init__(None, Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.FramelessWindowHint)
 
         # Don't use WA_TranslucentBackground - it blocks mouse events
         # Instead use a semi-transparent background color via stylesheet
@@ -112,14 +112,14 @@ class FixedSizeRegionSelector(QWidget):
 
     def mousePressEvent(self, event) -> None:
         """Start dragging."""
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             self._drag_position = (
                 event.globalPosition().toPoint() - self.frameGeometry().topLeft()
             )
 
     def mouseMoveEvent(self, event) -> None:
         """Handle dragging."""
-        if event.buttons() == Qt.LeftButton and self._drag_position is not None:
+        if event.buttons() == Qt.MouseButton.LeftButton and self._drag_position is not None:
             self.move(event.globalPosition().toPoint() - self._drag_position)
 
     def mouseReleaseEvent(self, event) -> None:
@@ -128,10 +128,10 @@ class FixedSizeRegionSelector(QWidget):
 
     def keyPressEvent(self, event) -> None:
         """Handle keyboard shortcuts."""
-        if event.key() == Qt.Key_Escape:
+        if event.key() == Qt.Key.Key_Escape:
             self.selection_cancelled.emit()
             self.close()
-        elif event.key() == Qt.Key_Return or event.key() == Qt.Key_Enter:
+        elif event.key() == Qt.Key.Key_Return or event.key() == Qt.Key.Key_Enter:
             self.confirm_region()
 
     def confirm_region(self) -> None:
@@ -158,7 +158,7 @@ class RegionConfigDialog(QDialog):
         self.setModal(False)  # Non-modal so overlays can be dragged
 
         # Ensure the dialog doesn't block input to other windows
-        self.setWindowFlags(self.windowFlags() & ~Qt.WindowStaysOnTopHint)
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowStaysOnTopHint)
 
         layout = QVBoxLayout(self)
 

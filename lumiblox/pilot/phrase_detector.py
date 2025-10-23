@@ -11,25 +11,13 @@ import logging
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Tuple, Callable
+from typing import Optional, Callable
+
 import numpy as np
-
-try:
-    import mss
-except ImportError:
-    mss = None
-
-try:
-    import cv2 as cv
-    from PIL import Image
-except ImportError:
-    cv = None
-    Image = None
-
-try:
-    import joblib
-except ImportError:
-    joblib = None
+import mss
+import cv2 as cv
+from PIL import Image
+import joblib
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +80,7 @@ class PhraseDetector:
             raise RuntimeError("joblib is required for loading SVM model")
 
         self.on_phrase_change = on_phrase_change
-        self.grabber: Optional[mss.mss] = None
+        self.grabber: Optional[mss.mss] = None  # type: ignore
         self.model = None
         self.model_loaded = False
 
@@ -263,7 +251,7 @@ class PhraseDetector:
             try:
                 # Capture button region
                 bbox = deck.master_button_region.to_bbox()
-                shot = self.grabber.grab(bbox)
+                shot = self.grabber.grab(bbox)  # type: ignore[union-attr]
                 img = np.array(shot)
 
                 # Convert BGRA to BGR
@@ -279,7 +267,7 @@ class PhraseDetector:
 
                 # Update deck state
                 is_on = dist_on < dist_off
-                deck.is_master = is_on
+                deck.is_master = bool(is_on)
 
                 if is_on:
                     logger.debug(
@@ -328,7 +316,7 @@ class PhraseDetector:
 
             # Capture timeline region
             bbox = deck.timeline_region.to_bbox()
-            shot = self.grabber.grab(bbox)
+            shot = self.grabber.grab(bbox)  # type: ignore[union-attr]
             img = np.array(shot)
 
             # Convert BGRA to BGR
@@ -345,7 +333,7 @@ class PhraseDetector:
             features = np.asarray(img_pil, dtype=np.float32).reshape(-1) / 255.0
 
             # Predict
-            prediction = self.model.predict(features.reshape(1, -1))[0]
+            prediction = self.model.predict(features.reshape(1, -1))[0]  # type: ignore[union-attr]
             result = "breakdown" if prediction == 1 else "body"
 
             elapsed = time.perf_counter() - start

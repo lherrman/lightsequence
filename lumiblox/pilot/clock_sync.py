@@ -15,10 +15,7 @@ import os
 
 os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
 
-try:
-    import pygame.midi
-except ImportError:
-    pygame = None
+import pygame.midi
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +56,7 @@ class ClockSync:
         self.device_keyword = device_keyword.lower()
         self.device_id: Optional[int] = None
         self.device_name: Optional[str] = None
-        self.midi_in: Optional[pygame.midi.Input] = None
+        self.midi_in: Optional[pygame.midi.Input] = None  # type: ignore
         self.is_open = False
 
         # Callbacks
@@ -169,7 +166,7 @@ class ClockSync:
 
         while self.midi_in.poll():
             for data, _timestamp in self.midi_in.read(128):
-                if not data:
+                if not data or isinstance(data, int):
                     continue
                 status = data[0]
                 if status == MIDI_CLOCK:

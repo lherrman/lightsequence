@@ -28,7 +28,7 @@ class ControllerThread(QThread):
     def __init__(self, simulation: bool = False):
         super().__init__()
         self.controller: t.Optional[LightController] = None
-        self.pilot_controller: t.Optional[PilotController] = None
+        self.pilot_controller: PilotController
         self.should_stop = False
         self.simulation = simulation
         self.pilot_update_callback: t.Optional[t.Callable[[], None]] = None
@@ -158,7 +158,14 @@ class ControllerThread(QThread):
 
         except Exception as e:
             logger.error(f"Failed to initialize pilot: {e}")
-            self.pilot_controller = None
+            # Create a minimal pilot controller so GUI doesn't break
+            # User can still configure it via GUI
+            try:
+                self.pilot_controller = PilotController(midiclock_device="midiclock")
+            except Exception as fallback_error:
+                logger.error(f"Failed to create fallback pilot controller: {fallback_error}")
+                # Create with defaults - it just won't work until configured
+                self.pilot_controller = PilotController()
 
     def stop(self):
         """Stop the controller thread."""

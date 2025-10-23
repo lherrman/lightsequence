@@ -499,10 +499,8 @@ class LightSequenceGUI(QMainWindow):
 
     def _on_pilot_enable_requested(self, enabled: bool) -> None:
         """Handle pilot enable/disable request from GUI."""
-        if not self.controller_thread or not hasattr(
-            self.controller_thread, "pilot_controller"
-        ):
-            logger.warning("Pilot controller not available")
+        if not self.controller_thread:
+            logger.warning("Controller thread not available")
             return
 
         pilot = self.controller_thread.pilot_controller
@@ -538,9 +536,7 @@ class LightSequenceGUI(QMainWindow):
 
     def _on_phrase_detection_enable_requested(self, enabled: bool) -> None:
         """Handle phrase detection enable/disable request from GUI."""
-        if not self.controller_thread or not hasattr(
-            self.controller_thread, "pilot_controller"
-        ):
+        if not self.controller_thread:
             return
 
         pilot = self.controller_thread.pilot_controller
@@ -558,9 +554,7 @@ class LightSequenceGUI(QMainWindow):
 
     def _on_align_requested(self) -> None:
         """Handle manual alignment request from GUI."""
-        if not self.controller_thread or not hasattr(
-            self.controller_thread, "pilot_controller"
-        ):
+        if not self.controller_thread:
             return
 
         pilot = self.controller_thread.pilot_controller
@@ -570,9 +564,7 @@ class LightSequenceGUI(QMainWindow):
         self, deck_name: str, region_type: str, region: CaptureRegion
     ) -> None:
         """Handle deck region configuration from GUI."""
-        if not self.controller_thread or not hasattr(
-            self.controller_thread, "pilot_controller"
-        ):
+        if not self.controller_thread:
             return
 
         pilot = self.controller_thread.pilot_controller
@@ -586,9 +578,7 @@ class LightSequenceGUI(QMainWindow):
 
     def _update_pilot_display(self) -> None:
         """Update pilot widget display (called on main thread)."""
-        if not self.controller_thread or not hasattr(
-            self.controller_thread, "pilot_controller"
-        ):
+        if not self.controller_thread:
             return
 
         pilot = self.controller_thread.pilot_controller

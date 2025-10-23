@@ -81,6 +81,7 @@ class ConfigData(TypedDict):
     scene_on_color_from_column: bool
     colors: ColorConfig
     key_bindings: KeyBindings
+    pilot: Dict[str, Any]  # Pilot configuration (enabled, decks, etc.)
 
 
 class ConfigManager:
@@ -274,7 +275,7 @@ class ConfigManager:
                 "timeline_region": None,
             }
 
-        self.data["pilot"]["decks"][deck][region_type] = region_data
+        self.data["pilot"]["decks"][deck][region_type] = region_data  # type: ignore[index]
         self.save()
         logger.info(f"Saved {region_type} for deck {deck}: {region_data}")
 
