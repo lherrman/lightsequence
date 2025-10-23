@@ -26,7 +26,7 @@ MIDI_CONTINUE = 0xFB
 MIDI_STOP = 0xFC
 PULSES_PER_QUARTER = 24
 BEATS_PER_BAR = 4
-BARS_PER_PHRASE = 8
+BARS_PER_PHRASE = 4  # Changed from 8 to 4 bars per phrase
 
 
 class ClockSync:
@@ -39,6 +39,7 @@ class ClockSync:
         on_bar: Optional[Callable[[int], None]] = None,
         on_phrase: Optional[Callable[[int], None]] = None,
         on_bpm_change: Optional[Callable[[float], None]] = None,
+        on_aligned: Optional[Callable[[], None]] = None,
     ):
         """
         Initialize clock sync.
@@ -49,6 +50,7 @@ class ClockSync:
             on_bar: Callback for bar start events: (bar_index)
             on_phrase: Callback for phrase start events: (phrase_index)
             on_bpm_change: Callback for BPM updates: (bpm)
+            on_aligned: Callback when alignment happens (manual or automatic)
         """
         if pygame is None:
             raise RuntimeError("pygame.midi is required for MIDI clock monitoring")
@@ -65,6 +67,7 @@ class ClockSync:
         self.on_bar = on_bar
         self.on_phrase = on_phrase
         self.on_bpm_change = on_bpm_change
+        self.on_aligned = on_aligned
 
         # State tracking
         self.total_pulses = 0
@@ -243,6 +246,11 @@ class ClockSync:
         self.current_bpm = None
 
         logger.info("Aligned to MIDI beat; bar/phrase counting active")
+
+        # Notify alignment callback
+        if self.on_aligned:
+            self.on_aligned()
+
         self._announce_beat(0)
 
         if abs(nearest_time - now) > 0.05:

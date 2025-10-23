@@ -58,6 +58,7 @@ class PilotController:
             on_bar=self._on_bar,
             on_phrase=self._on_phrase,
             on_bpm_change=on_bpm_change,
+            on_aligned=self._on_aligned,
         )
 
         # Create phrase detector
@@ -72,8 +73,9 @@ class PilotController:
 
         # Phrase detection state
         self.phrase_detection_enabled = False
-        self.detection_bar = 7  # Detect at 8th bar (0-indexed), start of new phrase
+        self.detection_bar = 3  # Detect at 4th bar (0-indexed), start of new phrase
         self.last_detection_phrase = -1
+        self.force_next_detection = False  # Flag to force detection on next bar
 
         # Phrase duration tracking
         self.current_phrase_type: Optional[str] = None
@@ -150,6 +152,10 @@ class PilotController:
         self.phrase_detection_enabled = True
         if self.state == PilotState.SYNCING:
             self.state = PilotState.FULL
+
+        # Force detection on the very next bar (in controller thread)
+        self.force_next_detection = True
+
         logger.info("Phrase detection enabled")
         return True
 
@@ -217,6 +223,9 @@ class PilotController:
     def align_to_beat(self) -> None:
         """Manually align to the current beat."""
         self.clock_sync.align_to_tap()
+        # Reset rule cooldowns when re-aligning (bar indices reset)
+        if self.rule_engine:
+            self.rule_engine.reset_cooldowns()
 
     def poll(self) -> None:
         """
@@ -229,6 +238,12 @@ class PilotController:
         self.clock_sync.poll()
 
     # Internal callbacks ----------------------------------------------------
+    def _on_aligned(self) -> None:
+        """Internal alignment callback - reset rule cooldowns."""
+        if self.rule_engine:
+            self.rule_engine.reset_cooldowns()
+            logger.debug("Rule cooldowns reset after alignment")
+
     def _on_beat(self, beat_in_bar: int, bar_index: int, phrase_index: int) -> None:
         """Internal beat callback - triggers phrase detection."""
         # Forward to user callback
@@ -251,17 +266,20 @@ class PilotController:
             if active_preset:
                 self.rule_engine.evaluate_preset(active_preset)
 
-        # Check if we should detect phrase type (at 8th bar / start of new phrase)
+        # Check if we should detect phrase type (at 4th bar / start of new phrase)
         if self.phrase_detection_enabled and self.state == PilotState.FULL:
-            bar_in_phrase = bar_index % 8
-            phrase_index = bar_index // 8
+            bar_in_phrase = bar_index % 4
+            phrase_index = bar_index // 4
 
-            # Detect at 8th bar (index 7) of each phrase (start of next phrase)
-            if (
+            # Detect immediately if forced, or at 4th bar (index 3) of each phrase
+            should_detect = self.force_next_detection or (
                 bar_in_phrase == self.detection_bar
                 and phrase_index != self.last_detection_phrase
-            ):
+            )
+
+            if should_detect:
                 self.last_detection_phrase = phrase_index
+                self.force_next_detection = False
                 self.phrase_detector.update_phrase_detection()
 
         # Forward to user callback
@@ -343,7 +361,7 @@ class PilotController:
             Tuple of (bars_elapsed, phrases_elapsed) in current phrase type
         """
         bars = self.phrase_bars_elapsed
-        phrases = bars // 8
+        phrases = bars // 4  # Changed from 8 to 4 bars per phrase
         return (bars, phrases)
 
     def get_detected_phrase_type(self) -> Optional[str]:

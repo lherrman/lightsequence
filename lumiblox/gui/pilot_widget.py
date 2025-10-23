@@ -407,24 +407,55 @@ class PilotWidget(QWidget):
         separator.setFixedWidth(2)
         header_layout.addWidget(separator)
 
-        # Status info (compact, only needed space)
-        status_layout = QVBoxLayout()
-        status_layout.setSpacing(1)
-        status_layout.setContentsMargins(4, 0, 0, 0)
+        # Status info grid (BPM, Bar, Beat in columns)
+        from PySide6.QtWidgets import QGridLayout
 
-        # Line 1: BPM + Duration
-        self.status_line1 = QLabel("Not aligned")
-        self.status_line1.setStyleSheet(
-            "color: #888888; font-size: 11px; font-weight: bold;"
-        )
-        status_layout.addWidget(self.status_line1)
+        status_grid = QGridLayout()
+        status_grid.setSpacing(4)
+        status_grid.setContentsMargins(8, 0, 8, 0)
+        status_grid.setVerticalSpacing(0)
+        status_grid.setHorizontalSpacing(12)
 
-        # Line 2: Position (Phrase, Bar, Beat)
-        self.status_line2 = QLabel("")
-        self.status_line2.setStyleSheet("color: #666666; font-size: 10px;")
-        status_layout.addWidget(self.status_line2)
+        # Headers (small text)
+        header_style = "color: #666666; font-size: 9px; font-weight: normal;"
+        bpm_header = QLabel("BPM")
+        bpm_header.setStyleSheet(header_style)
+        bpm_header.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        header_layout.addLayout(status_layout)
+        bar_header = QLabel("Bar")
+        bar_header.setStyleSheet(header_style)
+        bar_header.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        beat_header = QLabel("Beat")
+        beat_header.setStyleSheet(header_style)
+        beat_header.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        status_grid.addWidget(bpm_header, 0, 0)
+        status_grid.addWidget(bar_header, 0, 1)
+        status_grid.addWidget(beat_header, 0, 2)
+
+        # Values (larger text)
+        value_style = "color: #ffffff; font-size: 18px; font-weight: bold;"
+        self.bpm_value = QLabel("--")
+        self.bpm_value.setStyleSheet(value_style)
+        self.bpm_value.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.bpm_value.setMinimumWidth(50)
+
+        self.bar_value = QLabel("--")
+        self.bar_value.setStyleSheet(value_style)
+        self.bar_value.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.bar_value.setMinimumWidth(40)
+
+        self.beat_value = QLabel("--")
+        self.beat_value.setStyleSheet(value_style)
+        self.beat_value.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.beat_value.setMinimumWidth(40)
+
+        status_grid.addWidget(self.bpm_value, 1, 0)
+        status_grid.addWidget(self.bar_value, 1, 1)
+        status_grid.addWidget(self.beat_value, 1, 2)
+
+        header_layout.addLayout(status_grid)
         header_layout.addStretch()  # Push everything to the left
 
         # Large visual status indicators
@@ -435,20 +466,20 @@ class PilotWidget(QWidget):
         # Active deck indicator (large letter A, B, C, or D)
         self.deck_indicator = QLabel("")
         self.deck_indicator.setStyleSheet(
-            "color: #ffffff; font-size: 32px; font-weight: bold; "
+            "color: #ffffff; font-size: 36px; font-weight: bold; "
             "background-color: #2a2a2a; border: 2px solid #444; border-radius: 5px; "
-            "padding: 4px 12px; min-width: 40px;"
+            "padding: 6px 14px; min-width: 50px;"
         )
         self.deck_indicator.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.deck_indicator.setVisible(False)
         visual_status_layout.addWidget(self.deck_indicator)
 
-        # Phrase type indicator (BODY or BREAKDOWN)
+        # Phrase type indicator (M for BODY, B for BREAKDOWN)
         self.phrase_type_indicator = QLabel("")
         self.phrase_type_indicator.setStyleSheet(
-            "color: #ffffff; font-size: 28px; font-weight: bold; "
+            "color: #ffffff; font-size: 36px; font-weight: bold; "
             "background-color: #2a2a2a; border: 2px solid #444; border-radius: 5px; "
-            "padding: 4px 16px;"
+            "padding: 6px 14px; min-width: 50px;"
         )
         self.phrase_type_indicator.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.phrase_type_indicator.setVisible(False)
@@ -634,9 +665,11 @@ class PilotWidget(QWidget):
         self, beat_in_bar: int, bar_in_phrase: int, bar_index: int, phrase_index: int
     ) -> None:
         """Update position display."""
-        self.status_line2.setText(
-            f"P{phrase_index + 1} • Bar {bar_in_phrase + 1}/8 • Beat {beat_in_bar + 1}/4"
-        )
+        # Update bar position (bar in phrase out of 8)
+        self.bar_value.setText(f"{bar_in_phrase + 1}/4")
+
+        # Update beat position (beat in bar out of 4)
+        self.beat_value.setText(f"{beat_in_bar + 1}/4")
 
     def update_status(
         self,
@@ -648,44 +681,39 @@ class PilotWidget(QWidget):
         phrase_duration: Optional[tuple[int, int]] = None,
     ) -> None:
         """Update status display."""
-        parts = []
-
         if aligned:
+            # Update BPM value
             if bpm:
-                parts.append(f"{bpm:.1f} BPM")
+                self.bpm_value.setText(f"{bpm:.1f}")
+            else:
+                self.bpm_value.setText("--")
 
-            if phrase_duration:
-                bars, phrases = phrase_duration
-                if phrases > 0:
-                    parts.append(f"({phrases}×8+{bars % 8} bars)")
-                else:
-                    parts.append(f"({bars} bars)")
-
-            # Update large phrase type indicator
+            # Update large phrase type indicator (M for BODY, B for BREAKDOWN)
             if phrase_type and self.phrase_detection_enabled:
-                self.phrase_type_indicator.setText(phrase_type.upper())
-                self.phrase_type_indicator.setVisible(True)
-
-                # Color coding: BODY = orange, BREAKDOWN = blue
+                # Use M for Main/BODY, B for BREAKDOWN
                 if phrase_type.upper() == "BODY":
+                    self.phrase_type_indicator.setText("Ma")
                     self.phrase_type_indicator.setStyleSheet(
-                        "color: #ffffff; font-size: 28px; font-weight: bold; "
+                        "color: #ffffff; font-size: 36px; font-weight: bold; "
                         "background-color: #ff8800; border: 2px solid #cc6600; border-radius: 5px; "
-                        "padding: 4px 16px;"
+                        "padding: 6px 14px; min-width: 50px;"
                     )
                 elif phrase_type.upper() == "BREAKDOWN":
+                    self.phrase_type_indicator.setText("Br")
                     self.phrase_type_indicator.setStyleSheet(
-                        "color: #ffffff; font-size: 28px; font-weight: bold; "
+                        "color: #ffffff; font-size: 36px; font-weight: bold; "
                         "background-color: #0078d4; border: 2px solid #005a9e; border-radius: 5px; "
-                        "padding: 4px 16px;"
+                        "padding: 6px 14px; min-width: 50px;"
                     )
                 else:
-                    # Default style for other phrase types
+                    # Default style for other phrase types (show first letter)
+                    self.phrase_type_indicator.setText(phrase_type[0].upper())
                     self.phrase_type_indicator.setStyleSheet(
-                        "color: #ffffff; font-size: 28px; font-weight: bold; "
+                        "color: #ffffff; font-size: 36px; font-weight: bold; "
                         "background-color: #2a2a2a; border: 2px solid #444; border-radius: 5px; "
-                        "padding: 4px 16px;"
+                        "padding: 6px 14px; min-width: 50px;"
                     )
+                self.phrase_type_indicator.setVisible(True)
             else:
                 self.phrase_type_indicator.setVisible(False)
 
@@ -696,11 +724,12 @@ class PilotWidget(QWidget):
             else:
                 self.deck_indicator.setVisible(False)
         else:
-            parts.append("Not aligned")
+            # Not aligned - reset all values
+            self.bpm_value.setText("--")
+            self.bar_value.setText("--")
+            self.beat_value.setText("--")
             self.phrase_type_indicator.setVisible(False)
             self.deck_indicator.setVisible(False)
-
-        self.status_line1.setText(" • ".join(parts) if parts else "Not aligned")
 
     def update_phrase_progress(self, progress: float) -> None:
         """Update phrase progress bar."""
@@ -708,8 +737,9 @@ class PilotWidget(QWidget):
 
     def set_not_aligned(self) -> None:
         """Reset display when not aligned."""
-        self.status_line1.setText("Not aligned")
-        self.status_line2.setText("")
+        self.bpm_value.setText("--")
+        self.bar_value.setText("--")
+        self.beat_value.setText("--")
         self.phrase_progress_bar.setValue(0)
         self.phrase_type_indicator.setVisible(False)
         self.deck_indicator.setVisible(False)
