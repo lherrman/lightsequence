@@ -1,119 +1,143 @@
 {
-  "brightness_background": 0.2,
-  "brightness_background_effect": 1.0,
-  "brightness_background_top_row": 0.5,
-  "brightness_foreground": 1.0,
-  "colors": {
-    "background_cycle": "#00ff00",
-    "column_colors": {
-      "0": "#ff0000",
-      "1": "#00ff00",
-      "2": "#0000ff",
-      "3": "#ffff00",
-      "4": "#7500ff",
-      "5": "#00ffff",
-      "6": "#ffffff",
-      "7": "#ff4800"
-    },
-    "connection_bad": "#4d0000",
-    "connection_good": "#004d00",
-    "next_step": "#0080ff",
-    "off": "#000000",
-    "playback_paused": "#ff8000",
-    "playback_playing": "#00ff00",
-    "preset_on": "#ff0080",
-    "preset_save_mode": "#ff0000",
-    "preset_save_shift_mode": "#3cff00",
-    "presets_background": "#ffffff",
-    "save_mode_on": "#ff0080",
-    "save_mode_preset_background": "#ffffff",
-    "scene_on": "#00ff00",
-    "success_flash": "#00ff00",
-    "yellow_bright": "#ffff00"
-  },
-  "key_bindings": {
-    "background_brightness_down": {
-      "button_type": "TOP",
-      "coordinates": [5, 0]
-    },
-    "background_brightness_up": {
-      "button_type": "TOP",
-      "coordinates": [6, 0]
-    },
-    "background_button": {
-      "button_type": "TOP",
-      "coordinates": [7, 0]
-    },
-    "clear_button": {
-      "button_type": "RIGHT",
-      "coordinates": [0, 7]
-    },
-    "next_step_button": {
-      "button_type": "RIGHT",
-      "coordinates": [0, 6]
-    },
-    "playback_toggle_button": {
-      "button_type": "RIGHT",
-      "coordinates": [0, 5]
-    },
-    "save_button": {
-      "button_type": "TOP",
-      "coordinates": [0, 0]
-    },
-    "save_shift_button": {
-      "button_type": "TOP",
-      "coordinates": [1, 0]
-    }
-  },
-  "pilot": {
-    "decks": {
-      "A": {
-        "master_button_region": {
-          "height": 22,
-          "width": 64,
-          "x": 75,
-          "y": 235
+    "brightness_background": 0.2,
+    "brightness_background_effect": 1.0,
+    "brightness_background_top_row": 0.5,
+    "brightness_foreground": 1.0,
+    "colors": {
+        "background_cycle": "#00ff00",
+        "column_colors": {
+            "0": "#ff0000",
+            "1": "#00ff00",
+            "2": "#0000ff",
+            "3": "#ffff00",
+            "4": "#7500ff",
+            "5": "#00ffff",
+            "6": "#ffffff",
+            "7": "#ff4800"
         },
-        "timeline_region": {
-          "height": 88,
-          "width": 220,
-          "x": 633,
-          "y": 260
-        }
-      },
-      "B": {
-        "master_button_region": {
-          "height": 22,
-          "width": 64,
-          "x": 1416,
-          "y": 235
-        },
-        "timeline_region": {
-          "height": 88,
-          "width": 220,
-          "x": 1964,
-          "y": 258
-        }
-      },
-      "C": {
-        "master_button_region": null,
-        "timeline_region": null
-      },
-      "D": {
-        "master_button_region": null,
-        "timeline_region": null
-      }
+        "connection_bad": "#4d0000",
+        "connection_good": "#004d00",
+        "next_step": "#0080ff",
+        "off": "#000000",
+        "playback_paused": "#ff8000",
+        "playback_playing": "#00ff00",
+        "preset_on": "#ff0080",
+        "preset_save_mode": "#ff0000",
+        "preset_save_shift_mode": "#3cff00",
+        "presets_background": "#ffffff",
+        "save_mode_on": "#ff0080",
+        "save_mode_preset_background": "#ffffff",
+        "scene_on": "#00ff00",
+        "success_flash": "#00ff00",
+        "yellow_bright": "#ffff00"
     },
-    "enabled": true,
-    "midiclock_device": "midiclock",
-    "model_path": "pilot-tests/resources/traktor/classifier_traktor.pkl",
-    "template_dir": "pilot-tests/resources/traktor",
-    "zero_signal": {
-      "data1": 60,
-      "data2": null,
-      "enabled": false,
-      "status": 144
-    }
-  },
-  "scene_on_color_from_column": true
+    "key_bindings": {
+        "background_brightness_down": {
+            "button_type": "TOP",
+            "coordinates": [
+                5,
+                0
+            ]
+        },
+        "background_brightness_up": {
+            "button_type": "TOP",
+            "coordinates": [
+                6,
+                0
+            ]
+        },
+        "background_button": {
+            "button_type": "TOP",
+            "coordinates": [
+                7,
+                0
+            ]
+        },
+        "clear_button": {
+            "button_type": "RIGHT",
+            "coordinates": [
+                0,
+                7
+            ]
+        },
+        "next_step_button": {
+            "button_type": "RIGHT",
+            "coordinates": [
+                0,
+                6
+            ]
+        },
+        "playback_toggle_button": {
+            "button_type": "RIGHT",
+            "coordinates": [
+                0,
+                5
+            ]
+        },
+        "save_button": {
+            "button_type": "TOP",
+            "coordinates": [
+                0,
+                0
+            ]
+        },
+        "save_shift_button": {
+            "button_type": "TOP",
+            "coordinates": [
+                1,
+                0
+            ]
+        }
+    },
+    "pilot": {
+        "decks": {
+            "A": {
+                "master_button_region": {
+                    "height": 22,
+                    "width": 64,
+                    "x": 75,
+                    "y": 235
+                },
+                "timeline_region": {
+                    "height": 88,
+                    "width": 220,
+                    "x": 633,
+                    "y": 260
+                }
+            },
+            "B": {
+                "master_button_region": {
+                    "height": 22,
+                    "width": 64,
+                    "x": 1416,
+                    "y": 235
+                },
+                "timeline_region": {
+                    "height": 88,
+                    "width": 220,
+                    "x": 1964,
+                    "y": 258
+                }
+            },
+            "C": {
+                "master_button_region": null,
+                "timeline_region": null
+            },
+            "D": {
+                "master_button_region": null,
+                "timeline_region": null
+            }
+        },
+        "enabled": true,
+        "midiclock_device": "midiclock",
+        "model_path": "pilot-tests/resources/traktor/classifier_traktor.pkl",
+        "template_dir": "pilot-tests/resources/traktor",
+        "zero_signal": {
+            "data1": 60,
+            "data2": null,
+            "enabled": false,
+            "status": 144
+        }
+    },
+    "scene_on_color_from_column": true
 }

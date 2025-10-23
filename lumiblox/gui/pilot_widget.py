@@ -48,7 +48,10 @@ class FixedSizeRegionSelector(QWidget):
             region_type: Either "button" or "timeline"
         """
         super().__init__(
-            None, Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.FramelessWindowHint
+            None, 
+            Qt.WindowType.WindowStaysOnTopHint | 
+            Qt.WindowType.FramelessWindowHint | 
+            Qt.WindowType.Tool  # Prevents Windows system sounds
         )
         self.setWindowOpacity(0.7)
         self.region_type = region_type
@@ -85,17 +88,30 @@ class FixedSizeRegionSelector(QWidget):
     def mousePressEvent(self, event) -> None:
         """Start dragging."""
         if event.button() == Qt.MouseButton.LeftButton:
-            self._drag_position = (
-                event.globalPosition().toPoint() - self.frameGeometry().topLeft()
-            )
+            # Store offset from mouse to window top-left
+            global_pos = event.globalPosition()
+            window_pos = self.pos()
+            self._drag_position = global_pos.toPoint() - window_pos
+            event.accept()
 
     def mouseMoveEvent(self, event) -> None:
         """Handle dragging."""
-        if (
-            event.buttons() == Qt.MouseButton.LeftButton
-            and self._drag_position is not None
-        ):
-            self.move(event.globalPosition().toPoint() - self._drag_position)
+        if event.buttons() & Qt.MouseButton.LeftButton and self._drag_position is not None:
+            # Move window to follow mouse
+            global_pos = event.globalPosition()
+            new_pos = global_pos.toPoint() - self._drag_position
+            self.move(new_pos)
+            event.accept()
+        else:
+            event.ignore()
+
+    def mouseReleaseEvent(self, event) -> None:
+        """End dragging."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_position = None
+            event.accept()
+        else:
+            event.ignore()
 
     def keyPressEvent(self, event) -> None:
         """Handle keyboard shortcuts."""
@@ -167,6 +183,32 @@ class RegionConfigDialog(QDialog):
         layout.addWidget(button_box)
 
         self.button_box = button_box
+        
+        # Load existing regions and populate status immediately (must be after ok_button creation)
+        self._load_existing_regions()
+
+    def _load_existing_regions(self) -> None:
+        """Load existing regions from config and populate status labels."""
+        config = get_config()
+        button_region = config.get_deck_region(self.deck_name, "master_button_region")
+        timeline_region = config.get_deck_region(self.deck_name, "timeline_region")
+
+        if button_region:
+            rect = QRect(button_region["x"], button_region["y"], 
+                        button_region["width"], button_region["height"])
+            self.button_rect = rect
+            self.button_status.setText(f"Master Button: Set at ({rect.x()}, {rect.y()})")
+            logger.info(f"Loaded button region for deck {self.deck_name}: {button_region}")
+
+        if timeline_region:
+            rect = QRect(timeline_region["x"], timeline_region["y"], 
+                        timeline_region["width"], timeline_region["height"])
+            self.timeline_rect = rect
+            self.timeline_status.setText(f"Timeline: Set at ({rect.x()}, {rect.y()})")
+            logger.info(f"Loaded timeline region for deck {self.deck_name}: {timeline_region}")
+
+        # Enable Save button if both regions are already set
+        self._check_completion()
 
     def _show_overlays(self) -> None:
         """Show both overlay windows for positioning."""
@@ -178,23 +220,19 @@ class RegionConfigDialog(QDialog):
         self.timeline_overlay.region_confirmed.connect(self._on_timeline_confirmed)
         self.timeline_overlay.selection_cancelled.connect(self._on_cancelled)
 
-        # Try to load existing regions from config
-        config = get_config()
-        button_region = config.get_deck_region(self.deck_name, "button")
-        timeline_region = config.get_deck_region(self.deck_name, "timeline")
-
-        # Position overlays at configured locations if available, otherwise center them
+        # Position overlays at existing locations if available, otherwise center them
         screen = QGuiApplication.primaryScreen().geometry()
         center_x = screen.center().x()
         center_y = screen.center().y()
 
-        if button_region:
-            self.button_overlay.move(button_region["x"], button_region["y"])
+        # Use already-loaded regions if available
+        if self.button_rect:
+            self.button_overlay.move(self.button_rect.x(), self.button_rect.y())
         else:
             self.button_overlay.move(center_x - 200, center_y - 50)
 
-        if timeline_region:
-            self.timeline_overlay.move(timeline_region["x"], timeline_region["y"])
+        if self.timeline_rect:
+            self.timeline_overlay.move(self.timeline_rect.x(), self.timeline_rect.y())
         else:
             self.timeline_overlay.move(center_x + 50, center_y - 50)
 
@@ -474,11 +512,11 @@ class PilotWidget(QWidget):
         self, deck_name: str, button_rect: QRect, timeline_rect: QRect
     ) -> None:
         """Handle deck region configuration."""
-        # Save to config
+        # Save to config with correct region type names
         config = get_config()
         config.set_deck_region(
             deck_name,
-            "button",
+            "master_button_region",
             {
                 "x": button_rect.x(),
                 "y": button_rect.y(),
@@ -488,7 +526,7 @@ class PilotWidget(QWidget):
         )
         config.set_deck_region(
             deck_name,
-            "timeline",
+            "timeline_region",
             {
                 "x": timeline_rect.x(),
                 "y": timeline_rect.y(),
