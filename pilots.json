@@ -7,7 +7,7 @@
       "rules": [
         {
           "name": "Breakdown Every 16 Bars",
-          "enabled": false,
+          "enabled": true,
           "condition": {
             "condition_type": "after_phrase_type",
             "phrase_type": "breakdown",
