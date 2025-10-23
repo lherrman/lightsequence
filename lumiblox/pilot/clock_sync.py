@@ -114,7 +114,9 @@ class ClockSync:
                 self.midi_in.close()
             except AttributeError as e:
                 # Handle pygame threading issues during shutdown
-                logger.debug(f"AttributeError closing MIDI input (likely threading): {e}")
+                logger.debug(
+                    f"AttributeError closing MIDI input (likely threading): {e}"
+                )
             except Exception as e:
                 logger.error(f"Error closing MIDI input: {e}")
             self.midi_in = None

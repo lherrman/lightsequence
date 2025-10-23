@@ -127,27 +127,25 @@ class ControllerThread(QThread):
             for deck_name, deck_config in decks.items():
                 button_region = deck_config.get("master_button_region")
                 timeline_region = deck_config.get("timeline_region")
-                
+
                 if button_region and timeline_region:
                     from lumiblox.pilot.phrase_detector import CaptureRegion
-                    
+
                     button_capture_region = CaptureRegion(
                         x=button_region["x"],
                         y=button_region["y"],
                         width=button_region["width"],
-                        height=button_region["height"]
+                        height=button_region["height"],
                     )
                     timeline_capture_region = CaptureRegion(
                         x=timeline_region["x"],
                         y=timeline_region["y"],
                         width=timeline_region["width"],
-                        height=timeline_region["height"]
+                        height=timeline_region["height"],
                     )
-                    
+
                     self.pilot_controller.configure_deck(
-                        deck_name,
-                        button_capture_region,
-                        timeline_capture_region
+                        deck_name, button_capture_region, timeline_capture_region
                     )
                     logger.info(f"Loaded deck {deck_name} regions from config")
 

@@ -108,12 +108,12 @@ class PilotController:
             self.clock_sync.close()
         except Exception as e:
             logger.error(f"Error closing clock sync: {e}")
-        
+
         try:
             self.phrase_detector.close()
         except Exception as e:
             logger.error(f"Error closing phrase detector: {e}")
-        
+
         self.state = PilotState.STOPPED
         self.phrase_detection_enabled = False
         logger.info("Pilot stopped")

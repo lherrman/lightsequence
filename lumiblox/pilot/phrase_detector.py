@@ -137,12 +137,12 @@ class PhraseDetector:
                 logger.debug(f"Error closing grabber (may be thread-local): {e}")
             self.grabber = None
         logger.info("Screen capture closed")
-    
+
     def _ensure_grabber(self) -> bool:
         """
         Ensure grabber is created in the current thread.
         mss uses thread-local storage, so we need to create it in each thread that uses it.
-        
+
         Returns:
             True if grabber is available, False otherwise
         """
@@ -249,7 +249,11 @@ class PhraseDetector:
         Returns:
             Deck name ("A", "B", "C", "D") or None if none detected
         """
-        if not self._ensure_grabber() or self.template_on is None or self.template_off is None:
+        if (
+            not self._ensure_grabber()
+            or self.template_on is None
+            or self.template_off is None
+        ):
             return None
 
         for deck_name, deck in self.decks.items():
@@ -310,7 +314,7 @@ class PhraseDetector:
                 logger.warning("No active deck detected")
                 return None
             logger.info(f"Detected active deck: {deck_name}")
-        
+
         # Store the active deck
         self.last_active_deck = deck_name
 
