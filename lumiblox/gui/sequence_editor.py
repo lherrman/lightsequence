@@ -27,11 +27,12 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont
 import qtawesome as qta
 
-from lumiblox.controller.sequence_controller import SequenceStep
+from lumiblox.controller.sequence_controller import SequenceStep, SequenceDurationUnit
 from lumiblox.gui.widgets import SelectAllLineEdit, SceneButton
 
 # Configuration constants
 DEFAULT_STEP_DURATION = 2.0  # Default duration in seconds for new steps
+DEFAULT_STEP_BARS = 4  # Default duration in bars for new steps
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,7 @@ class SequenceStepWidget(QFrame):
         self.step = step
         self.step_index = step_index
         self.scene_buttons: t.Dict[t.Tuple[int, int], SceneButton] = {}
+        self._unit_buttons: t.Dict[SequenceDurationUnit, QPushButton] = {}
 
         # Remove frame border - no visible border
         self.setFrameStyle(QFrame.Shape.NoFrame)
@@ -77,7 +79,7 @@ class SequenceStepWidget(QFrame):
 
         # Move up button with icon
         self.move_up_btn = QPushButton()
-        self.move_up_btn.setIcon(qta.icon('fa5s.chevron-up', color='#cccccc'))
+        self.move_up_btn.setIcon(qta.icon("fa5s.chevron-up", color="#cccccc"))
         self.move_up_btn.setFixedSize(24, 24)
         self.move_up_btn.setToolTip("Move step up")
         self.move_up_btn.setStyleSheet("""
@@ -102,7 +104,7 @@ class SequenceStepWidget(QFrame):
 
         # Move down button with icon
         self.move_down_btn = QPushButton()
-        self.move_down_btn.setIcon(qta.icon('fa5s.chevron-down', color='#cccccc'))
+        self.move_down_btn.setIcon(qta.icon("fa5s.chevron-down", color="#cccccc"))
         self.move_down_btn.setFixedSize(24, 24)
         self.move_down_btn.setToolTip("Move step down")
         self.move_down_btn.setStyleSheet("""
@@ -177,7 +179,7 @@ class SequenceStepWidget(QFrame):
         duration_layout = QHBoxLayout()
         duration_layout.setSpacing(6)
         duration_layout.setContentsMargins(0, 5, 0, 0)
-        
+
         # Minus button
         minus_btn = QPushButton("-")
         minus_btn.setFixedSize(28, 28)
@@ -244,15 +246,55 @@ class SequenceStepWidget(QFrame):
         plus_btn.clicked.connect(self.increase_duration)
         duration_layout.addWidget(plus_btn)
 
+        unit_button_style = """
+            QPushButton {
+                background-color: #2e2e2e;
+                border: 1px solid #555555;
+                border-radius: 3px;
+                color: #cccccc;
+                font-size: 11px;
+                padding: 2px 8px;
+            }
+            QPushButton:hover {
+                background-color: #3a3a3a;
+            }
+            QPushButton:checked {
+                background-color: #0078d4;
+                border-color: #005a9e;
+                color: #ffffff;
+            }
+        """
+
+        seconds_btn = QPushButton("Sec")
+        seconds_btn.setCheckable(True)
+        seconds_btn.setFixedHeight(28)
+        seconds_btn.setStyleSheet(unit_button_style)
+        seconds_btn.clicked.connect(
+            lambda: self._set_duration_unit(SequenceDurationUnit.SECONDS)
+        )
+        duration_layout.addWidget(seconds_btn)
+        self._unit_buttons[SequenceDurationUnit.SECONDS] = seconds_btn
+
+        bars_btn = QPushButton("Bars")
+        bars_btn.setCheckable(True)
+        bars_btn.setFixedHeight(28)
+        bars_btn.setStyleSheet(unit_button_style)
+        bars_btn.clicked.connect(
+            lambda: self._set_duration_unit(SequenceDurationUnit.BARS)
+        )
+        duration_layout.addWidget(bars_btn)
+        self._unit_buttons[SequenceDurationUnit.BARS] = bars_btn
+
         duration_layout.addStretch()
         content_layout.addLayout(duration_layout)
-        
+
         main_layout.addLayout(content_layout)
 
     def update_from_step(self):
         """Update widget from step data."""
         self.name_edit.setText(self.step.name)
-        self.duration_input.setText(f"{self.step.duration:.1f}")
+        self._refresh_duration_input()
+        self._update_unit_buttons()
 
         # Clear all scene buttons first
         for btn in self.scene_buttons.values():
@@ -275,19 +317,25 @@ class SequenceStepWidget(QFrame):
                 break
 
     def decrease_duration(self):
-        """Decrease duration by 0.5 seconds."""
+        """Decrease duration value using the active unit."""
         current = self.step.duration
-        new_value = max(0.1, current - 0.5)
+        if self.step.duration_unit == SequenceDurationUnit.BARS:
+            new_value = max(1.0, current - 1)
+        else:
+            new_value = max(0.1, current - 0.5)
         self.step.duration = new_value
-        self.duration_input.setText(f"{new_value:.1f}")
+        self._refresh_duration_input()
         self.step_changed.emit()
 
     def increase_duration(self):
-        """Increase duration by 0.5 seconds."""
+        """Increase duration value using the active unit."""
         current = self.step.duration
-        new_value = min(3600.0, current + 0.5)
+        if self.step.duration_unit == SequenceDurationUnit.BARS:
+            new_value = min(512.0, current + 1)
+        else:
+            new_value = min(3600.0, current + 0.5)
         self.step.duration = new_value
-        self.duration_input.setText(f"{new_value:.1f}")
+        self._refresh_duration_input()
         self.step_changed.emit()
 
     def on_duration_text_changed(self):
@@ -299,26 +347,35 @@ class SequenceStepWidget(QFrame):
         """Called when user finishes editing duration text."""
         try:
             text = self.duration_input.text().strip()
-            value = float(text)
+            if self.step.duration_unit == SequenceDurationUnit.BARS:
+                value = int(round(float(text)))
+                if value < 1:
+                    value = 1
+                elif value > 512:
+                    value = 512
+                self.step.duration = float(value)
+                self.duration_input.setText(str(value))
+            else:
+                value = float(text)
 
-            # Validate range
-            if value < 0.1:
-                value = 0.1
-            elif value > 3600.0:
-                value = 3600.0
+                # Validate range
+                if value < 0.1:
+                    value = 0.1
+                elif value > 3600.0:
+                    value = 3600.0
 
-            # Update step and display
-            self.step.duration = value
-            self.duration_input.setText(f"{value:.1f}")
+                # Update step and display
+                self.step.duration = value
+                self.duration_input.setText(f"{value:.1f}")
             self.step_changed.emit()
 
         except ValueError:
             # Invalid input - restore previous value
-            self.duration_input.setText(f"{self.step.duration:.1f}")
+            self._refresh_duration_input()
             QMessageBox.warning(
                 self,
                 "Invalid Duration",
-                "Please enter a valid number for duration (0.1 - 3600.0 seconds).",
+                "Please enter a valid duration value.",
             )
 
     def on_step_changed(self):
@@ -340,9 +397,43 @@ class SequenceStepWidget(QFrame):
 
     def get_active_scenes(self) -> t.List[t.Tuple[int, int]]:
         """Get currently active scenes."""
-        return [
-            coord for coord, btn in self.scene_buttons.items() if btn.is_active
-        ]
+        return [coord for coord, btn in self.scene_buttons.items() if btn.is_active]
+
+    def _refresh_duration_input(self) -> None:
+        if self.step.duration_unit == SequenceDurationUnit.BARS:
+            value = max(1, int(round(self.step.duration)))
+            self.step.duration = float(value)
+            self.duration_input.setText(str(value))
+        else:
+            self.duration_input.setText(f"{self.step.duration:.1f}")
+
+    def _update_unit_buttons(self) -> None:
+        for unit, button in self._unit_buttons.items():
+            button.setChecked(unit == self.step.duration_unit)
+
+    def _set_duration_unit(self, unit: SequenceDurationUnit) -> None:
+        if self.step.duration_unit == unit:
+            self._update_unit_buttons()
+            return
+
+        if unit == SequenceDurationUnit.BARS:
+            if self.step.duration_unit == SequenceDurationUnit.SECONDS:
+                converted = round(self.step.duration)
+                if converted < 1:
+                    converted = DEFAULT_STEP_BARS
+                self.step.duration = float(converted)
+            else:
+                self.step.duration = max(1.0, self.step.duration)
+        else:
+            new_value = max(0.1, float(self.step.duration))
+            if new_value > 3600.0:
+                new_value = 3600.0
+            self.step.duration = new_value
+
+        self.step.duration_unit = unit
+        self._update_unit_buttons()
+        self._refresh_duration_input()
+        self.step_changed.emit()
 
 
 class PresetSequenceEditor(QWidget):
@@ -359,11 +450,11 @@ class PresetSequenceEditor(QWidget):
 
         self.setup_ui()
         self.load_sequence()
-        
+
         # Connect to controller's step change callback if available
-        if self.controller and hasattr(self.controller, 'sequence_ctrl'):
+        if self.controller and hasattr(self.controller, "sequence_ctrl"):
             original_callback = self.controller.sequence_ctrl.on_step_change
-            
+
             def wrapped_callback(scenes):
                 if original_callback:
                     original_callback(scenes)
@@ -374,7 +465,7 @@ class PresetSequenceEditor(QWidget):
                 except RuntimeError:
                     # Widget has been deleted, ignore
                     pass
-            
+
             self.controller.sequence_ctrl.on_step_change = wrapped_callback
 
     def setup_ui(self):
@@ -389,10 +480,10 @@ class PresetSequenceEditor(QWidget):
         title.setFont(QFont("Arial", 11, QFont.Weight.Bold))
         header_layout.addWidget(title)
         header_layout.addStretch()
-        
+
         # Tiny reload button with icon
         reload_btn = QPushButton()
-        reload_btn.setIcon(qta.icon('fa5s.sync-alt', color='#cccccc'))
+        reload_btn.setIcon(qta.icon("fa5s.sync-alt", color="#cccccc"))
         reload_btn.setFixedSize(24, 24)
         reload_btn.setToolTip("Reload sequence from file")
         reload_btn.setStyleSheet("""
@@ -410,26 +501,28 @@ class PresetSequenceEditor(QWidget):
         """)
         reload_btn.clicked.connect(self.load_sequence)
         header_layout.addWidget(reload_btn)
-        
+
         # Auto-update checkbox
         self.auto_update_cb = QCheckBox("Auto-update")
         self.auto_update_cb.setChecked(True)
-        self.auto_update_cb.setToolTip("Automatically show current step during playback")
+        self.auto_update_cb.setToolTip(
+            "Automatically show current step during playback"
+        )
         self.auto_update_cb.stateChanged.connect(self._on_auto_update_changed)
         header_layout.addWidget(self.auto_update_cb)
-        
+
         # Loop checkbox
         self.loop_checkbox = QCheckBox("Loop")
         self.loop_checkbox.setChecked(True)
         self.loop_checkbox.stateChanged.connect(self.auto_save_sequence)
         header_layout.addWidget(self.loop_checkbox)
-        
+
         layout.addLayout(header_layout)
 
         # Main horizontal split: Step list (left) | Step details (right)
         main_splitter = QHBoxLayout()
         main_splitter.setSpacing(5)
-        
+
         # === LEFT: Step List ===
         left_panel = QFrame()
         left_panel.setMaximumWidth(200)
@@ -443,7 +536,7 @@ class PresetSequenceEditor(QWidget):
         left_layout = QVBoxLayout(left_panel)
         left_layout.setContentsMargins(5, 5, 5, 5)
         left_layout.setSpacing(3)
-        
+
         # Step list header
         list_header = QHBoxLayout()
         list_header.setAlignment(Qt.AlignmentFlag.AlignTop)
@@ -452,7 +545,7 @@ class PresetSequenceEditor(QWidget):
         list_header.addWidget(list_label)
         list_header.addStretch()
         left_layout.addLayout(list_header)
-        
+
         # Step list widget
         self.step_list = QListWidget()
         self.step_list.setStyleSheet("""
@@ -477,12 +570,12 @@ class PresetSequenceEditor(QWidget):
         """)
         self.step_list.currentRowChanged.connect(self._on_step_selected)
         left_layout.addWidget(self.step_list)
-        
+
         # Step list buttons - aligned to top
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(3)
         btn_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-        
+
         add_btn = QPushButton("+")
         add_btn.setFixedSize(30, 25)
         add_btn.setToolTip("Add empty step")
@@ -500,7 +593,7 @@ class PresetSequenceEditor(QWidget):
         """)
         add_btn.clicked.connect(self.add_empty_step)
         btn_layout.addWidget(add_btn)
-        
+
         add_active_btn = QPushButton("⊕")
         add_active_btn.setFixedSize(30, 25)
         add_active_btn.setToolTip("Add from active scenes")
@@ -523,9 +616,9 @@ class PresetSequenceEditor(QWidget):
         add_active_btn.clicked.connect(self.add_step_from_active_scenes)
         add_active_btn.setEnabled(self.controller is not None)
         btn_layout.addWidget(add_active_btn)
-        
+
         btn_layout.addStretch()
-        
+
         remove_btn = QPushButton("−")
         remove_btn.setFixedSize(30, 25)
         remove_btn.setToolTip("Remove selected step")
@@ -543,11 +636,11 @@ class PresetSequenceEditor(QWidget):
         """)
         remove_btn.clicked.connect(self.remove_current_step)
         btn_layout.addWidget(remove_btn)
-        
+
         left_layout.addLayout(btn_layout)
-        
+
         main_splitter.addWidget(left_panel)
-        
+
         # === RIGHT: Step Detail Panel ===
         self.detail_panel = QFrame()
         self.detail_panel.setStyleSheet("""
@@ -559,16 +652,20 @@ class PresetSequenceEditor(QWidget):
         """)
         self.detail_layout = QVBoxLayout(self.detail_panel)
         self.detail_layout.setContentsMargins(5, 5, 5, 5)
-        
+
         # Placeholder message - aligned to top
         self.placeholder_label = QLabel("Select a step to edit")
-        self.placeholder_label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
-        self.placeholder_label.setStyleSheet("color: #888888; font-size: 12px; padding-top: 20px;")
+        self.placeholder_label.setAlignment(
+            Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter
+        )
+        self.placeholder_label.setStyleSheet(
+            "color: #888888; font-size: 12px; padding-top: 20px;"
+        )
         self.detail_layout.addWidget(self.placeholder_label)
         self.detail_layout.addStretch()  # Push content to top
-        
+
         main_splitter.addWidget(self.detail_panel, 1)  # Give more space to detail panel
-        
+
         layout.addLayout(main_splitter, 1)  # Main content takes most space
 
     def load_sequence(self):
@@ -592,7 +689,7 @@ class PresetSequenceEditor(QWidget):
         self.loop_checkbox.setChecked(loop_setting)
 
         self.rebuild_step_list()
-        
+
         # Select first step by default
         if self.step_list.count() > 0:
             self.step_list.setCurrentRow(0)
@@ -601,74 +698,83 @@ class PresetSequenceEditor(QWidget):
         """Rebuild the step list widget."""
         current_row = self.step_list.currentRow()
         self.step_list.clear()
-        
+
         for i, step in enumerate(self.sequence_steps):
-            display_text = f"{i+1}. {step.name}" if step.name else f"{i+1}. Step {i+1}"
-            duration_text = f" ({step.duration:.1f}s)"
+            display_text = (
+                f"{i + 1}. {step.name}" if step.name else f"{i + 1}. Step {i + 1}"
+            )
+            if step.duration_unit == SequenceDurationUnit.BARS:
+                duration_text = f" ({int(step.duration)} bars)"
+            else:
+                duration_text = f" ({step.duration:.1f}s)"
             scene_count = f" [{len(step.scenes)} scenes]" if step.scenes else " [empty]"
-            
+
             item_text = display_text + duration_text + scene_count
             item = QListWidgetItem(item_text)
             self.step_list.addItem(item)
-        
+
         # Restore selection or select first
         if current_row >= 0 and current_row < self.step_list.count():
             self.step_list.setCurrentRow(current_row)
         elif self.step_list.count() > 0:
             self.step_list.setCurrentRow(0)
-    
+
     def _on_step_selected(self, row: int):
         """Handle step selection from list."""
         if row < 0 or row >= len(self.sequence_steps):
             return
-        
+
         self.current_step_index = row
         self._show_step_details(row)
-    
+
     def _show_step_details(self, step_index: int):
         """Show details for the specified step."""
         if step_index < 0 or step_index >= len(self.sequence_steps):
             return
-        
+
         # Clear current widget
         if self.current_step_widget:
             self.current_step_widget.deleteLater()
             self.current_step_widget = None
-        
+
         # Hide placeholder
         self.placeholder_label.hide()
-        
+
         # Create new step widget
         step = self.sequence_steps[step_index]
         self.current_step_widget = SequenceStepWidget(step, step_index)
         self.current_step_widget.step_changed.connect(self._on_step_changed)
         self.current_step_widget.move_up.connect(lambda: self.move_step_up(step_index))
-        self.current_step_widget.move_down.connect(lambda: self.move_step_down(step_index))
-        
+        self.current_step_widget.move_down.connect(
+            lambda: self.move_step_down(step_index)
+        )
+
         # Update move button states
         self.current_step_widget.move_up_btn.setEnabled(step_index > 0)
-        self.current_step_widget.move_down_btn.setEnabled(step_index < len(self.sequence_steps) - 1)
-        
+        self.current_step_widget.move_down_btn.setEnabled(
+            step_index < len(self.sequence_steps) - 1
+        )
+
         self.detail_layout.addWidget(self.current_step_widget)
-    
+
     def _on_step_changed(self):
         """Handle step details change."""
         self.rebuild_step_list()
         self.auto_save_sequence()
-    
+
     def _on_auto_update_changed(self, state):
         """Handle auto-update checkbox change."""
         self.auto_update_enabled = state == Qt.CheckState.Checked.value
-    
+
     def _on_playback_step_change(self):
         """Called during playback when step changes."""
-        if not self.controller or not hasattr(self.controller, 'sequence_ctrl'):
+        if not self.controller or not hasattr(self.controller, "sequence_ctrl"):
             return
-        
+
         # Check if this sequence is currently playing
         if self.controller.active_sequence != self.preset_index:
             return
-        
+
         # Get current step index from controller
         current_step = self.controller.sequence_ctrl.current_step_index
         if 0 <= current_step < len(self.sequence_steps):
@@ -678,6 +784,11 @@ class PresetSequenceEditor(QWidget):
             except RuntimeError:
                 # Widget has been deleted
                 pass
+
+    def _current_duration_unit(self) -> SequenceDurationUnit:
+        if 0 <= self.current_step_index < len(self.sequence_steps):
+            return self.sequence_steps[self.current_step_index].duration_unit
+        return SequenceDurationUnit.SECONDS
 
     def save_sequence(self):
         """Save sequence to sequence controller."""
@@ -698,15 +809,22 @@ class PresetSequenceEditor(QWidget):
 
     def add_empty_step(self):
         """Add an empty step."""
+        unit = self._current_duration_unit()
+        default_duration = (
+            float(DEFAULT_STEP_BARS)
+            if unit == SequenceDurationUnit.BARS
+            else DEFAULT_STEP_DURATION
+        )
         step = SequenceStep(
             scenes=[],
-            duration=DEFAULT_STEP_DURATION,
+            duration=default_duration,
             name=f"Step {len(self.sequence_steps) + 1}",
+            duration_unit=unit,
         )
         self.sequence_steps.append(step)
         self.rebuild_step_list()
         self.auto_save_sequence()
-        
+
         # Select the new step
         self.step_list.setCurrentRow(len(self.sequence_steps) - 1)
 
@@ -726,30 +844,37 @@ class PresetSequenceEditor(QWidget):
             )
             return
 
+        unit = self._current_duration_unit()
+        duration = (
+            float(DEFAULT_STEP_BARS)
+            if unit == SequenceDurationUnit.BARS
+            else DEFAULT_STEP_DURATION
+        )
         step = SequenceStep(
             scenes=active_scenes,
-            duration=DEFAULT_STEP_DURATION,
+            duration=duration,
             name=f"Step {len(self.sequence_steps) + 1}",
+            duration_unit=unit,
         )
         self.sequence_steps.append(step)
         self.rebuild_step_list()
         self.auto_save_sequence()
-        
+
         # Select the new step
         self.step_list.setCurrentRow(len(self.sequence_steps) - 1)
-    
+
     def remove_current_step(self):
         """Remove the currently selected step."""
         current_row = self.step_list.currentRow()
         if current_row >= 0:
             self.remove_step(current_row)
-    
+
     def remove_step(self, step_index: int):
         """Remove a specific step."""
         if len(self.sequence_steps) <= 1:
             QMessageBox.warning(self, "Cannot Remove", "Cannot remove the last step.")
             return
-        
+
         if 0 <= step_index < len(self.sequence_steps):
             del self.sequence_steps[step_index]
             self.rebuild_step_list()

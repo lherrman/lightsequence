@@ -8,13 +8,21 @@ from enum import Enum
 logger = logging.getLogger(__name__)
 
 
+class SequenceDurationUnit(str, Enum):
+    """Units for step durations."""
+
+    SECONDS = "seconds"
+    BARS = "bars"
+
+
 @dataclass
 class SequenceStep:
     """Represents a single step in a sequence."""
 
     scenes: t.List[t.List[int]]  # List of scene coordinates
-    duration: float  # Duration in seconds
+    duration: float  # Duration value (interpreted via unit)
     name: str = ""  # Optional name for the step
+    duration_unit: SequenceDurationUnit = SequenceDurationUnit.SECONDS
 
 
 class SequenceState(str, Enum):
@@ -47,7 +55,9 @@ class SequenceManager:
     ) -> None:
         """Add or update a sequence for a preset."""
         self.sequences[preset_index] = steps.copy()
-        logger.debug(f"Added sequence for preset {preset_index} with {len(steps)} steps")
+        logger.debug(
+            f"Added sequence for preset {preset_index} with {len(steps)} steps"
+        )
 
     def get_sequence(
         self, preset_index: t.Tuple[int, int]

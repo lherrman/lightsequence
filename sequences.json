@@ -19,7 +19,8 @@
             ]
           ],
           "duration": 2.0,
-          "name": "Step 1"
+          "name": "Step 1",
+          "duration_unit": "seconds"
         }
       ]
     },
@@ -43,10 +44,15 @@
             [
               2,
               2
+            ],
+            [
+              4,
+              1
             ]
           ],
-          "duration": 2.0,
-          "name": "Step 1"
+          "duration": 7.0,
+          "name": "Step 1",
+          "duration_unit": "bars"
         },
         {
           "scenes": [
@@ -59,8 +65,9 @@
               2
             ]
           ],
-          "duration": 2.0,
-          "name": "Step 2"
+          "duration": 1.0,
+          "name": "Step 2",
+          "duration_unit": "bars"
         }
       ]
     },
@@ -83,17 +90,20 @@
             ]
           ],
           "duration": 2.0,
-          "name": "Step 1"
+          "name": "Step 1",
+          "duration_unit": "seconds"
         },
         {
           "scenes": [],
           "duration": 2.0,
-          "name": "Step 2"
+          "name": "Step 2",
+          "duration_unit": "seconds"
         },
         {
           "scenes": [],
           "duration": 2.0,
-          "name": "Step 3"
+          "name": "Step 3",
+          "duration_unit": "seconds"
         }
       ]
     },
@@ -120,7 +130,8 @@
             ]
           ],
           "duration": 2.0,
-          "name": "Step 1"
+          "name": "Step 1",
+          "duration_unit": "seconds"
         }
       ]
     },
@@ -143,7 +154,8 @@
             ]
           ],
           "duration": 2.0,
-          "name": "Step 1"
+          "name": "Step 1",
+          "duration_unit": "seconds"
         }
       ]
     }
