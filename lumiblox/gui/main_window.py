@@ -44,6 +44,7 @@ class LightSequenceGUI(QMainWindow):
     device_status_update_signal = Signal()
     playback_state_changed_signal = Signal(object)
     pilot_update_signal = Signal()  # For pilot updates from controller thread
+    automation_rule_fired_signal = Signal(str)
 
     def __init__(self, simulation: bool = False):
         super().__init__()
@@ -64,6 +65,7 @@ class LightSequenceGUI(QMainWindow):
         self.setMinimumSize(470, 200)
         self.resize(600, 800)
         self.setup_ui()
+        self.automation_rule_fired_signal.connect(self.pilot_widget.flash_rule)
         self.apply_dark_theme()
         self.start_controller()
 
@@ -656,7 +658,7 @@ class LightSequenceGUI(QMainWindow):
 
     def _on_automation_rule_fired(self, rule_name: str) -> None:
         """Handle rule firing notification - flash UI indicator."""
-        self.pilot_widget.flash_rule(rule_name)
+        self.automation_rule_fired_signal.emit(rule_name)
 
     # ============================================================================
     # LIFECYCLE

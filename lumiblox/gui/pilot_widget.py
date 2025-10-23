@@ -763,17 +763,16 @@ class PilotWidget(QWidget):
         if not matched_rule or not matched_rule.enabled:
             return
 
-        # Flash on
+        # Flash on briefly then restore default appearance
         self._update_rule_label(widget, matched_rule, True)
 
-        # Safe closure: capture widget and rule into defaults
         from PySide6.QtCore import QTimer
 
         def _flash_off(w=widget, r=matched_rule, rn=rule_name):
             if rn in self.rule_widgets:
                 self._update_rule_label(w, r, False)
 
-        QTimer.singleShot(200, _flash_off)
+        QTimer.singleShot(500, _flash_off)
 
     def _on_preset_changed(self, index: int) -> None:
         """Handle preset selection change."""

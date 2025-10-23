@@ -278,6 +278,7 @@ class PilotController:
 
             # Reset duration tracking if phrase type changed
             if new_type != old_type:
+                previous_phrase_bars = self.phrase_bars_elapsed
                 self.current_phrase_type = new_type
                 current_bar = (
                     self.clock_sync.get_current_position()[2]
@@ -289,6 +290,17 @@ class PilotController:
                 logger.info(
                     f"Phrase changed: {old_type} → {new_type}, reset duration tracking"
                 )
+
+                if self.rule_engine:
+                    self.rule_engine.notify_phrase_change(
+                        new_phrase_type=new_type,
+                        previous_phrase_type=old_type,
+                        previous_phrase_bars=previous_phrase_bars,
+                        change_bar=current_bar,
+                    )
+                    active_preset = self.preset_manager.get_active_preset()
+                    if active_preset:
+                        self.rule_engine.evaluate_preset(active_preset)
 
         # Forward to user callback
         if self.on_phrase_callback:

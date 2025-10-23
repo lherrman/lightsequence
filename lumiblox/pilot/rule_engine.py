@@ -14,6 +14,7 @@ from lumiblox.pilot.pilot_preset import (
     AutomationRule,
     SequenceChoice,
     ActionType,
+    ConditionType,
 )
 
 logger = logging.getLogger(__name__)
@@ -43,37 +44,52 @@ class RuleEngine:
         self.bars_elapsed: int = 0
         self.previous_phrase_bars: int = 0  # Duration of previous phrase
         self.current_bar: int = 0
+        self._pending_change_bar: Optional[int] = None
+        self._pending_change_previous_type: Optional[str] = None
+        self._pending_change_previous_bars: int = 0
 
         # Cooldown tracking: rule_name -> last_bar_executed
         self.rule_cooldowns: Dict[str, int] = {}
 
     def update_state(
         self,
-        current_phrase_type: str,
+        current_phrase_type: Optional[str],
         bars_elapsed: int,
         current_bar: int,
     ) -> None:
-        """
-        Update engine state.
-
-        Args:
-            current_phrase_type: Current phrase type ("body" or "breakdown")
-            bars_elapsed: Bars in current phrase type
-            current_bar: Absolute bar index
-        """
-        # Detect phrase type change
-        if current_phrase_type != self.current_phrase_type:
-            # Save duration of previous phrase
-            self.previous_phrase_bars = self.bars_elapsed
-            self.previous_phrase_type = self.current_phrase_type
-            self.current_phrase_type = current_phrase_type
-            logger.debug(
-                f"Phrase changed: {self.previous_phrase_type} ({self.previous_phrase_bars} bars) "
-                f"→ {self.current_phrase_type}"
-            )
-
+        """Update bar-related state."""
+        self.current_phrase_type = current_phrase_type
         self.bars_elapsed = bars_elapsed
         self.current_bar = current_bar
+
+        # Once a change has been processed we track the current type as the new "previous" baseline
+        if self._pending_change_bar is None:
+            self.previous_phrase_type = current_phrase_type
+
+    def notify_phrase_change(
+        self,
+        new_phrase_type: Optional[str],
+        previous_phrase_type: Optional[str],
+        previous_phrase_bars: int,
+        change_bar: int,
+    ) -> None:
+        """Record a phrase change detected at the phrase boundary."""
+        if new_phrase_type is None:
+            logger.debug("Phrase change notification ignored (no new phrase type)")
+            self.current_phrase_type = None
+            self._pending_change_bar = None
+            self._pending_change_previous_type = None
+            self._pending_change_previous_bars = 0
+            return
+
+        self.current_phrase_type = new_phrase_type
+        self.previous_phrase_type = previous_phrase_type
+        self.previous_phrase_bars = previous_phrase_bars
+        self.bars_elapsed = 0
+        self.current_bar = change_bar
+        self._pending_change_bar = change_bar
+        self._pending_change_previous_type = previous_phrase_type
+        self._pending_change_previous_bars = previous_phrase_bars
 
     def evaluate_preset(self, preset: PilotPreset) -> None:
         """
@@ -97,6 +113,22 @@ class RuleEngine:
             f"bar: {self.current_bar}"
         )
 
+        phrase_just_changed = (
+            self._pending_change_bar is not None
+            and self.current_bar == self._pending_change_bar
+        )
+
+        previous_phrase_type = (
+            self._pending_change_previous_type
+            if phrase_just_changed
+            else self.previous_phrase_type
+        )
+        previous_phrase_bars = (
+            self._pending_change_previous_bars
+            if phrase_just_changed
+            else self.previous_phrase_bars
+        )
+
         for rule in preset.rules:
             if not rule.enabled:
                 logger.debug(f"Rule '{rule.name}' disabled, skipping")
@@ -114,6 +146,15 @@ class RuleEngine:
                     continue
 
             # Evaluate condition
+            if (
+                rule.condition.condition_type == ConditionType.ON_PHRASE_CHANGE
+                and not phrase_just_changed
+            ):
+                logger.debug(
+                    f"Rule '{rule.name}' waiting for phrase boundary (on change condition)"
+                )
+                continue
+
             logger.debug(
                 f"Evaluating rule '{rule.name}': "
                 f"type={rule.condition.condition_type.value}, "
@@ -123,9 +164,9 @@ class RuleEngine:
 
             if rule.condition.evaluate(
                 self.current_phrase_type,
-                self.previous_phrase_type,
+                previous_phrase_type,
                 self.bars_elapsed,
-                self.previous_phrase_bars,
+                previous_phrase_bars,
             ):
                 logger.info(f"🔥 Rule FIRED: {rule.name}")
 
@@ -137,6 +178,12 @@ class RuleEngine:
                 self.rule_cooldowns[rule.name] = self.current_bar
             else:
                 logger.debug(f"Rule '{rule.name}' condition not met")
+
+        if phrase_just_changed:
+            self._pending_change_bar = None
+            self._pending_change_previous_type = None
+            self._pending_change_previous_bars = 0
+            self.previous_phrase_type = self.current_phrase_type
 
     def _execute_action(self, rule: AutomationRule) -> None:
         """

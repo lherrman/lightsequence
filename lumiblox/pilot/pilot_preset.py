@@ -115,6 +115,8 @@ class RuleCondition:
 
         elif self.condition_type == ConditionType.ON_PHRASE_CHANGE:
             # Check if phrase type just changed
+            if previous_phrase_type is None:
+                return False
             if previous_phrase_type == current_phrase_type:
                 return False
 

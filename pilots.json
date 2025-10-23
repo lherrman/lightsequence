@@ -6,41 +6,37 @@
       "enabled": true,
       "rules": [
         {
-          "name": "Breakdown Every 16 Bars",
-          "enabled": true,
-          "condition": {
-            "condition_type": "after_phrase_type",
-            "phrase_type": "breakdown",
-            "duration_bars": 4
-          },
-          "action": {
-            "action_type": "activate_sequence",
-            "sequences": [
-              {
-                "sequence_index": "0.0",
-                "weight": 0.5
-              },
-              {
-                "sequence_index": "1.0",
-                "weight": 0.5
-              }
-            ]
-          },
-          "cooldown_bars": 1
-        },
-        {
-          "name": "On phrase change",
+          "name": "On Breakdown",
           "enabled": true,
           "condition": {
             "condition_type": "on_phrase_change",
-            "phrase_type": null,
-            "duration_bars": 4
+            "phrase_type": "breakdown",
+            "duration_bars": 8
           },
           "action": {
             "action_type": "activate_sequence",
             "sequences": [
               {
                 "sequence_index": "0.0",
+                "weight": 1.0
+              }
+            ]
+          },
+          "cooldown_bars": 0
+        },
+        {
+          "name": "On Drop",
+          "enabled": true,
+          "condition": {
+            "condition_type": "on_phrase_change",
+            "phrase_type": "body",
+            "duration_bars": 8
+          },
+          "action": {
+            "action_type": "activate_sequence",
+            "sequences": [
+              {
+                "sequence_index": "1.0",
                 "weight": 1.0
               }
             ]
