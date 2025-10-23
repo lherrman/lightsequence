@@ -73,7 +73,7 @@ class LightSequenceGUI(QMainWindow):
 
         # Main vertical layout - device status, pilot, sequence editor, preset grid
         main_layout = QVBoxLayout(central_widget)
-        
+
         # === Device Status Bar (Top) ===
         self.device_status_bar = DeviceStatusBar()
         main_layout.addWidget(self.device_status_bar)
@@ -83,10 +83,16 @@ class LightSequenceGUI(QMainWindow):
         self.pilot_widget.setMinimumHeight(300)
         self.pilot_widget.setMaximumHeight(300)
         # Connect pilot signals
-        self.pilot_widget.pilot_enable_requested.connect(self._on_pilot_enable_requested)
-        self.pilot_widget.phrase_detection_enable_requested.connect(self._on_phrase_detection_enable_requested)
+        self.pilot_widget.pilot_enable_requested.connect(
+            self._on_pilot_enable_requested
+        )
+        self.pilot_widget.phrase_detection_enable_requested.connect(
+            self._on_phrase_detection_enable_requested
+        )
         self.pilot_widget.align_requested.connect(self._on_align_requested)
-        self.pilot_widget.deck_region_configured.connect(self._on_deck_region_configured)
+        self.pilot_widget.deck_region_configured.connect(
+            self._on_deck_region_configured
+        )
         main_layout.addWidget(self.pilot_widget)  # No stretch, fixed height
 
         # === Sequence Editor (Takes remaining space) ===
@@ -269,33 +275,41 @@ class LightSequenceGUI(QMainWindow):
         """Called when controller is ready."""
         if self.controller_thread:
             self.controller = self.controller_thread.controller
-            
+
             # Set up pilot update callback
             if self.controller_thread.pilot_controller:
-                self.controller_thread.pilot_update_callback = lambda: self.pilot_update_signal.emit()
-            
+                self.controller_thread.pilot_update_callback = (
+                    lambda: self.pilot_update_signal.emit()
+                )
+
             # Set up callbacks for sequence changes and saves
             if self.controller:
                 self.controller.on_sequence_changed = self.on_launchpad_sequence_changed
                 self.controller.on_sequence_saved = self.on_sequence_saved
-                
+
                 # Register playback state change callback
-                if hasattr(self.controller, 'sequence_ctrl'):
-                    self.controller.sequence_ctrl.on_playback_state_change = self.on_playback_state_changed
-                    
+                if hasattr(self.controller, "sequence_ctrl"):
+                    self.controller.sequence_ctrl.on_playback_state_change = (
+                        self.on_playback_state_changed
+                    )
+
                     # Update initial playback state
                     from lumiblox.controller.sequence_controller import PlaybackState
-                    is_playing = self.controller.sequence_ctrl.playback_state == PlaybackState.PLAYING
+
+                    is_playing = (
+                        self.controller.sequence_ctrl.playback_state
+                        == PlaybackState.PLAYING
+                    )
                     self.playback_controls.set_playing(is_playing)
-                
+
                 # Register device state change callback
-                if hasattr(self.controller, 'device_manager'):
+                if hasattr(self.controller, "device_manager"):
                     self.controller.device_manager.register_state_change_callback(
                         self._on_device_state_changed
                     )
                     # Update initial device statuses
                     self._update_device_status_display()
-                    
+
             self.statusBar().showMessage("Controller connected successfully")
             self.refresh_presets()
 
@@ -362,7 +376,7 @@ class LightSequenceGUI(QMainWindow):
             button_type=ButtonType.SEQUENCE,
             coordinates=sequence_tuple,
             pressed=True,
-            source="gui"
+            source="gui",
         )
         self.controller.input_handler.handle_button_event(event)
 
@@ -380,12 +394,16 @@ class LightSequenceGUI(QMainWindow):
         self.current_editor = PresetSequenceEditor(preset_index, self.controller)
         self.editor_layout.addWidget(self.current_editor)
 
-    def on_launchpad_sequence_changed(self, sequence_coords: t.Optional[t.Tuple[int, int]]):
+    def on_launchpad_sequence_changed(
+        self, sequence_coords: t.Optional[t.Tuple[int, int]]
+    ):
         """Called when sequence selection changes on the launchpad."""
         # Emit signal to handle on GUI thread
         self.sequence_changed_signal.emit(sequence_coords)
 
-    def _update_sequence_from_launchpad(self, sequence_coords: t.Optional[t.Tuple[int, int]]):
+    def _update_sequence_from_launchpad(
+        self, sequence_coords: t.Optional[t.Tuple[int, int]]
+    ):
         """Update sequence selection from launchpad (runs on GUI thread)."""
         self._updating_from_launchpad = True
         try:
@@ -408,27 +426,27 @@ class LightSequenceGUI(QMainWindow):
                 self.show_sequence_editor(sequence_coords)
         finally:
             self._updating_from_launchpad = False
-    
+
     # ============================================================================
     # DEVICE STATUS
     # ============================================================================
-    
+
     def _on_device_state_changed(self, device_type: DeviceType, new_state):
         """Handle device state changes (called from device manager)."""
         # Emit signal to update GUI on main thread
         self.device_status_update_signal.emit()
-    
+
     def _update_device_status_display(self):
         """Update device status indicators in GUI."""
-        if not self.controller or not hasattr(self.controller, 'device_manager'):
+        if not self.controller or not hasattr(self.controller, "device_manager"):
             return
-        
+
         device_manager = self.controller.device_manager
-        
+
         # Update Launchpad status
         launchpad_state = device_manager.get_state(DeviceType.LAUNCHPAD)
         self.device_status_bar.update_launchpad_status(launchpad_state)
-        
+
         # Update LightSoftware status
         lightsw_state = device_manager.get_state(DeviceType.LIGHT_SOFTWARE)
         self.device_status_bar.update_lightsw_status(lightsw_state)
@@ -436,36 +454,36 @@ class LightSequenceGUI(QMainWindow):
     # ============================================================================
     # PLAYBACK CONTROLS
     # ============================================================================
-    
+
     def on_playback_state_changed(self, state):
         """Called when playback state changes (from any source - launchpad or GUI)."""
         # Use signal for thread-safe GUI update
         self.playback_state_changed_signal.emit(state)
-    
+
     def _update_playback_controls(self, is_playing: bool):
         """Update playback controls based on state (runs on GUI thread)."""
         self.playback_controls.set_playing(is_playing)
-    
+
     def on_play_pause_clicked(self):
         """Handle play/pause button click."""
         if not self.controller:
             return
         self.controller.sequence_ctrl.toggle_play_pause()
-    
+
     def on_next_step_clicked(self):
         """Handle next step button click."""
         if not self.controller:
             return
         self.controller.sequence_ctrl.next_step()
-    
+
     def on_clear_clicked(self):
         """Handle clear button click."""
         if not self.controller:
             return
-        
+
         # Clear sequence
         self.controller.sequence_ctrl.clear()
-        
+
         # Update controller state
         if self.controller.active_sequence:
             old_seq = self.controller.active_sequence
@@ -478,13 +496,15 @@ class LightSequenceGUI(QMainWindow):
     # ============================================================================
     # PILOT CONTROL
     # ============================================================================
-    
+
     def _on_pilot_enable_requested(self, enabled: bool) -> None:
         """Handle pilot enable/disable request from GUI."""
-        if not self.controller_thread or not hasattr(self.controller_thread, 'pilot_controller'):
+        if not self.controller_thread or not hasattr(
+            self.controller_thread, "pilot_controller"
+        ):
             logger.warning("Pilot controller not available")
             return
-        
+
         pilot = self.controller_thread.pilot_controller
         if enabled:
             # Try to start the pilot
@@ -494,16 +514,18 @@ class LightSequenceGUI(QMainWindow):
                 QMessageBox.warning(
                     self,
                     "Pilot Error",
-                    "Failed to start pilot. Check MIDI device connection."
+                    "Failed to start pilot. Check MIDI device connection.",
                 )
         else:
             pilot.stop()
-    
+
     def _on_phrase_detection_enable_requested(self, enabled: bool) -> None:
         """Handle phrase detection enable/disable request from GUI."""
-        if not self.controller_thread or not hasattr(self.controller_thread, 'pilot_controller'):
+        if not self.controller_thread or not hasattr(
+            self.controller_thread, "pilot_controller"
+        ):
             return
-        
+
         pilot = self.controller_thread.pilot_controller
         if enabled:
             success = pilot.enable_phrase_detection()
@@ -512,55 +534,67 @@ class LightSequenceGUI(QMainWindow):
                 QMessageBox.warning(
                     self,
                     "Phrase Detection Error",
-                    "Failed to enable phrase detection. Check configuration."
+                    "Failed to enable phrase detection. Check configuration.",
                 )
         else:
             pilot.disable_phrase_detection()
-    
+
     def _on_align_requested(self) -> None:
         """Handle manual alignment request from GUI."""
-        if not self.controller_thread or not hasattr(self.controller_thread, 'pilot_controller'):
+        if not self.controller_thread or not hasattr(
+            self.controller_thread, "pilot_controller"
+        ):
             return
-        
+
         pilot = self.controller_thread.pilot_controller
         pilot.align_to_beat()
-    
-    def _on_deck_region_configured(self, deck_name: str, region_type: str, region: CaptureRegion) -> None:
+
+    def _on_deck_region_configured(
+        self, deck_name: str, region_type: str, region: CaptureRegion
+    ) -> None:
         """Handle deck region configuration from GUI."""
-        if not self.controller_thread or not hasattr(self.controller_thread, 'pilot_controller'):
+        if not self.controller_thread or not hasattr(
+            self.controller_thread, "pilot_controller"
+        ):
             return
-        
+
         pilot = self.controller_thread.pilot_controller
-        
+
         if region_type == "button":
             pilot.configure_deck(deck_name, master_button_region=region)
         elif region_type == "timeline":
             pilot.configure_deck(deck_name, timeline_region=region)
-        
+
         logger.info(f"Configured deck {deck_name} {region_type} region")
-    
+
     def _update_pilot_display(self) -> None:
         """Update pilot widget display (called on main thread)."""
-        if not self.controller_thread or not hasattr(self.controller_thread, 'pilot_controller'):
+        if not self.controller_thread or not hasattr(
+            self.controller_thread, "pilot_controller"
+        ):
             return
-        
+
         pilot = self.controller_thread.pilot_controller
-        
+
         # Update progress and position
         if pilot.is_aligned():
             progress = pilot.get_phrase_progress()
             self.pilot_widget.update_phrase_progress(progress)
-            
-            beat_in_bar, bar_in_phrase, bar_index, phrase_index = pilot.get_current_position()
-            self.pilot_widget.update_position(beat_in_bar, bar_in_phrase, bar_index, phrase_index)
+
+            beat_in_bar, bar_in_phrase, bar_index, phrase_index = (
+                pilot.get_current_position()
+            )
+            self.pilot_widget.update_position(
+                beat_in_bar, bar_in_phrase, bar_index, phrase_index
+            )
         else:
             self.pilot_widget.set_not_aligned()
-        
+
         # Update phrase type
         current_type = pilot.get_current_phrase_type()
         next_type = pilot.get_detected_phrase_type()
         self.pilot_widget.update_phrase_type(current_type, next_type)
-        
+
         # Update status
         state = pilot.get_state()
         bpm = pilot.get_bpm()

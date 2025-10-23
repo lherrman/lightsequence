@@ -39,10 +39,10 @@ class ControllerThread(QThread):
             self.controller = LightController(simulation=self.simulation)
             # Initialize hardware connections (non-blocking)
             self.controller.initialize()
-            
+
             # Initialize pilot controller
             self._initialize_pilot()
-            
+
             # Always emit ready signal - app works without hardware
             self.controller_ready.emit()
 
@@ -57,7 +57,7 @@ class ControllerThread(QThread):
 
                     # Update outputs
                     self.controller._update_leds()
-                    
+
                     # Poll pilot controller for MIDI clock
                     if self.pilot_controller:
                         self.pilot_controller.poll()
@@ -81,22 +81,24 @@ class ControllerThread(QThread):
                     logger.error(f"Error stopping pilot: {e}")
             if self.controller:
                 self.controller.cleanup()
-    
+
     def _initialize_pilot(self) -> None:
         """Initialize the pilot controller with configuration."""
         try:
             config_manager = get_config()
             pilot_config = config_manager.data.get("pilot", {})
-            
+
             # Always create pilot controller (so GUI can interact with it)
             # but it won't auto-start if disabled in config
             midiclock_device = pilot_config.get("midiclock_device", "midiclock")
             self.pilot_controller = PilotController(
                 midiclock_device=midiclock_device,
                 on_bpm_change=lambda bpm: logger.info(f"BPM: {bpm:.2f}"),
-                on_phrase_type_change=lambda phrase_type: logger.info(f"Phrase type: {phrase_type}"),
+                on_phrase_type_change=lambda phrase_type: logger.info(
+                    f"Phrase type: {phrase_type}"
+                ),
             )
-            
+
             # Configure zero signal if enabled
             zero_signal = pilot_config.get("zero_signal", {})
             if zero_signal.get("enabled", False):
@@ -105,26 +107,28 @@ class ControllerThread(QThread):
                     data1=zero_signal.get("data1"),
                     data2=zero_signal.get("data2"),
                 )
-            
+
             # Load model and templates
             model_path = pilot_config.get("model_path")
             template_dir = pilot_config.get("template_dir")
-            
+
             if model_path and Path(model_path).exists():
                 self.pilot_controller.load_classifier_model(model_path)
             else:
                 logger.warning(f"Model file not found: {model_path}")
-            
+
             if template_dir and Path(template_dir).exists():
                 self.pilot_controller.load_deck_templates(template_dir)
             else:
                 logger.warning(f"Template directory not found: {template_dir}")
-            
+
             if pilot_config.get("enabled", False):
                 logger.info("Pilot controller initialized (enabled in config)")
             else:
-                logger.info("Pilot controller initialized (disabled in config - enable in GUI to use)")
-            
+                logger.info(
+                    "Pilot controller initialized (disabled in config - enable in GUI to use)"
+                )
+
         except Exception as e:
             logger.error(f"Failed to initialize pilot: {e}")
             self.pilot_controller = None

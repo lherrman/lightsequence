@@ -233,12 +233,12 @@ class ConfigManager:
     def reload_config(self) -> None:
         """Reload configuration from file."""
         self.data = self._load_or_create_config()
-    
+
     def save(self) -> None:
         """Save current configuration to file."""
         self._save_config(self.data)
         logger.info(f"Saved configuration to {self.config_file}")
-    
+
     def set_pilot_enabled(self, enabled: bool) -> None:
         """Set pilot enabled state and save to config."""
         if "pilot" not in self.data:

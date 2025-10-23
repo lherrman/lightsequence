@@ -85,7 +85,9 @@ class PhraseDetector:
         if mss is None:
             raise RuntimeError("mss library is required for screen capture")
         if cv is None or Image is None:
-            raise RuntimeError("opencv-python and Pillow are required for image processing")
+            raise RuntimeError(
+                "opencv-python and Pillow are required for image processing"
+            )
         if joblib is None:
             raise RuntimeError("joblib is required for loading SVM model")
 
@@ -257,7 +259,9 @@ class PhraseDetector:
                 deck.is_master = is_on
 
                 if is_on:
-                    logger.debug(f"Deck {deck_name} is active (dist_on={dist_on:.1f}, dist_off={dist_off:.1f})")
+                    logger.debug(
+                        f"Deck {deck_name} is active (dist_on={dist_on:.1f}, dist_off={dist_off:.1f})"
+                    )
                     return deck_name
 
             except Exception as e:
@@ -348,7 +352,10 @@ class PhraseDetector:
         Commit the detected phrase change (call at phrase boundary).
         Triggers the on_phrase_change callback if the phrase type changed.
         """
-        if self.detected_phrase_type and self.detected_phrase_type != self.current_phrase_type:
+        if (
+            self.detected_phrase_type
+            and self.detected_phrase_type != self.current_phrase_type
+        ):
             self.current_phrase_type = self.detected_phrase_type
             logger.info(f"Phrase changed to: {self.current_phrase_type}")
             if self.on_phrase_change:

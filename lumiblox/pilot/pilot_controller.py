@@ -95,7 +95,9 @@ class PilotController:
         # Start phrase detection if requested
         if enable_phrase_detection:
             if not self.enable_phrase_detection():
-                logger.warning("Failed to enable phrase detection, continuing with sync only")
+                logger.warning(
+                    "Failed to enable phrase detection, continuing with sync only"
+                )
 
         logger.info(f"Pilot started (state: {self.state.value})")
         return True
@@ -120,7 +122,9 @@ class PilotController:
             return False
 
         if not self.phrase_detector.is_ready():
-            logger.error("Phrase detector not ready (model/templates/regions not configured)")
+            logger.error(
+                "Phrase detector not ready (model/templates/regions not configured)"
+            )
             return False
 
         self.phrase_detection_enabled = True
@@ -139,7 +143,10 @@ class PilotController:
 
     # Configuration ---------------------------------------------------------
     def configure_zero_signal(
-        self, status: Optional[int] = None, data1: Optional[int] = None, data2: Optional[int] = None
+        self,
+        status: Optional[int] = None,
+        data1: Optional[int] = None,
+        data2: Optional[int] = None,
     ) -> None:
         """Configure MIDI signal for auto-alignment."""
         self.clock_sync.set_zero_signal(status, data1, data2)
@@ -193,7 +200,10 @@ class PilotController:
             phrase_index = bar_index // 8
 
             # Detect at 7th bar (index 6) of each new phrase
-            if bar_in_phrase == self.detection_bar and phrase_index != self.last_detection_phrase:
+            if (
+                bar_in_phrase == self.detection_bar
+                and phrase_index != self.last_detection_phrase
+            ):
                 self.last_detection_phrase = phrase_index
                 self.phrase_detector.update_phrase_detection()
 

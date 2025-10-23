@@ -36,7 +36,9 @@ class RegionSelectorOverlay(QWidget):
     selection_cancelled = Signal()
 
     def __init__(self) -> None:
-        super().__init__(None, Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint | Qt.Tool)
+        super().__init__(
+            None, Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint | Qt.Tool
+        )
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setWindowState(Qt.WindowFullScreen)
         self.setCursor(Qt.CrossCursor)
@@ -96,7 +98,9 @@ class PilotWidget(QWidget):
     pilot_enable_requested = Signal(bool)
     phrase_detection_enable_requested = Signal(bool)
     align_requested = Signal()
-    deck_region_configured = Signal(str, str, CaptureRegion)  # deck, region_type, region
+    deck_region_configured = Signal(
+        str, str, CaptureRegion
+    )  # deck, region_type, region
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
@@ -162,7 +166,9 @@ class PilotWidget(QWidget):
 
         # Next phrase indicator
         self.next_phrase_label = QLabel("Next: —")
-        self.next_phrase_label.setStyleSheet("color: #888888; font-size: 11px; padding: 2px;")
+        self.next_phrase_label.setStyleSheet(
+            "color: #888888; font-size: 11px; padding: 2px;"
+        )
         self.next_phrase_label.setAlignment(Qt.AlignCenter)
         phrase_layout.addWidget(self.next_phrase_label)
 
@@ -174,10 +180,14 @@ class PilotWidget(QWidget):
 
         # Enable pilot in config checkbox
         self.enable_pilot_checkbox = QCheckBox("Enable Pilot in Config")
-        self.enable_pilot_checkbox.setToolTip("Enable/disable pilot system in configuration (requires restart)")
-        self.enable_pilot_checkbox.clicked.connect(self._on_enable_pilot_checkbox_changed)
+        self.enable_pilot_checkbox.setToolTip(
+            "Enable/disable pilot system in configuration (requires restart)"
+        )
+        self.enable_pilot_checkbox.clicked.connect(
+            self._on_enable_pilot_checkbox_changed
+        )
         control_layout.addWidget(self.enable_pilot_checkbox)
-        
+
         # Load initial state from config
         try:
             config = get_config()
@@ -272,12 +282,14 @@ class PilotWidget(QWidget):
         try:
             config = get_config()
             config.set_pilot_enabled(checked)
-            logger.info(f"Pilot {'enabled' if checked else 'disabled'} in configuration")
+            logger.info(
+                f"Pilot {'enabled' if checked else 'disabled'} in configuration"
+            )
         except Exception as e:
             logger.error(f"Failed to update pilot config: {e}")
             # Revert checkbox state on error
             self.enable_pilot_checkbox.setChecked(not checked)
-    
+
     def _on_pilot_toggle(self, checked: bool) -> None:
         """Handle pilot enable/disable."""
         self.pilot_enabled = checked
@@ -357,7 +369,9 @@ class PilotWidget(QWidget):
         """
         self.phrase_progress_bar.setValue(int(progress * 100))
 
-    def update_position(self, beat_in_bar: int, bar_in_phrase: int, bar_index: int, phrase_index: int) -> None:
+    def update_position(
+        self, beat_in_bar: int, bar_in_phrase: int, bar_index: int, phrase_index: int
+    ) -> None:
         """
         Update the position display.
 
@@ -371,7 +385,9 @@ class PilotWidget(QWidget):
             f"Phrase {phrase_index + 1} | Bar {bar_in_phrase + 1}/8 | Beat {beat_in_bar + 1}/4"
         )
 
-    def update_phrase_type(self, current_type: Optional[str], next_type: Optional[str] = None) -> None:
+    def update_phrase_type(
+        self, current_type: Optional[str], next_type: Optional[str] = None
+    ) -> None:
         """
         Update the phrase type display.
 
@@ -400,12 +416,18 @@ class PilotWidget(QWidget):
 
         if next_type and next_type != current_type:
             self.next_phrase_label.setText(f"Next: {next_type.upper()}")
-            self.next_phrase_label.setStyleSheet("color: #ffaa00; font-size: 11px; padding: 2px;")
+            self.next_phrase_label.setStyleSheet(
+                "color: #ffaa00; font-size: 11px; padding: 2px;"
+            )
         else:
             self.next_phrase_label.setText("Next: —")
-            self.next_phrase_label.setStyleSheet("color: #888888; font-size: 11px; padding: 2px;")
+            self.next_phrase_label.setStyleSheet(
+                "color: #888888; font-size: 11px; padding: 2px;"
+            )
 
-    def update_status(self, pilot_state: str, bpm: Optional[float] = None, aligned: bool = False) -> None:
+    def update_status(
+        self, pilot_state: str, bpm: Optional[float] = None, aligned: bool = False
+    ) -> None:
         """
         Update the status label.
 
