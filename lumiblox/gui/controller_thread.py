@@ -2,15 +2,19 @@
 Controller Thread
 
 Manages the LightController in a separate thread to prevent GUI blocking.
+Also manages the PilotController for MIDI clock sync and phrase detection.
 """
 
 import logging
 import time
 import typing as t
+from pathlib import Path
 
 from PySide6.QtCore import QThread, Signal
 
 from lumiblox.controller.light_controller import LightController
+from lumiblox.pilot.pilot_controller import PilotController
+from lumiblox.common.config import get_config
 
 logger = logging.getLogger(__name__)
 
@@ -24,8 +28,10 @@ class ControllerThread(QThread):
     def __init__(self, simulation: bool = False):
         super().__init__()
         self.controller: t.Optional[LightController] = None
+        self.pilot_controller: t.Optional[PilotController] = None
         self.should_stop = False
         self.simulation = simulation
+        self.pilot_update_callback: t.Optional[t.Callable[[], None]] = None
 
     def run(self):
         """Run the controller in a separate thread."""
@@ -33,6 +39,9 @@ class ControllerThread(QThread):
             self.controller = LightController(simulation=self.simulation)
             # Initialize hardware connections (non-blocking)
             self.controller.initialize()
+            
+            # Initialize pilot controller
+            self._initialize_pilot()
             
             # Always emit ready signal - app works without hardware
             self.controller_ready.emit()
@@ -48,8 +57,15 @@ class ControllerThread(QThread):
 
                     # Update outputs
                     self.controller._update_leds()
+                    
+                    # Poll pilot controller for MIDI clock
+                    if self.pilot_controller:
+                        self.pilot_controller.poll()
+                        # Trigger GUI update if callback is set
+                        if self.pilot_update_callback:
+                            self.pilot_update_callback()
 
-                    time.sleep(0.02)  # Small delay to prevent excessive CPU usage
+                    time.sleep(0.001)  # 1ms for MIDI clock polling
                 except Exception as e:
                     logger.error(f"Error in controller loop: {e}")
                     # Continue running instead of breaking to prevent crashes
@@ -58,8 +74,60 @@ class ControllerThread(QThread):
         except Exception as e:
             self.controller_error.emit(f"Controller error: {e}")
         finally:
+            if self.pilot_controller:
+                try:
+                    self.pilot_controller.stop()
+                except Exception as e:
+                    logger.error(f"Error stopping pilot: {e}")
             if self.controller:
                 self.controller.cleanup()
+    
+    def _initialize_pilot(self) -> None:
+        """Initialize the pilot controller with configuration."""
+        try:
+            config_manager = get_config()
+            pilot_config = config_manager.data.get("pilot", {})
+            
+            # Always create pilot controller (so GUI can interact with it)
+            # but it won't auto-start if disabled in config
+            midiclock_device = pilot_config.get("midiclock_device", "midiclock")
+            self.pilot_controller = PilotController(
+                midiclock_device=midiclock_device,
+                on_bpm_change=lambda bpm: logger.info(f"BPM: {bpm:.2f}"),
+                on_phrase_type_change=lambda phrase_type: logger.info(f"Phrase type: {phrase_type}"),
+            )
+            
+            # Configure zero signal if enabled
+            zero_signal = pilot_config.get("zero_signal", {})
+            if zero_signal.get("enabled", False):
+                self.pilot_controller.configure_zero_signal(
+                    status=zero_signal.get("status"),
+                    data1=zero_signal.get("data1"),
+                    data2=zero_signal.get("data2"),
+                )
+            
+            # Load model and templates
+            model_path = pilot_config.get("model_path")
+            template_dir = pilot_config.get("template_dir")
+            
+            if model_path and Path(model_path).exists():
+                self.pilot_controller.load_classifier_model(model_path)
+            else:
+                logger.warning(f"Model file not found: {model_path}")
+            
+            if template_dir and Path(template_dir).exists():
+                self.pilot_controller.load_deck_templates(template_dir)
+            else:
+                logger.warning(f"Template directory not found: {template_dir}")
+            
+            if pilot_config.get("enabled", False):
+                logger.info("Pilot controller initialized (enabled in config)")
+            else:
+                logger.info("Pilot controller initialized (disabled in config - enable in GUI to use)")
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize pilot: {e}")
+            self.pilot_controller = None
 
     def stop(self):
         """Stop the controller thread."""

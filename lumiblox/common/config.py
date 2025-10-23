@@ -130,6 +130,36 @@ class ConfigManager:
             "background_brightness_down": {"button_type": "TOP", "coordinates": [5, 0]},
             "background_brightness_up": {"button_type": "TOP", "coordinates": [6, 0]},
         },
+        "pilot": {
+            "enabled": False,
+            "midiclock_device": "midiclock",
+            "zero_signal": {
+                "enabled": False,
+                "status": 144,
+                "data1": 60,
+                "data2": None,
+            },
+            "model_path": "pilot-tests/resources/traktor/classifier_traktor.pkl",
+            "template_dir": "pilot-tests/resources/traktor",
+            "decks": {
+                "A": {
+                    "master_button_region": None,
+                    "timeline_region": None,
+                },
+                "B": {
+                    "master_button_region": None,
+                    "timeline_region": None,
+                },
+                "C": {
+                    "master_button_region": None,
+                    "timeline_region": None,
+                },
+                "D": {
+                    "master_button_region": None,
+                    "timeline_region": None,
+                },
+            },
+        },
     }
 
     def __init__(self, config_file: Optional[Path] = None):
@@ -203,6 +233,19 @@ class ConfigManager:
     def reload_config(self) -> None:
         """Reload configuration from file."""
         self.data = self._load_or_create_config()
+    
+    def save(self) -> None:
+        """Save current configuration to file."""
+        self._save_config(self.data)
+        logger.info(f"Saved configuration to {self.config_file}")
+    
+    def set_pilot_enabled(self, enabled: bool) -> None:
+        """Set pilot enabled state and save to config."""
+        if "pilot" not in self.data:
+            self.data["pilot"] = self.DEFAULT_CONFIG.get("pilot", {}).copy()
+        self.data["pilot"]["enabled"] = enabled
+        self.save()
+        logger.info(f"Pilot {'enabled' if enabled else 'disabled'} in configuration")
 
 
 # Global config manager instance

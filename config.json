@@ -89,5 +89,35 @@
             ]
         }
     },
+    "pilot": {
+        "decks": {
+            "A": {
+                "master_button_region": null,
+                "timeline_region": null
+            },
+            "B": {
+                "master_button_region": null,
+                "timeline_region": null
+            },
+            "C": {
+                "master_button_region": null,
+                "timeline_region": null
+            },
+            "D": {
+                "master_button_region": null,
+                "timeline_region": null
+            }
+        },
+        "enabled": false,
+        "midiclock_device": "midiclock",
+        "model_path": "pilot-tests/resources/traktor/classifier_traktor.pkl",
+        "template_dir": "pilot-tests/resources/traktor",
+        "zero_signal": {
+            "data1": 60,
+            "data2": null,
+            "enabled": false,
+            "status": 144
+        }
+    },
     "scene_on_color_from_column": true
 }

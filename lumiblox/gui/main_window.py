@@ -26,8 +26,10 @@ from lumiblox.gui.device_status import DeviceStatusBar
 from lumiblox.gui.widgets import PresetButton
 from lumiblox.gui.sequence_editor import PresetSequenceEditor
 from lumiblox.gui.playback_controls import PlaybackControls
+from lumiblox.gui.pilot_widget import PilotWidget
 from lumiblox.controller.input_handler import ButtonEvent, ButtonType
 from lumiblox.common.device_state import DeviceType
+from lumiblox.pilot.phrase_detector import CaptureRegion
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -41,6 +43,7 @@ class LightSequenceGUI(QMainWindow):
     sequence_saved_signal = Signal()
     device_status_update_signal = Signal()
     playback_state_changed_signal = Signal(object)
+    pilot_update_signal = Signal()  # For pilot updates from controller thread
 
     def __init__(self, simulation: bool = False):
         super().__init__()
@@ -55,6 +58,7 @@ class LightSequenceGUI(QMainWindow):
         self.sequence_saved_signal.connect(self._handle_sequence_saved)
         self.device_status_update_signal.connect(self._update_device_status_display)
         self.playback_state_changed_signal.connect(self._update_playback_controls)
+        self.pilot_update_signal.connect(self._update_pilot_display)
 
         self.setWindowTitle("Light Sequence Controller")
         self.setMinimumSize(470, 200)
@@ -74,22 +78,15 @@ class LightSequenceGUI(QMainWindow):
         self.device_status_bar = DeviceStatusBar()
         main_layout.addWidget(self.device_status_bar)
 
-        # === Pilot Widget Mock (Fixed height) ===
-        self.pilot_widget = QWidget()
+        # === Pilot Widget (Fixed height) ===
+        self.pilot_widget = PilotWidget()
         self.pilot_widget.setMinimumHeight(300)
         self.pilot_widget.setMaximumHeight(300)
-        self.pilot_widget.setStyleSheet("""
-            QWidget {
-                background-color: #1e1e1e;
-                border: 2px solid #555555;
-                border-radius: 5px;
-            }
-        """)
-        pilot_layout = QVBoxLayout(self.pilot_widget)
-        pilot_label = QLabel("🎯 Pilot Section\n(Widget to be implemented)")
-        pilot_label.setAlignment(pilot_label.alignment() | pilot_label.alignment())
-        pilot_label.setStyleSheet("color: #888888; font-size: 16px; font-weight: bold;")
-        pilot_layout.addWidget(pilot_label)
+        # Connect pilot signals
+        self.pilot_widget.pilot_enable_requested.connect(self._on_pilot_enable_requested)
+        self.pilot_widget.phrase_detection_enable_requested.connect(self._on_phrase_detection_enable_requested)
+        self.pilot_widget.align_requested.connect(self._on_align_requested)
+        self.pilot_widget.deck_region_configured.connect(self._on_deck_region_configured)
         main_layout.addWidget(self.pilot_widget)  # No stretch, fixed height
 
         # === Sequence Editor (Takes remaining space) ===
@@ -272,6 +269,11 @@ class LightSequenceGUI(QMainWindow):
         """Called when controller is ready."""
         if self.controller_thread:
             self.controller = self.controller_thread.controller
+            
+            # Set up pilot update callback
+            if self.controller_thread.pilot_controller:
+                self.controller_thread.pilot_update_callback = lambda: self.pilot_update_signal.emit()
+            
             # Set up callbacks for sequence changes and saves
             if self.controller:
                 self.controller.on_sequence_changed = self.on_launchpad_sequence_changed
@@ -472,6 +474,98 @@ class LightSequenceGUI(QMainWindow):
             self.controller.led_ctrl.update_sequence_led(old_seq, False)
             if self.controller.on_sequence_changed:
                 self.controller.on_sequence_changed(None)
+
+    # ============================================================================
+    # PILOT CONTROL
+    # ============================================================================
+    
+    def _on_pilot_enable_requested(self, enabled: bool) -> None:
+        """Handle pilot enable/disable request from GUI."""
+        if not self.controller_thread or not hasattr(self.controller_thread, 'pilot_controller'):
+            logger.warning("Pilot controller not available")
+            return
+        
+        pilot = self.controller_thread.pilot_controller
+        if enabled:
+            # Try to start the pilot
+            success = pilot.start(enable_phrase_detection=False)
+            if not success:
+                self.pilot_widget.pilot_toggle_btn.setChecked(False)
+                QMessageBox.warning(
+                    self,
+                    "Pilot Error",
+                    "Failed to start pilot. Check MIDI device connection."
+                )
+        else:
+            pilot.stop()
+    
+    def _on_phrase_detection_enable_requested(self, enabled: bool) -> None:
+        """Handle phrase detection enable/disable request from GUI."""
+        if not self.controller_thread or not hasattr(self.controller_thread, 'pilot_controller'):
+            return
+        
+        pilot = self.controller_thread.pilot_controller
+        if enabled:
+            success = pilot.enable_phrase_detection()
+            if not success:
+                self.pilot_widget.phrase_detection_btn.setChecked(False)
+                QMessageBox.warning(
+                    self,
+                    "Phrase Detection Error",
+                    "Failed to enable phrase detection. Check configuration."
+                )
+        else:
+            pilot.disable_phrase_detection()
+    
+    def _on_align_requested(self) -> None:
+        """Handle manual alignment request from GUI."""
+        if not self.controller_thread or not hasattr(self.controller_thread, 'pilot_controller'):
+            return
+        
+        pilot = self.controller_thread.pilot_controller
+        pilot.align_to_beat()
+    
+    def _on_deck_region_configured(self, deck_name: str, region_type: str, region: CaptureRegion) -> None:
+        """Handle deck region configuration from GUI."""
+        if not self.controller_thread or not hasattr(self.controller_thread, 'pilot_controller'):
+            return
+        
+        pilot = self.controller_thread.pilot_controller
+        
+        if region_type == "button":
+            pilot.configure_deck(deck_name, master_button_region=region)
+        elif region_type == "timeline":
+            pilot.configure_deck(deck_name, timeline_region=region)
+        
+        logger.info(f"Configured deck {deck_name} {region_type} region")
+    
+    def _update_pilot_display(self) -> None:
+        """Update pilot widget display (called on main thread)."""
+        if not self.controller_thread or not hasattr(self.controller_thread, 'pilot_controller'):
+            return
+        
+        pilot = self.controller_thread.pilot_controller
+        
+        # Update progress and position
+        if pilot.is_aligned():
+            progress = pilot.get_phrase_progress()
+            self.pilot_widget.update_phrase_progress(progress)
+            
+            beat_in_bar, bar_in_phrase, bar_index, phrase_index = pilot.get_current_position()
+            self.pilot_widget.update_position(beat_in_bar, bar_in_phrase, bar_index, phrase_index)
+        else:
+            self.pilot_widget.set_not_aligned()
+        
+        # Update phrase type
+        current_type = pilot.get_current_phrase_type()
+        next_type = pilot.get_detected_phrase_type()
+        self.pilot_widget.update_phrase_type(current_type, next_type)
+        
+        # Update status
+        state = pilot.get_state()
+        bpm = pilot.get_bpm()
+        aligned = pilot.is_aligned()
+        self.pilot_widget.update_status(state.value, bpm, aligned)
 
     # ============================================================================
     # LIFECYCLE

@@ -16,6 +16,10 @@ dependencies = [
     "isort>=6.1.0",
     "mss>=10.1.0",
     "qtawesome>=1.4.0",
+    "opencv-python>=4.11.0.86",
+    "pillow>=11.3.0",
+    "scikit-learn>=1.6.1",
+    "joblib>=1.5.2",
 ]
 
 [tool.uv]
