@@ -71,7 +71,7 @@ class PilotController:
 
         # Phrase detection state
         self.phrase_detection_enabled = False
-        self.detection_bar = 6  # Detect at 7th bar (0-indexed)
+        self.detection_bar = 7  # Detect at 8th bar (0-indexed), start of new phrase
         self.last_detection_phrase = -1
 
     # Lifecycle -------------------------------------------------------------
@@ -104,8 +104,16 @@ class PilotController:
 
     def stop(self) -> None:
         """Stop the pilot system."""
-        self.clock_sync.close()
-        self.phrase_detector.close()
+        try:
+            self.clock_sync.close()
+        except Exception as e:
+            logger.error(f"Error closing clock sync: {e}")
+        
+        try:
+            self.phrase_detector.close()
+        except Exception as e:
+            logger.error(f"Error closing phrase detector: {e}")
+        
         self.state = PilotState.STOPPED
         self.phrase_detection_enabled = False
         logger.info("Pilot stopped")
@@ -194,12 +202,12 @@ class PilotController:
 
     def _on_bar(self, bar_index: int) -> None:
         """Internal bar callback - triggers phrase detection."""
-        # Check if we should detect phrase type (at 7th bar of phrase)
+        # Check if we should detect phrase type (at 8th bar / start of new phrase)
         if self.phrase_detection_enabled and self.state == PilotState.FULL:
             bar_in_phrase = bar_index % 8
             phrase_index = bar_index // 8
 
-            # Detect at 7th bar (index 6) of each new phrase
+            # Detect at 8th bar (index 7) of each phrase (start of next phrase)
             if (
                 bar_in_phrase == self.detection_bar
                 and phrase_index != self.last_detection_phrase
@@ -253,6 +261,12 @@ class PilotController:
     def get_detected_phrase_type(self) -> Optional[str]:
         """Get detected next phrase type."""
         return self.phrase_detector.get_detected_phrase_type()
+
+    def get_active_deck(self) -> Optional[str]:
+        """Get the currently active deck (if detection is running)."""
+        if not self.phrase_detection_enabled:
+            return None
+        return self.phrase_detector.last_active_deck
 
     def is_phrase_detection_ready(self) -> bool:
         """Check if phrase detection is ready to use."""

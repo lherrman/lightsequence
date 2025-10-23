@@ -440,6 +440,14 @@ class PilotWidget(QWidget):
         self.position_label.setAlignment(Qt.AlignCenter)
         controls_layout.addWidget(self.position_label)
 
+        # Detection activity label (shows what classifier is doing)
+        self.detection_label = QLabel("")
+        self.detection_label.setStyleSheet(
+            "color: #00aaff; font-size: 10px; padding: 2px; font-weight: bold;"
+        )
+        self.detection_label.setAlignment(Qt.AlignCenter)
+        controls_layout.addWidget(self.detection_label)
+
         controls_layout.addStretch()
 
         content_layout.addLayout(controls_layout, 1)
@@ -725,6 +733,21 @@ class PilotWidget(QWidget):
         self.position_label.setText(
             f"P{phrase_index + 1} • {bar_in_phrase + 1}/8 • {beat_in_bar + 1}/4"
         )
+        
+        # Only show "Capturing" briefly on bar 8, beat 1 when phrase detection is enabled
+        # Bar 8 is index 7 (0-indexed), which is when detection happens (start of new phrase)
+        if self.phrase_detection_enabled and bar_in_phrase == 7 and beat_in_bar == 0:
+            self.detection_label.setText("🔍 Capturing & Analyzing...")
+            self.detection_label.setStyleSheet(
+                "color: #00ff00; font-size: 10px; padding: 2px; font-weight: bold;"
+            )
+        # Clear the capturing message after beat 1 of bar 8
+        elif self.phrase_detection_enabled and bar_in_phrase == 7 and beat_in_bar > 0:
+            # Will be updated by update_phrase_type with detection result
+            if self.detection_label.text() and self.detection_label.text().startswith("🔍"):
+                self.detection_label.setText("")
+        elif not self.phrase_detection_enabled:
+            self.detection_label.setText("")
 
     def update_phrase_type(
         self, current_type: Optional[str], next_type: Optional[str] = None
@@ -755,6 +778,19 @@ class PilotWidget(QWidget):
                 "padding: 10px; background-color: #3d3d3d; border-radius: 5px;"
             )
 
+        # Update detection result display
+        if self.phrase_detection_enabled:
+            if next_type and next_type != current_type:
+                self.detection_label.setText(f"✓ Next: {next_type.upper()}")
+                self.detection_label.setStyleSheet(
+                    "color: #ffaa00; font-size: 10px; padding: 2px; font-weight: bold;"
+                )
+            elif next_type:
+                self.detection_label.setText(f"✓ Detected: {next_type.upper()}")
+                self.detection_label.setStyleSheet(
+                    "color: #00aaff; font-size: 10px; padding: 2px; font-weight: bold;"
+                )
+        
         if next_type and next_type != current_type:
             self.next_phrase_label.setText(f"Next: {next_type.upper()}")
             self.next_phrase_label.setStyleSheet(
@@ -767,7 +803,7 @@ class PilotWidget(QWidget):
             )
 
     def update_status(
-        self, pilot_state: str, bpm: Optional[float] = None, aligned: bool = False
+        self, pilot_state: str, bpm: Optional[float] = None, aligned: bool = False, active_deck: Optional[str] = None
     ) -> None:
         """
         Update the status label.
@@ -776,6 +812,7 @@ class PilotWidget(QWidget):
             pilot_state: Pilot state string
             bpm: Current BPM
             aligned: Whether sync is aligned
+            active_deck: Currently active deck (A, B, C, D) or None
         """
         status_parts = []
 
@@ -788,6 +825,10 @@ class PilotWidget(QWidget):
             status_parts.append(f"{bpm:.1f} BPM")
         else:
             status_parts.append("—")
+        
+        # Add active deck if detection is running
+        if active_deck and self.phrase_detection_enabled:
+            status_parts.append(f"Deck {active_deck}")
 
         self.status_label.setText(" • ".join(status_parts))
 

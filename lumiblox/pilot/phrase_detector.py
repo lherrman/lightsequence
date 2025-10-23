@@ -111,30 +111,49 @@ class PhraseDetector:
         # Current state
         self.current_phrase_type: Optional[str] = None  # "body" or "breakdown"
         self.detected_phrase_type: Optional[str] = None  # Next phrase type to switch to
+        self.last_active_deck: Optional[str] = None  # Last detected active deck
         self.last_capture_time = 0.0
 
     # Setup -----------------------------------------------------------------
     def open(self) -> bool:
         """
         Open screen capture resources.
+        Note: mss grabber is created lazily per-thread to avoid threading issues.
 
         Returns:
             True if successful, False otherwise
         """
-        try:
-            self.grabber = mss.mss()
-            logger.info("Screen capture initialized")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to initialize screen capture: {e}")
-            return False
+        # Don't create grabber here - it will be created on first use
+        # This avoids threading issues with mss's thread-local storage
+        logger.info("Screen capture initialized (grabber will be created on first use)")
+        return True
 
     def close(self) -> None:
         """Close screen capture resources."""
         if self.grabber:
-            self.grabber.close()
+            try:
+                self.grabber.close()
+            except Exception as e:
+                logger.debug(f"Error closing grabber (may be thread-local): {e}")
             self.grabber = None
         logger.info("Screen capture closed")
+    
+    def _ensure_grabber(self) -> bool:
+        """
+        Ensure grabber is created in the current thread.
+        mss uses thread-local storage, so we need to create it in each thread that uses it.
+        
+        Returns:
+            True if grabber is available, False otherwise
+        """
+        if self.grabber is None:
+            try:
+                self.grabber = mss.mss()
+                logger.debug("Created mss grabber in current thread")
+            except Exception as e:
+                logger.error(f"Failed to create screen grabber: {e}")
+                return False
+        return True
 
     def load_model(self, model_path: str) -> bool:
         """
@@ -230,7 +249,7 @@ class PhraseDetector:
         Returns:
             Deck name ("A", "B", "C", "D") or None if none detected
         """
-        if not self.grabber or self.template_on is None or self.template_off is None:
+        if not self._ensure_grabber() or self.template_on is None or self.template_off is None:
             return None
 
         for deck_name, deck in self.decks.items():
@@ -280,7 +299,7 @@ class PhraseDetector:
         Returns:
             "body" or "breakdown", or None if classification failed
         """
-        if not self.model_loaded or not self.grabber:
+        if not self.model_loaded or not self._ensure_grabber():
             logger.warning("Model or grabber not initialized")
             return None
 
@@ -290,6 +309,10 @@ class PhraseDetector:
             if deck_name is None:
                 logger.warning("No active deck detected")
                 return None
+            logger.info(f"Detected active deck: {deck_name}")
+        
+        # Store the active deck
+        self.last_active_deck = deck_name
 
         deck = self.decks.get(deck_name)
         if deck is None or deck.timeline_region is None:
@@ -324,8 +347,8 @@ class PhraseDetector:
             elapsed = time.perf_counter() - start
             self.last_capture_time = elapsed
 
-            logger.debug(
-                f"Classified deck {deck_name}: {result} ({elapsed * 1000:.1f} ms)"
+            logger.info(
+                f"Deck {deck_name} → {result.upper()} (took {elapsed * 1000:.1f}ms)"
             )
             return result
 
@@ -336,15 +359,18 @@ class PhraseDetector:
     def update_phrase_detection(self) -> Optional[str]:
         """
         Detect and update the phrase type.
-        Should be called at the 7th bar of each phrase.
+        Should be called at the 8th bar (start of new phrase).
 
         Returns:
             The detected phrase type, or None if detection failed
         """
+        logger.info("Running phrase detection...")
         result = self.classify_phrase()
         if result:
             self.detected_phrase_type = result
-            logger.info(f"Next phrase detected as: {result}")
+            logger.info(f"✓ Phrase detected as: {result.upper()}")
+        else:
+            logger.warning("⚠ Phrase detection failed - no result")
         return result
 
     def commit_phrase_change(self) -> None:
@@ -379,9 +405,9 @@ class PhraseDetector:
 
     def is_ready(self) -> bool:
         """Check if detector is ready to use."""
+        # Note: grabber is created lazily, so we don't check for it here
         return (
-            self.grabber is not None
-            and self.model_loaded
+            self.model_loaded
             and self.template_on is not None
             and self.template_off is not None
             and self.is_configured()

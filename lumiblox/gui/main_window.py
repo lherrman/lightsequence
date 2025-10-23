@@ -612,11 +612,12 @@ class LightSequenceGUI(QMainWindow):
         next_type = pilot.get_detected_phrase_type()
         self.pilot_widget.update_phrase_type(current_type, next_type)
 
-        # Update status
+        # Update status (including active deck)
         state = pilot.get_state()
         bpm = pilot.get_bpm()
         aligned = pilot.is_aligned()
-        self.pilot_widget.update_status(state.value, bpm, aligned)
+        active_deck = pilot.get_active_deck()
+        self.pilot_widget.update_status(state.value, bpm, aligned, active_deck)
 
     # ============================================================================
     # LIFECYCLE
