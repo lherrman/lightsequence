@@ -52,7 +52,9 @@ class ClockCounter:
         if self.device_id is None:
             raise RuntimeError(f"No MIDI input matching '{self.device_keyword}' found")
         self.midi_in = pygame.midi.Input(self.device_id)
-        print(f"Listening for MIDI clock on '{self.device_name}' (device {self.device_id})")
+        print(
+            f"Listening for MIDI clock on '{self.device_name}' (device {self.device_id})"
+        )
 
     def close(self) -> None:
         if self.midi_in:
@@ -188,7 +190,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Count bars from a MIDI clock")
     parser.add_argument(
         "--device",
-        default="traktor",
+        default="midiclock",
         help="Substring of the MIDI input device name (case-insensitive)",
     )
     return parser.parse_args()
