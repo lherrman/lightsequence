@@ -103,7 +103,9 @@ class FixedSizeRegionSelector(QWidget):
         font.setPixelSize(11)
         painter.setFont(font)
         painter.drawText(
-            QRect(0, 0, self.width(), title_height), Qt.AlignmentFlag.AlignCenter, self._title
+            QRect(0, 0, self.width(), title_height),
+            Qt.AlignmentFlag.AlignCenter,
+            self._title,
         )
 
         painter.end()
