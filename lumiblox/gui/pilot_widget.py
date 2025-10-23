@@ -665,7 +665,7 @@ class PilotWidget(QWidget):
             if phrase_type and self.phrase_detection_enabled:
                 self.phrase_type_indicator.setText(phrase_type.upper())
                 self.phrase_type_indicator.setVisible(True)
-                
+
                 # Color coding: BODY = orange, BREAKDOWN = blue
                 if phrase_type.upper() == "BODY":
                     self.phrase_type_indicator.setStyleSheet(
