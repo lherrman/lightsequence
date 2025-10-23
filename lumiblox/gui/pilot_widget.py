@@ -539,28 +539,34 @@ class PilotWidget(QWidget):
                 item = regions_status_layout.takeAt(0)
                 if item.widget():
                     item.widget().deleteLater()
-            
+
             # Add current regions
             try:
                 config = get_config()
                 pilot_config = config.data.get("pilot", {})
                 decks = pilot_config.get("decks", {})
-                
+
                 for deck_name in ["A", "B", "C", "D"]:
                     deck_config = decks.get(deck_name, {})
                     button_region = deck_config.get("master_button_region")
                     timeline_region = deck_config.get("timeline_region")
-                    
+
                     if button_region or timeline_region:
                         deck_info = QLabel()
-                        deck_info.setStyleSheet("color: #00aa00; font-size: 11px; padding: 4px;")
-                        
+                        deck_info.setStyleSheet(
+                            "color: #00aa00; font-size: 11px; padding: 4px;"
+                        )
+
                         status_parts = [f"<b>Deck {deck_name}:</b>"]
                         if button_region:
-                            status_parts.append(f"Button ({button_region['x']}, {button_region['y']})")
+                            status_parts.append(
+                                f"Button ({button_region['x']}, {button_region['y']})"
+                            )
                         if timeline_region:
-                            status_parts.append(f"Timeline ({timeline_region['x']}, {timeline_region['y']})")
-                        
+                            status_parts.append(
+                                f"Timeline ({timeline_region['x']}, {timeline_region['y']})"
+                            )
+
                         deck_info.setText(" • ".join(status_parts))
                         regions_status_layout.addWidget(deck_info)
             except Exception as e:
@@ -578,7 +584,9 @@ class PilotWidget(QWidget):
 
         configure_deck_btn = QPushButton("Configure Deck Regions")
         configure_deck_btn.clicked.connect(
-            lambda: self._configure_deck_regions(deck_selector.currentText(), update_regions_display)
+            lambda: self._configure_deck_regions(
+                deck_selector.currentText(), update_regions_display
+            )
         )
         deck_row.addWidget(configure_deck_btn)
 
@@ -603,7 +611,7 @@ class PilotWidget(QWidget):
 
     def _configure_deck_regions(self, deck_name: str, on_regions_updated=None) -> None:
         """Open dialog to configure both regions for a deck.
-        
+
         Args:
             deck_name: Name of the deck (A, B, C, D)
             on_regions_updated: Optional callback to call after regions are saved
@@ -633,24 +641,32 @@ class PilotWidget(QWidget):
                 logger.info(f"Configured deck {deck_name} regions:")
                 logger.info(f"  Button: x={button_region.x}, y={button_region.y}")
                 logger.info(f"  Timeline: x={timeline_region.x}, y={timeline_region.y}")
-                
+
                 # Save to config
                 try:
                     config = get_config()
                     config.set_deck_region(
                         deck_name,
                         "master_button_region",
-                        {"x": button_region.x, "y": button_region.y, 
-                         "width": button_region.width, "height": button_region.height}
+                        {
+                            "x": button_region.x,
+                            "y": button_region.y,
+                            "width": button_region.width,
+                            "height": button_region.height,
+                        },
                     )
                     config.set_deck_region(
                         deck_name,
                         "timeline_region",
-                        {"x": timeline_region.x, "y": timeline_region.y,
-                         "width": timeline_region.width, "height": timeline_region.height}
+                        {
+                            "x": timeline_region.x,
+                            "y": timeline_region.y,
+                            "width": timeline_region.width,
+                            "height": timeline_region.height,
+                        },
                     )
                     logger.info(f"Saved deck {deck_name} regions to config")
-                    
+
                     # Call the update callback if provided
                     if on_regions_updated:
                         on_regions_updated()
