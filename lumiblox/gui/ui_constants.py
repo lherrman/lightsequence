@@ -11,8 +11,8 @@ from PySide6.QtCore import QSize
 # ============================================================================
 
 # Button sizes
-BUTTON_SIZE_TINY = QSize(12, 12)  # Extra small buttons (e.g., close icons)
-BUTTON_SIZE_SMALL = QSize(24, 24)  # Small tool buttons (+, -, edit icons)
+BUTTON_SIZE_TINY = QSize(20, 20)  # Extra small buttons (e.g., close icons)
+BUTTON_SIZE_SMALL = QSize(26, 26)  # Small tool buttons (+, -, edit icons)
 BUTTON_SIZE_MEDIUM = QSize(32, 32)  # Control buttons (play, settings, etc.)
 BUTTON_SIZE_LARGE = QSize(46, 46)  # Large indicator buttons (A, B, M, B)
 
@@ -79,10 +79,11 @@ BUTTON_STYLE = f"""
     QPushButton {{
         background-color: {COLOR_BG_NORMAL};
         border: 1px solid {COLOR_BORDER_NORMAL};
-        border-radius: 3px;
+        border-radius: 2px;
         color: {COLOR_TEXT_PRIMARY};
-        font-size: {FONT_SIZE_LARGE};
+        font-size: {FONT_SIZE_MEDIUM};
         padding: 2px;
+        margin: 2px;
     }}
     QPushButton:hover {{
         background-color: {COLOR_BG_HOVER};
@@ -97,6 +98,23 @@ BUTTON_STYLE = f"""
     }}
 """
 
+BUTTON_STYLE_ACTIVE = f"""
+    QPushButton {{
+        background-color: {COLOR_ACTIVE};
+        border: 1px solid {COLOR_ACTIVE_DARK};
+        border-radius: 2px;
+        color: {COLOR_TEXT_PRIMARY};
+        font-size: {FONT_SIZE_MEDIUM};
+        padding: 2px;
+        margin: 2px;
+    }}
+    QPushButton:hover {{
+        background-color: {COLOR_ACTIVE_DARK};
+    }}
+    QPushButton:pressed {{
+        background-color: {COLOR_ACTIVE};
+    }}
+"""
 
 EDIT_FIELD_STYLE = f"""
     QLineEdit {{ 
@@ -104,7 +122,7 @@ EDIT_FIELD_STYLE = f"""
         border: 1px solid {COLOR_BORDER_NORMAL};
         border-radius: 3px;
         color: {COLOR_TEXT_PRIMARY};
-        font-size: {FONT_SIZE_LARGE};
+        font-size: {FONT_SIZE_MEDIUM};
         padding: 2px;
     }}
     QToolButton:hover {{
@@ -126,6 +144,7 @@ VALUE_LABEL_STYLE = f"""
 HEADER_LABEL_STYLE = f"""
     color: {COLOR_TEXT_DISABLED};
     font-size: {FONT_SIZE_SMALL};
+    border: none;
     font-weight: normal;
 """
 
@@ -133,10 +152,12 @@ CHECKBOX_STYLE = f"""
     QCheckBox {{
         color: {COLOR_TEXT_PRIMARY};
         font-size: {FONT_SIZE_MEDIUM};
+        border: none;
     }}
     QCheckBox::indicator {{
         width: 16px;
         height: 16px;
+        border-radius: 3px;
     }}
     QCheckBox::indicator:checked {{
         background-color: {COLOR_ACTIVE};

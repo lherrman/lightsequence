@@ -31,12 +31,14 @@ from lumiblox.controller.sequence_controller import SequenceStep, SequenceDurati
 from lumiblox.gui.ui_constants import (
     BUTTON_SIZE_MEDIUM,
     BUTTON_SIZE_TINY,
+    BUTTON_SIZE_SMALL,
     BUTTON_STYLE,
     CHECKBOX_STYLE,
     EDIT_FIELD_STYLE,
     HEADER_LABEL_STYLE,
     INPUT_FIELD_HEIGHT_SMALL,
     INPUT_FIELD_WIDTH_SMALL,
+    ICON_SIZE_SMALL,
 )
 from lumiblox.gui.widgets import SelectAllLineEdit, SceneButton
 
@@ -61,7 +63,6 @@ class SequenceStepWidget(QFrame):
         self.scene_buttons: t.Dict[t.Tuple[int, int], SceneButton] = {}
         self._unit_buttons: t.Dict[SequenceDurationUnit, QPushButton] = {}
 
-        # Remove frame border - no visible border
         self.setFrameStyle(QFrame.Shape.NoFrame)
         self.setStyleSheet("""
             QFrame {
@@ -71,6 +72,11 @@ class SequenceStepWidget(QFrame):
                 padding: 3px;
             }
         """)
+
+        # Set size policy to prevent vertical expansion
+        from PySide6.QtWidgets import QSizePolicy
+
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
         self.setup_ui()
         self.update_from_step()
@@ -110,8 +116,6 @@ class SequenceStepWidget(QFrame):
 
         # Right side: Content (name, scenes, duration)
         content_layout = QVBoxLayout()
-        content_layout.setSpacing(8)
-        content_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         # Step name (editable label style)
         self.name_edit = QLineEdit()
@@ -161,7 +165,8 @@ class SequenceStepWidget(QFrame):
         # Minus button
         minus_btn = QPushButton()
         minus_btn.setIcon(qta.icon("fa5s.minus", color="white"))
-        minus_btn.setFixedSize(BUTTON_SIZE_MEDIUM)
+        minus_btn.setIconSize(ICON_SIZE_SMALL)
+        minus_btn.setFixedSize(BUTTON_SIZE_SMALL)
         minus_btn.setStyleSheet(BUTTON_STYLE)
         minus_btn.clicked.connect(self.decrease_duration)
         duration_layout.addWidget(minus_btn)
@@ -169,24 +174,25 @@ class SequenceStepWidget(QFrame):
         # Duration input field (editable)
         self.duration_input = SelectAllLineEdit()
         self.duration_input.setFixedWidth(INPUT_FIELD_WIDTH_SMALL)
-        self.duration_input.setFixedHeight(INPUT_FIELD_HEIGHT_SMALL)
         self.duration_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.duration_input.setStyleSheet(EDIT_FIELD_STYLE)
+        self.duration_input.setFixedHeight(INPUT_FIELD_HEIGHT_SMALL)
         self.duration_input.textChanged.connect(self.on_duration_text_changed)
         self.duration_input.editingFinished.connect(self.on_duration_editing_finished)
         duration_layout.addWidget(self.duration_input)
 
         # Plus button
         plus_btn = QPushButton()
-        plus_btn.setFixedSize(BUTTON_SIZE_MEDIUM)
+        plus_btn.setFixedSize(BUTTON_SIZE_SMALL)
         plus_btn.setIcon(qta.icon("fa5s.plus", color="white"))
+        plus_btn.setIconSize(ICON_SIZE_SMALL)
         plus_btn.setStyleSheet(BUTTON_STYLE)
         plus_btn.clicked.connect(self.increase_duration)
         duration_layout.addWidget(plus_btn)
 
         seconds_btn = QPushButton("Sec")
         seconds_btn.setCheckable(True)
-        seconds_btn.setFixedHeight(BUTTON_SIZE_MEDIUM.height())
+        seconds_btn.setFixedSize(BUTTON_SIZE_MEDIUM)
         seconds_btn.setStyleSheet(BUTTON_STYLE)
         seconds_btn.clicked.connect(
             lambda: self._set_duration_unit(SequenceDurationUnit.SECONDS)
@@ -196,7 +202,7 @@ class SequenceStepWidget(QFrame):
 
         bars_btn = QPushButton("Bars")
         bars_btn.setCheckable(True)
-        bars_btn.setFixedHeight(BUTTON_SIZE_MEDIUM.height())
+        bars_btn.setFixedSize(BUTTON_SIZE_MEDIUM)
         bars_btn.setStyleSheet(BUTTON_STYLE)
         bars_btn.clicked.connect(
             lambda: self._set_duration_unit(SequenceDurationUnit.BARS)
@@ -395,10 +401,6 @@ class PresetSequenceEditor(QWidget):
 
         # Header with compact controls
         header_layout = QHBoxLayout()
-        title = QLabel(f"Sequence [{self.preset_index[0]}, {self.preset_index[1]}]")
-        title.setFont(QFont("Arial", 11, QFont.Weight.Bold))
-        header_layout.addWidget(title)
-        header_layout.addStretch()
 
         # Tiny reload button with icon
         reload_btn = QPushButton()
@@ -422,8 +424,11 @@ class PresetSequenceEditor(QWidget):
         # Loop checkbox
         self.loop_checkbox = QCheckBox("Loop")
         self.loop_checkbox.setChecked(True)
+        self.loop_checkbox.setStyleSheet(CHECKBOX_STYLE)
         self.loop_checkbox.stateChanged.connect(self.auto_save_sequence)
         header_layout.addWidget(self.loop_checkbox)
+
+        header_layout.addStretch()
 
         layout.addLayout(header_layout)
 
@@ -437,8 +442,7 @@ class PresetSequenceEditor(QWidget):
         left_panel.setStyleSheet("""
             QFrame {
                 background-color: #2d2d2d;
-                border: 1px solid #555555;
-                border-radius: 3px;
+                border: none;
             }
         """)
         left_layout = QVBoxLayout(left_panel)
@@ -459,8 +463,7 @@ class PresetSequenceEditor(QWidget):
         self.step_list.setStyleSheet("""
             QListWidget {
                 background-color: #1e1e1e;
-                border: 1px solid #555555;
-                border-radius: 3px;
+                border: none;
                 color: #cccccc;
                 font-size: 11px;
             }
@@ -486,7 +489,8 @@ class PresetSequenceEditor(QWidget):
 
         add_btn = QPushButton()
         add_btn.setIcon(qta.icon("fa5s.plus", color="white"))
-        add_btn.setFixedSize(BUTTON_SIZE_TINY)
+        add_btn.setIconSize(ICON_SIZE_SMALL)
+        add_btn.setFixedSize(BUTTON_SIZE_SMALL)
         add_btn.setToolTip("Add empty step")
         add_btn.setStyleSheet(BUTTON_STYLE)
         add_btn.clicked.connect(self.add_empty_step)
@@ -494,7 +498,8 @@ class PresetSequenceEditor(QWidget):
 
         add_active_btn = QPushButton()
         add_active_btn.setIcon(qta.icon("fa5s.play-circle", color="white"))
-        add_active_btn.setFixedSize(BUTTON_SIZE_TINY)
+        add_active_btn.setFixedSize(BUTTON_SIZE_SMALL)
+        add_active_btn.setIconSize(ICON_SIZE_SMALL)
         add_active_btn.setToolTip("Add from active scenes")
         add_active_btn.setStyleSheet(BUTTON_STYLE)
         add_active_btn.clicked.connect(self.add_step_from_active_scenes)
@@ -505,7 +510,7 @@ class PresetSequenceEditor(QWidget):
 
         remove_btn = QPushButton()
         remove_btn.setIcon(qta.icon("fa5s.minus", color="white"))
-        remove_btn.setFixedSize(BUTTON_SIZE_TINY)
+        remove_btn.setFixedSize(BUTTON_SIZE_SMALL)
         remove_btn.setToolTip("Remove selected step")
         remove_btn.setStyleSheet(BUTTON_STYLE)
         remove_btn.clicked.connect(self.remove_current_step)
@@ -517,8 +522,15 @@ class PresetSequenceEditor(QWidget):
 
         # === RIGHT: Step Detail Panel ===
         self.detail_panel = QFrame()
+        self.detail_panel.setStyleSheet("""
+            QFrame {
+                background-color: transparent;
+                border: none;
+            }
+        """)
         self.detail_layout = QVBoxLayout(self.detail_panel)
         self.detail_layout.setContentsMargins(5, 5, 5, 5)
+        self.detail_layout.setAlignment(Qt.AlignmentFlag.AlignBottom)
 
         # Placeholder message - aligned to top
         self.placeholder_label = QLabel("Select a step to edit")
@@ -527,7 +539,7 @@ class PresetSequenceEditor(QWidget):
         )
         self.placeholder_label.setStyleSheet(HEADER_LABEL_STYLE)
         self.detail_layout.addWidget(self.placeholder_label)
-        self.detail_layout.addStretch()  # Push content to top
+        self.detail_layout.addStretch()  # Push placeholder to top
 
         main_splitter.addWidget(self.detail_panel, 1)  # Give more space to detail panel
 
@@ -597,13 +609,17 @@ class PresetSequenceEditor(QWidget):
         if step_index < 0 or step_index >= len(self.sequence_steps):
             return
 
-        # Clear current widget
-        if self.current_step_widget:
-            self.current_step_widget.deleteLater()
-            self.current_step_widget = None
+        # Clear all items from layout
+        while self.detail_layout.count():
+            item = self.detail_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
 
-        # Hide placeholder
-        self.placeholder_label.hide()
+        # Clear reference
+        self.current_step_widget = None
+
+        # Add stretch at top to push content to bottom
+        self.detail_layout.addStretch()
 
         # Create new step widget
         step = self.sequence_steps[step_index]
