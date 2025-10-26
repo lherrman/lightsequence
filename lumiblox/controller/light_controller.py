@@ -36,7 +36,6 @@ class LightController:
     """
     Main orchestrator - coordinates all subsystems.
     
-    Much slimmer than before - delegates to specialized controllers.
     """
     
     def __init__(self, simulation: bool = False):
@@ -226,7 +225,6 @@ class LightController:
         """Handle scene button press."""
         if pressed:
             is_active = self.scene_ctrl.toggle_scene(scene)
-            self.light_software.send_scene_command(scene)
             logger.debug(f"Scene {scene} toggled: {is_active}")
     
     def _handle_sequence_button(self, index: t.Tuple[int, int], pressed: bool) -> None:
