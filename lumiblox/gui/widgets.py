@@ -11,6 +11,8 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Signal
 
+from lumiblox.gui.ui_constants import COLOR_ACTIVE, COLOR_ACTIVE_DARK
+
 
 class SelectAllLineEdit(QLineEdit):
     """QLineEdit that automatically selects all text when clicked or focused."""
@@ -94,11 +96,21 @@ class PresetButton(QPushButton):
         self.has_sequence = False
         self.is_active_preset = False
 
-        self.setFixedHeight(32)
-        self.setMinimumWidth(10)
         self.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
         )  # Expand horizontally
+        self.setStyleSheet("""
+            QPushButton {
+                background-color: #3c3c3c;
+                color: #666666;
+                border: 1px solid #555555;
+                border-radius: 3px;
+                font-size: 10px;
+            }
+            QPushButton:hover {
+                background-color: #4a4a4a;
+            }
+        """)
         self.setCheckable(True)
         self.clicked.connect(self._on_preset_clicked)
         self.update_appearance()
@@ -127,28 +139,19 @@ class PresetButton(QPushButton):
                 QPushButton {
                     background-color: #3c3c3c;
                     color: #666666;
-                    border: 1px solid #555555;
+                    border: 0px solid #555555;
                     border-radius: 3px;
                     font-size: 10px;
+                               
                 }
                 QPushButton:hover {
                     background-color: #4a4a4a;
                 }
             """)
         else:
-            # Show preset type indicator
-            if self.has_sequence:
-                self.setText(f"{self.coord_x},{self.coord_y}")
-                base_color = "#3f94e9" if not self.is_active_preset else "#569de4"
-            else:
-                self.setText(f"{self.coord_x},{self.coord_y}")
-                base_color = "#03519e" if not self.is_active_preset else "#1b5c9c"
 
-            # Generate hover color more safely
-            if self.has_sequence:
-                hover_color = "#3f94e9" if not self.is_active_preset else "#569de4"
-            else:
-                hover_color = "#03519e" if not self.is_active_preset else "#1b5c9c"
+            base_color = COLOR_ACTIVE_DARK if self.is_active_preset else "#4a4a4a"
+            hover_color = COLOR_ACTIVE if self.is_active_preset else "#5a5a5a"
 
             # Set border color based on active state
             border_color = "ffffff" if self.is_active_preset else "666666"
@@ -157,15 +160,16 @@ class PresetButton(QPushButton):
                 QPushButton {{
                     background-color: {base_color};
                     color: #ffffff;
-                    border: 2px solid #{border_color};
+                    border: 0px solid #{border_color};
                     border-radius: 3px;
-                    font-size: 9px;
+                    font-size: 10px;
                     font-weight: bold;
+
                 }}
                 QPushButton:hover {{
                     background-color: {hover_color};
                 }}
                 QPushButton:checked {{
-                    border: 2px solid #ffffff;
+                    border: 1px solid #ffffff;
                 }}
             """)

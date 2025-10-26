@@ -2,7 +2,7 @@ import json
 import logging
 import typing as t
 from pathlib import Path
-from lumiblox.controller.sequence import SequenceStep
+from lumiblox.controller.sequence import SequenceStep, SequenceDurationUnit
 
 logger = logging.getLogger(__name__)
 
@@ -205,6 +205,7 @@ class PresetManager:
                     ],
                     "duration": float(step.duration),
                     "name": str(step.name) if step.name else "",
+                    "duration_unit": step.duration_unit.value,
                 }
                 sequence_data.append(step_data)
 
@@ -250,10 +251,24 @@ class PresetManager:
                 steps = []
                 for step_data in preset["sequence"]:
                     if isinstance(step_data, dict):
+                        unit_value = step_data.get(
+                            "duration_unit", SequenceDurationUnit.SECONDS.value
+                        )
+                        try:
+                            duration_unit = SequenceDurationUnit(unit_value)
+                        except ValueError:
+                            logger.warning(
+                                "Unknown step duration unit '%s' in preset %s, defaulting to seconds",
+                                unit_value,
+                                index,
+                            )
+                            duration_unit = SequenceDurationUnit.SECONDS
+
                         step = SequenceStep(
                             scenes=step_data.get("scenes", []),
                             duration=float(step_data.get("duration", 1.0)),
                             name=step_data.get("name", ""),
+                            duration_unit=duration_unit,
                         )
                         steps.append(step)
                 return steps

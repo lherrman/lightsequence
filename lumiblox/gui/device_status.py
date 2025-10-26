@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
 )
 
 from lumiblox.common.device_state import DeviceState
+from lumiblox.gui.ui_constants import HEADER_LABEL_STYLE
 
 
 class DeviceStatusBar(QFrame):
@@ -28,76 +29,88 @@ class DeviceStatusBar(QFrame):
                 padding: 5px;
             }
         """)
-        
+
         self._setup_ui()
-    
+
     def _setup_ui(self):
         """Setup the status bar UI."""
         layout = QHBoxLayout(self)
         layout.setContentsMargins(10, 5, 10, 5)
-        
+
         # Device status label
         status_label = QLabel("Devices:")
-        status_label.setStyleSheet("color: #cccccc; font-weight: bold; font-size: 11px;")
+        status_label.setStyleSheet(HEADER_LABEL_STYLE)
         layout.addWidget(status_label)
-        
+
         # Launchpad status
         launchpad_container = QHBoxLayout()
         launchpad_label = QLabel("Launchpad:")
-        launchpad_label.setStyleSheet("color: #aaaaaa; font-size: 10px;")
+        launchpad_label.setStyleSheet(HEADER_LABEL_STYLE)
         launchpad_container.addWidget(launchpad_label)
-        
+
         self.launchpad_indicator = QLabel("●")
-        self.launchpad_indicator.setStyleSheet("color: #888888; font-size: 16px; font-weight: bold;")
+        self.launchpad_indicator.setStyleSheet(
+            "color: #888888; font-size: 16px; font-weight: bold; border: none;"
+        )
         self.launchpad_text = QLabel("Disconnected")
-        self.launchpad_text.setStyleSheet("color: #888888; font-size: 10px;")
+        self.launchpad_text.setStyleSheet(HEADER_LABEL_STYLE)
         launchpad_container.addWidget(self.launchpad_indicator)
         launchpad_container.addWidget(self.launchpad_text)
         launchpad_container.addStretch()
-        
+
         layout.addLayout(launchpad_container)
         layout.addSpacing(20)
-        
+
         # LightSoftware status
         lightsw_container = QHBoxLayout()
         lightsw_label = QLabel("LightSoftware:")
-        lightsw_label.setStyleSheet("color: #aaaaaa; font-size: 10px;")
+        lightsw_label.setStyleSheet(HEADER_LABEL_STYLE)
         lightsw_container.addWidget(lightsw_label)
-        
+
         self.lightsw_indicator = QLabel("●")
-        self.lightsw_indicator.setStyleSheet("color: #888888; font-size: 16px; font-weight: bold;")
+        self.lightsw_indicator.setStyleSheet(
+            "color: #888888; font-size: 16px; font-weight: bold; border: none;"
+        )
         self.lightsw_text = QLabel("Disconnected")
-        self.lightsw_text.setStyleSheet("color: #888888; font-size: 10px;")
+        self.lightsw_text.setStyleSheet(HEADER_LABEL_STYLE)
         lightsw_container.addWidget(self.lightsw_indicator)
         lightsw_container.addWidget(self.lightsw_text)
         lightsw_container.addStretch()
-        
+
         layout.addLayout(lightsw_container)
         layout.addStretch()
-    
+
     def update_launchpad_status(self, state: DeviceState):
         """Update launchpad status indicator."""
         self._update_indicator(self.launchpad_indicator, self.launchpad_text, state)
-    
+
     def update_lightsw_status(self, state: DeviceState):
         """Update light software status indicator."""
         self._update_indicator(self.lightsw_indicator, self.lightsw_text, state)
-    
+
     def _update_indicator(self, indicator: QLabel, text: QLabel, state: DeviceState):
         """Update a single status indicator based on device state."""
         if state == DeviceState.CONNECTED:
-            indicator.setStyleSheet("color: #4CAF50; font-size: 16px; font-weight: bold;")
-            text.setStyleSheet("color: #4CAF50; font-size: 10px;")
+            indicator.setStyleSheet(
+                "color: #4CAF50; font-size: 16px; font-weight: bold; border: none;"
+            )
+            text.setStyleSheet("color: #4CAF50; font-size: 10px; border: none;")
             text.setText("Connected")
         elif state == DeviceState.CONNECTING:
-            indicator.setStyleSheet("color: #FFA726; font-size: 16px; font-weight: bold;")
-            text.setStyleSheet("color: #FFA726; font-size: 10px;")
+            indicator.setStyleSheet(
+                "color: #FFA726; font-size: 16px; font-weight: bold; border: none;"
+            )
+            text.setStyleSheet("color: #FFA726; font-size: 10px; border: none;")
             text.setText("Connecting...")
         elif state == DeviceState.ERROR:
-            indicator.setStyleSheet("color: #F44336; font-size: 16px; font-weight: bold;")
-            text.setStyleSheet("color: #F44336; font-size: 10px;")
+            indicator.setStyleSheet(
+                "color: #F44336; font-size: 16px; font-weight: bold; border: none;"
+            )
+            text.setStyleSheet("color: #F44336; font-size: 10px; border: none;")
             text.setText("Error")
         else:  # DISCONNECTED
-            indicator.setStyleSheet("color: #888888; font-size: 16px; font-weight: bold;")
-            text.setStyleSheet("color: #888888; font-size: 10px;")
+            indicator.setStyleSheet(
+                "color: #888888; font-size: 16px; font-weight: bold; border: none;"
+            )
+            text.setStyleSheet("color: #888888; font-size: 10px; border: none;")
             text.setText("Disconnected")

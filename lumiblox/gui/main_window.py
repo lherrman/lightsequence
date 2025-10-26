@@ -20,9 +20,12 @@ from PySide6.QtWidgets import (
     QGridLayout,
 )
 from PySide6.QtCore import Signal
+import qtawesome as qta
+
 
 from lumiblox.gui.controller_thread import ControllerThread
 from lumiblox.gui.device_status import DeviceStatusBar
+from lumiblox.gui.ui_constants import BUTTON_SIZE_TINY, BUTTON_STYLE, HEADER_LABEL_STYLE
 from lumiblox.gui.widgets import PresetButton
 from lumiblox.gui.sequence_editor import PresetSequenceEditor
 from lumiblox.gui.playback_controls import PlaybackControls
@@ -109,14 +112,6 @@ class LightSequenceGUI(QMainWindow):
         self.editor_layout = QVBoxLayout(self.editor_stack)
         self.editor_layout.setContentsMargins(5, 5, 5, 5)
 
-        # Default message (shown when no sequence selected)
-        self.default_label = QLabel(
-            "Select a preset from the grid below to edit its sequence."
-        )
-        self.default_label.setAlignment(self.default_label.alignment())
-        self.default_label.setStyleSheet("color: #888888; font-size: 14px;")
-        self.editor_layout.addWidget(self.default_label)
-
         main_layout.addWidget(self.editor_stack, 1)  # Stretch to fill remaining space
 
         # === Playback Controls (Between editor and presets) ===
@@ -136,13 +131,7 @@ class LightSequenceGUI(QMainWindow):
         # Bottom area - Preset grid (3 rows x 8 columns) - more compact
         preset_panel = QWidget()  # Use plain widget instead of GroupBox
         preset_panel.setMaximumHeight(125)  # Slightly more height for better spacing
-        preset_panel.setStyleSheet("""
-            QWidget {
-                background-color: #2d2d2d;
-                border: 1px solid #555555;
-                border-radius: 3px;
-            }
-        """)
+
         preset_layout = QVBoxLayout(preset_panel)
         preset_layout.setContentsMargins(3, 3, 3, 3)  # Very tight margins
         preset_layout.setSpacing(2)
@@ -153,37 +142,29 @@ class LightSequenceGUI(QMainWindow):
         header_layout.setSpacing(5)
 
         # Title label
-        title_label = QLabel("Presets")
-        title_label.setStyleSheet("color: #cccccc; font-weight: bold; font-size: 11px;")
+        title_label = QLabel("Sequences")
+        title_label.setStyleSheet(HEADER_LABEL_STYLE)
         header_layout.addWidget(title_label)
 
         header_layout.addStretch()  # Push refresh button to right
 
         # Small refresh icon button in corner
-        refresh_btn = QPushButton("🔄")
+        refresh_btn = QPushButton()
         refresh_btn.clicked.connect(self.refresh_presets)
-        refresh_btn.setFixedSize(18, 18)
-        refresh_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #555555;
-                border: 1px solid #666666;
-                border-radius: 9px;
-                font-size: 10px;
-                padding: 0px;
-            }
-            QPushButton:hover {
-                background-color: #666666;
-            }
-        """)
+        refresh_btn.setIcon(qta.icon("fa5s.sync", color="white"))
+        refresh_btn.setIconSize(BUTTON_SIZE_TINY)
+        refresh_btn.setFixedSize(BUTTON_SIZE_TINY)
+        refresh_btn.setStyleSheet(BUTTON_STYLE)
         header_layout.addWidget(refresh_btn)
         preset_layout.addLayout(header_layout)
 
-        # Preset grid
+        # Sequence grid area
         self.preset_grid_widget = QWidget()
         preset_grid_layout = QGridLayout(self.preset_grid_widget)
-        preset_grid_layout.setHorizontalSpacing(3)  # Horizontal spacing between columns
-        preset_grid_layout.setVerticalSpacing(6)  # More vertical spacing between rows
-        preset_grid_layout.setContentsMargins(0, 2, 0, 2)  # Small top/bottom margins
+        preset_grid_layout.setHorizontalSpacing(3)
+        preset_grid_layout.setVerticalSpacing(6)
+        preset_grid_layout.setContentsMargins(0, 2, 0, 2)
+        # Remove borders in the preset grid area
 
         # Create 3x8 grid of preset buttons
         self.preset_buttons: t.Dict[t.Tuple[int, int], PresetButton] = {}
@@ -198,7 +179,7 @@ class LightSequenceGUI(QMainWindow):
                 preset_grid_layout.setColumnStretch(x, 1)
 
         preset_layout.addWidget(self.preset_grid_widget)
-        main_layout.addWidget(preset_panel, 1)  # Give less space to preset grid
+        main_layout.addWidget(preset_panel, 1)
 
         # Status bar
         self.statusBar().showMessage("Starting controller...")
@@ -227,7 +208,7 @@ class LightSequenceGUI(QMainWindow):
             color: #ffffff;
             border: 1px solid #666666;
             padding: 8px;
-            border-radius: 4px;
+            border-radius: 2px;
         }
         QPushButton:hover {
             background-color: #5a5a5a;
@@ -271,6 +252,7 @@ class LightSequenceGUI(QMainWindow):
         self.controller_thread = ControllerThread(simulation=self.simulation)
         self.controller_thread.controller_ready.connect(self.on_controller_ready)
         self.controller_thread.controller_error.connect(self.on_controller_error)
+        self.controller_thread.capturing_signal.connect(self.pilot_widget.set_capturing)
         self.controller_thread.start()
 
     def on_controller_ready(self):
@@ -389,9 +371,6 @@ class LightSequenceGUI(QMainWindow):
             self.current_editor.deleteLater()
             self.current_editor = None
 
-        # Hide default label
-        self.default_label.hide()
-
         # Create new editor
         self.current_editor = PresetSequenceEditor(preset_index, self.controller)
         self.editor_layout.addWidget(self.current_editor)
@@ -418,7 +397,6 @@ class LightSequenceGUI(QMainWindow):
                 if self.current_editor:
                     self.current_editor.deleteLater()
                     self.current_editor = None
-                self.default_label.show()
                 return
 
             # Select the matching sequence button

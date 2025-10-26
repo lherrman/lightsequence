@@ -8,7 +8,7 @@ import logging
 from typing import Optional, Callable
 
 import qtawesome as qta
-from PySide6.QtCore import Qt, Signal, QRect, QSize
+from PySide6.QtCore import Qt, Signal, QRect, QTimer
 from PySide6.QtGui import QColor, QPainter, QGuiApplication
 from PySide6.QtWidgets import (
     QWidget,
@@ -29,6 +29,18 @@ from lumiblox.pilot.phrase_detector import CaptureRegion
 from lumiblox.pilot.pilot_preset import PilotPresetManager
 from lumiblox.gui.rule_editor import PresetEditorDialog
 from lumiblox.common.config import get_config
+from lumiblox.gui.ui_constants import (
+    BUTTON_SIZE_LARGE,
+    BUTTON_SIZE_SMALL,
+    ICON_SIZE_MEDIUM,
+    BUTTON_STYLE,
+    VALUE_LABEL_STYLE,
+    HEADER_LABEL_STYLE,
+    ICON_SIZE_SMALL,
+    COLOR_BG_NORMAL,
+    COLOR_BG_LIGHT,
+    COLOR_BG_DARK,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -324,6 +336,7 @@ class PilotWidget(QWidget):
         self.refresh_callback = refresh_callback
         self.phrase_detection_enabled = False
         self.preset_manager = PilotPresetManager()
+
         self.setup_ui()
         self._load_presets()
 
@@ -336,67 +349,44 @@ class PilotWidget(QWidget):
         # === HEADER: Control buttons + Status bar ===
         header_layout = QHBoxLayout()
         header_layout.setSpacing(4)
-        header_layout.setContentsMargins(0, 0, 0, 0)
-
-        # Button style for consistent appearance
-        button_style = """
-            QPushButton {
-                background-color: #2a2a2a;
-                border: 1px solid #444;
-                border-radius: 3px;
-                color: white;
-                font-size: 14px;
-                padding: 2px;
-            }
-            QPushButton:hover {
-                background-color: #3a3a3a;
-                border: 1px solid #666;
-            }
-            QPushButton:pressed {
-                background-color: #1a1a1a;
-            }
-            QPushButton:checked {
-                background-color: #0078d4;
-                border: 1px solid #005a9e;
-            }
-        """
+        header_layout.setContentsMargins(0, 2, 0, 5)
 
         # Control buttons (proper QPushButton style with icons)
         self.pilot_toggle_btn = QPushButton()
         self.pilot_toggle_btn.setCheckable(True)
         self.pilot_toggle_btn.setToolTip("Start/Stop Pilot")
-        self.pilot_toggle_btn.setFixedSize(QSize(32, 32))
-        self.pilot_toggle_btn.setStyleSheet(button_style)
-        self.pilot_toggle_btn.setIcon(qta.icon("fa5s.play", color="white"))
-        self.pilot_toggle_btn.setIconSize(QSize(16, 16))
+        self.pilot_toggle_btn.setFixedSize(BUTTON_SIZE_LARGE)
+        self.pilot_toggle_btn.setStyleSheet(BUTTON_STYLE)
+        self.pilot_toggle_btn.setIcon(qta.icon("fa5s.robot", color="white"))
+        self.pilot_toggle_btn.setIconSize(ICON_SIZE_MEDIUM)
         self.pilot_toggle_btn.toggled.connect(self._on_pilot_toggle)
         header_layout.addWidget(self.pilot_toggle_btn)
 
         self.phrase_detection_btn = QPushButton()
         self.phrase_detection_btn.setCheckable(True)
         self.phrase_detection_btn.setToolTip("Enable/Disable Phrase Detection")
-        self.phrase_detection_btn.setFixedSize(QSize(32, 32))
-        self.phrase_detection_btn.setStyleSheet(button_style)
+        self.phrase_detection_btn.setFixedSize(BUTTON_SIZE_LARGE)
+        self.phrase_detection_btn.setStyleSheet(BUTTON_STYLE)
         self.phrase_detection_btn.setIcon(qta.icon("fa5s.eye", color="white"))
-        self.phrase_detection_btn.setIconSize(QSize(16, 16))
+        self.phrase_detection_btn.setIconSize(ICON_SIZE_MEDIUM)
         self.phrase_detection_btn.toggled.connect(self._on_phrase_detection_toggle)
         header_layout.addWidget(self.phrase_detection_btn)
 
         self.align_btn = QPushButton()
-        self.align_btn.setToolTip("Align to Beat (Tap)")
-        self.align_btn.setFixedSize(QSize(32, 32))
-        self.align_btn.setStyleSheet(button_style)
+        self.align_btn.setToolTip("Align to Beat")
+        self.align_btn.setFixedSize(BUTTON_SIZE_LARGE)
+        self.align_btn.setStyleSheet(BUTTON_STYLE)
         self.align_btn.setIcon(qta.icon("fa5s.crosshairs", color="white"))
-        self.align_btn.setIconSize(QSize(16, 16))
+        self.align_btn.setIconSize(ICON_SIZE_MEDIUM)
         self.align_btn.clicked.connect(self._on_align_requested)
         header_layout.addWidget(self.align_btn)
 
         settings_btn = QPushButton()
         settings_btn.setToolTip("Configure Deck Regions")
-        settings_btn.setFixedSize(QSize(32, 32))
-        settings_btn.setStyleSheet(button_style)
+        settings_btn.setFixedSize(BUTTON_SIZE_LARGE)
+        settings_btn.setStyleSheet(BUTTON_STYLE)
         settings_btn.setIcon(qta.icon("fa5s.cog", color="white"))
-        settings_btn.setIconSize(QSize(16, 16))
+        settings_btn.setIconSize(ICON_SIZE_MEDIUM)
         settings_btn.clicked.connect(self._on_settings_requested)
         header_layout.addWidget(settings_btn)
 
@@ -407,24 +397,76 @@ class PilotWidget(QWidget):
         separator.setFixedWidth(2)
         header_layout.addWidget(separator)
 
-        # Status info (compact, only needed space)
-        status_layout = QVBoxLayout()
-        status_layout.setSpacing(1)
-        status_layout.setContentsMargins(4, 0, 0, 0)
+        # Status info grid (BPM, Bar, Beat in columns)
+        from PySide6.QtWidgets import QGridLayout
 
-        # Line 1: BPM + Phrase type + Duration
-        self.status_line1 = QLabel("Not aligned")
-        self.status_line1.setStyleSheet(
-            "color: #888888; font-size: 11px; font-weight: bold;"
-        )
-        status_layout.addWidget(self.status_line1)
+        status_grid = QGridLayout()
+        status_grid.setSpacing(4)
+        status_grid.setContentsMargins(8, 0, 8, 0)
+        status_grid.setVerticalSpacing(0)
+        status_grid.setHorizontalSpacing(12)
 
-        # Line 2: Position (Phrase, Bar, Beat)
-        self.status_line2 = QLabel("")
-        self.status_line2.setStyleSheet("color: #666666; font-size: 10px;")
-        status_layout.addWidget(self.status_line2)
+        # Headers (small text)
+        bpm_header = QLabel("BPM")
+        bpm_header.setStyleSheet(HEADER_LABEL_STYLE)
+        bpm_header.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        header_layout.addLayout(status_layout)
+        bar_header = QLabel("Bar")
+        bar_header.setStyleSheet(HEADER_LABEL_STYLE)
+        bar_header.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        beat_header = QLabel("Beat")
+        beat_header.setStyleSheet(HEADER_LABEL_STYLE)
+        beat_header.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        deck_header = QLabel("Deck")
+        deck_header.setStyleSheet(HEADER_LABEL_STYLE)
+        deck_header.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        phrase_type_header = QLabel("Phrase")
+        phrase_type_header.setStyleSheet(HEADER_LABEL_STYLE)
+        phrase_type_header.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        status_grid.addWidget(bpm_header, 0, 0)
+        status_grid.addWidget(bar_header, 0, 1)
+        status_grid.addWidget(beat_header, 0, 2)
+        status_grid.addWidget(deck_header, 0, 3)
+        status_grid.addWidget(phrase_type_header, 0, 4)
+
+        # Values (larger text)
+        self.bpm_value = QLabel("--")
+        self.bpm_value.setStyleSheet(VALUE_LABEL_STYLE)
+        self.bpm_value.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.bpm_value.setMinimumWidth(30)
+
+        self.bar_value = QLabel("--")
+        self.bar_value.setStyleSheet(VALUE_LABEL_STYLE)
+        self.bar_value.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.bar_value.setMinimumWidth(25)
+
+        self.beat_value = QLabel("--")
+        self.beat_value.setStyleSheet(VALUE_LABEL_STYLE)
+        self.beat_value.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.beat_value.setMinimumWidth(25)
+
+        self.deck_value = QLabel("--")
+        self.deck_value.setStyleSheet(VALUE_LABEL_STYLE)
+        self.deck_value.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.deck_value.setMinimumWidth(20)
+
+        self.phrase_type = QLabel("--")
+        self.phrase_type.setStyleSheet(VALUE_LABEL_STYLE)
+        self.phrase_type.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.phrase_type.setMinimumWidth(80)
+
+        status_grid.addWidget(self.bpm_value, 1, 0)
+        status_grid.addWidget(self.bar_value, 1, 1)
+        status_grid.addWidget(self.beat_value, 1, 2)
+        status_grid.addWidget(self.phrase_type, 1, 4)
+        status_grid.addWidget(self.deck_value, 1, 3)
+
+        header_layout.addLayout(status_grid)
+
         header_layout.addStretch()  # Push everything to the left
 
         main_layout.addLayout(header_layout)
@@ -450,8 +492,7 @@ class PilotWidget(QWidget):
         main_layout.addWidget(self.phrase_progress_bar)
 
         # === PILOT PRESETS LIST ===
-        presets_group = QGroupBox("Pilot Presets")
-        presets_layout = QVBoxLayout(presets_group)
+        presets_layout = QVBoxLayout()
         presets_layout.setSpacing(4)
 
         # Preset selector
@@ -461,24 +502,31 @@ class PilotWidget(QWidget):
         preset_header.addWidget(self.preset_combo, 1)
 
         self.add_preset_btn = QToolButton()
-        self.add_preset_btn.setText("+")
         self.add_preset_btn.setToolTip("Add New Pilot")
-        self.add_preset_btn.setFixedSize(QSize(24, 24))
+        self.add_preset_btn.setFixedSize(BUTTON_SIZE_SMALL)
+        self.add_preset_btn.setStyleSheet(BUTTON_STYLE)
+        self.add_preset_btn.setIcon(qta.icon("fa5s.plus", color="white"))
+        self.add_preset_btn.setIconSize(ICON_SIZE_SMALL)
         self.add_preset_btn.clicked.connect(self._on_add_preset)
         preset_header.addWidget(self.add_preset_btn)
 
         self.edit_preset_btn = QToolButton()
-        self.edit_preset_btn.setText("✎")
         self.edit_preset_btn.setToolTip("Edit Pilot Rules")
-        self.edit_preset_btn.setFixedSize(QSize(24, 24))
+        self.edit_preset_btn.setFixedSize(BUTTON_SIZE_SMALL)
+        self.edit_preset_btn.setStyleSheet(BUTTON_STYLE)
+        self.edit_preset_btn.setIcon(qta.icon("fa5s.edit", color="white"))
+        self.edit_preset_btn.setIconSize(ICON_SIZE_SMALL)
         self.edit_preset_btn.clicked.connect(self._on_edit_preset)
         preset_header.addWidget(self.edit_preset_btn)
 
         self.delete_preset_btn = QToolButton()
-        self.delete_preset_btn.setText("✕")
+        self.delete_preset_btn.setIcon(qta.icon("fa5s.trash", color="white"))
         self.delete_preset_btn.setToolTip("Delete Pilot")
-        self.delete_preset_btn.setFixedSize(QSize(24, 24))
+        self.delete_preset_btn.setFixedSize(BUTTON_SIZE_SMALL)
+        self.delete_preset_btn.setStyleSheet(BUTTON_STYLE)
+        self.delete_preset_btn.setIconSize(ICON_SIZE_SMALL)
         self.delete_preset_btn.clicked.connect(self._on_delete_preset)
+
         preset_header.addWidget(self.delete_preset_btn)
 
         presets_layout.addLayout(preset_header)
@@ -489,19 +537,19 @@ class PilotWidget(QWidget):
         self.rule_widgets = {}  # rule_name -> QLabel widget
         presets_layout.addLayout(self.rules_container)
 
-        main_layout.addWidget(presets_group, 1)  # Give presets stretch to fill space
+        # Add stretch to push rules to the top
+        presets_layout.addStretch()
+
+        main_layout.addLayout(presets_layout)
+
+        # Add stretch to main layout to keep everything at the top
+        main_layout.addStretch()
 
     def _on_pilot_toggle(self, checked: bool) -> None:
         """Handle pilot enable/disable."""
         self.pilot_enable_requested.emit(checked)
         if checked:
-            self.pilot_toggle_btn.setIcon(qta.icon("fa5s.pause", color="white"))
-            # Auto-align after a short delay to allow MIDI clock to start
-            from PySide6.QtCore import QTimer
-
             QTimer.singleShot(200, self.align_requested.emit)
-        else:
-            self.pilot_toggle_btn.setIcon(qta.icon("fa5s.play", color="white"))
 
     def _on_phrase_detection_toggle(self, checked: bool) -> None:
         """Handle phrase detection enable/disable."""
@@ -605,9 +653,11 @@ class PilotWidget(QWidget):
         self, beat_in_bar: int, bar_in_phrase: int, bar_index: int, phrase_index: int
     ) -> None:
         """Update position display."""
-        self.status_line2.setText(
-            f"P{phrase_index + 1} • Bar {bar_in_phrase + 1}/8 • Beat {beat_in_bar + 1}/4"
-        )
+        # Update bar position (bar in phrase out of 8)
+        self.bar_value.setText(f"{bar_in_phrase + 1}/4")
+
+        # Update beat position (beat in bar out of 4)
+        self.beat_value.setText(f"{beat_in_bar + 1}/4")
 
     def update_status(
         self,
@@ -619,28 +669,37 @@ class PilotWidget(QWidget):
         phrase_duration: Optional[tuple[int, int]] = None,
     ) -> None:
         """Update status display."""
-        parts = []
-
         if aligned:
+            # Update BPM value
             if bpm:
-                parts.append(f"{bpm:.1f} BPM")
+                self.bpm_value.setText(f"{bpm:.0f}")
+            else:
+                self.bpm_value.setText("--")
 
-            if phrase_type:
-                parts.append(f"{phrase_type.upper()}")
+            # Update large phrase type indicator (M for BODY, B for BREAKDOWN)
+            if phrase_type and self.phrase_detection_enabled:
+                # Use M for Main/BODY, B for BREAKDOWN
+                if phrase_type.upper() == "BODY":
+                    self.phrase_type.setText("BODY")
+                elif phrase_type.upper() == "BREAKDOWN":
+                    self.phrase_type.setText("BREAK")
+                self.phrase_type.setVisible(True)
+            else:
+                self.phrase_type.setVisible(False)
 
-                if phrase_duration:
-                    bars, phrases = phrase_duration
-                    if phrases > 0:
-                        parts.append(f"({phrases}×8+{bars % 8} bars)")
-                    else:
-                        parts.append(f"({bars} bars)")
-
+            # Update large deck indicator
             if active_deck and self.phrase_detection_enabled:
-                parts.append(f"Deck {active_deck}")
+                self.deck_value.setText(active_deck)
+                self.deck_value.setVisible(True)
+            else:
+                self.deck_value.setVisible(False)
         else:
-            parts.append("Not aligned")
-
-        self.status_line1.setText(" • ".join(parts) if parts else "Not aligned")
+            # Not aligned - reset all values
+            self.bpm_value.setText("--")
+            self.bar_value.setText("--")
+            self.beat_value.setText("--")
+            self.deck_value.setText("--")
+            self.phrase_type.setText("--")
 
     def update_phrase_progress(self, progress: float) -> None:
         """Update phrase progress bar."""
@@ -648,9 +707,26 @@ class PilotWidget(QWidget):
 
     def set_not_aligned(self) -> None:
         """Reset display when not aligned."""
-        self.status_line1.setText("Not aligned")
-        self.status_line2.setText("")
+        self.bpm_value.setText("--")
+        self.bar_value.setText("--")
+        self.beat_value.setText("--")
         self.phrase_progress_bar.setValue(0)
+        self.phrase_type.setVisible(False)
+        self.deck_value.setVisible(False)
+
+    def set_capturing(self, is_capturing: bool) -> None:
+        """Show/hide minimal capture indicator.
+
+        Args:
+            is_capturing: True when actively capturing/analyzing, False otherwise
+        """
+        # if is_capturing:
+        #     self.capture_indicator.setStyleSheet(
+        #         f"color: {COLOR_SUCCESS}; font-size: {FONT_SIZE_SMALL}; padding: 0px 4px;"
+        #     )
+        #     self.capture_indicator.setVisible(True)
+        # else:
+        #     self.capture_indicator.setVisible(False)
 
     # Preset management methods
     def _load_presets(self) -> None:
@@ -692,7 +768,7 @@ class PilotWidget(QWidget):
                     rule_label.setWordWrap(True)
                     rule_label.setStyleSheet(
                         "color: #999999; font-size: 10px; padding: 2px 4px; "
-                        "background: #2a2a2a; border-radius: 3px; margin: 1px;"
+                        "background: {COLOR_BG_LIGHT}; border-radius: 3px; margin: 1px;"
                     )
                     self._update_rule_label(rule_label, rule, False)
 
@@ -715,7 +791,7 @@ class PilotWidget(QWidget):
 
     def _update_rule_label(self, label: QLabel, rule, is_firing: bool) -> None:
         """Update rule label text and style."""
-        status = "✓" if rule.enabled else "✗"
+        status = ""
         condition_str = f"{rule.condition.condition_type.value}"
         if rule.condition.phrase_type:
             condition_str += f" ({rule.condition.phrase_type})"
@@ -728,17 +804,17 @@ class PilotWidget(QWidget):
         if is_firing:
             label.setStyleSheet(
                 "color: #00ff00; font-size: 10px; padding: 2px 4px; "
-                "background: #004400; border: 1px solid #00ff00; border-radius: 3px; margin: 1px;"
+                "background: #004400;  border-radius: 3px; margin: 1px;"
             )
         elif rule.enabled:
             label.setStyleSheet(
                 "color: #cccccc; font-size: 10px; padding: 2px 4px; "
-                "background: #2a2a2a; border-radius: 3px; margin: 1px;"
+                f"background: {COLOR_BG_LIGHT}; border-radius: 3px; margin: 1px;"
             )
         else:
             label.setStyleSheet(
                 "color: #666666; font-size: 10px; padding: 2px 4px; "
-                "background: #1a1a1a; border-radius: 3px; margin: 1px;"
+                f"background: {COLOR_BG_DARK}; border-radius: 3px; margin: 1px;"
             )
 
     def flash_rule(self, rule_name: str) -> None:
