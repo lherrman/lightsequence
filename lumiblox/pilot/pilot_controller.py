@@ -7,7 +7,9 @@ Main coordinator for MIDI clock sync and phrase detection.
 from __future__ import annotations
 
 import logging
-from typing import Optional, Callable
+import threading
+from collections import deque
+from typing import Optional, Callable, Deque
 from enum import Enum
 
 from lumiblox.pilot.clock_sync import ClockSync
@@ -55,6 +57,9 @@ class PilotController:
         self.state = PilotState.STOPPED
 
         # Create clock sync
+        self._midi_lock = threading.Lock()
+        self._midi_messages: Deque[list] = deque(maxlen=512)
+
         self.clock_sync = ClockSync(
             device_keyword=midiclock_device,
             on_beat=self._on_beat,
@@ -62,6 +67,7 @@ class PilotController:
             on_phrase=self._on_phrase,
             on_bpm_change=on_bpm_change,
             on_aligned=self._on_aligned,
+            on_midi_message=self._on_midi_message,
         )
 
         # Create phrase detector
@@ -210,6 +216,26 @@ class PilotController:
     def clear_midi_actions(self) -> None:
         """Clear all MIDI actions."""
         self.clock_sync.midi_action_handler.clear_actions()
+
+    # MIDI monitoring -------------------------------------------------------
+    def _on_midi_message(self, data: list) -> None:
+        """Internal callback for raw MIDI messages."""
+        with self._midi_lock:
+            self._midi_messages.append(list(data))
+
+    def clear_midi_message_queue(self) -> None:
+        """Clear stored MIDI messages."""
+        with self._midi_lock:
+            self._midi_messages.clear()
+
+    def get_recent_midi_messages(self) -> list[list]:
+        """Return and clear recent MIDI messages."""
+        with self._midi_lock:
+            if not self._midi_messages:
+                return []
+            messages = list(self._midi_messages)
+            self._midi_messages.clear()
+            return messages
 
     def load_classifier_model(self, model_path: str) -> bool:
         """Load the SVM classifier model."""

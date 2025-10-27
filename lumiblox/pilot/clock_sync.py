@@ -42,6 +42,7 @@ class ClockSync:
         on_phrase: Optional[Callable[[int], None]] = None,
         on_bpm_change: Optional[Callable[[float], None]] = None,
         on_aligned: Optional[Callable[[], None]] = None,
+        on_midi_message: Optional[Callable[[list], None]] = None,
     ):
         """
         Initialize clock sync.
@@ -70,6 +71,7 @@ class ClockSync:
         self.on_phrase = on_phrase
         self.on_bpm_change = on_bpm_change
         self.on_aligned = on_aligned
+        self.on_midi_message = on_midi_message
 
         # State tracking
         self.total_pulses = 0
@@ -206,7 +208,11 @@ class ClockSync:
                     self._on_clock()
                 elif status in {MIDI_START, MIDI_CONTINUE, MIDI_STOP}:
                     self._reset_alignment()
+                    if self.on_midi_message:
+                        self.on_midi_message(data)
                 else:
+                    if self.on_midi_message:
+                        self.on_midi_message(data)
                     # Check for MIDI actions (including legacy zero signal)
                     if self._is_zero_signal(data):
                         self.align_to_tap()

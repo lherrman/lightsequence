@@ -109,7 +109,16 @@
             }
         },
         "enabled": false,
-        "midi_actions": [],
+        "midi_actions": [
+            {
+                "action_type": "phrase_sync",
+                "data1": 0,
+                "data2": null,
+                "name": "Note On 0",
+                "parameters": {},
+                "status": 144
+            }
+        ],
         "midiclock_device": "midiclock",
         "model_path": "pilot-tests/resources/traktor/classifier_traktor.pkl",
         "template_dir": "pilot-tests/resources/traktor",

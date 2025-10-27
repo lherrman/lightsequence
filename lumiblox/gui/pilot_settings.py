@@ -269,12 +269,9 @@ class MidiMonitorWidget(QWidget):
             if item.widget():
                 item.widget().deleteLater()
 
-        # Clear pending messages
-        if (
-            self.pilot_controller.clock_sync.midi_in
-            and self.pilot_controller.clock_sync.midi_in.poll()
-        ):
-            self.pilot_controller.clock_sync.midi_in.read(128)
+        # Clear pending messages captured before monitoring
+        if hasattr(self.pilot_controller, "clear_midi_message_queue"):
+            self.pilot_controller.clear_midi_message_queue()
 
         self.poll_timer.start()
 
@@ -290,16 +287,20 @@ class MidiMonitorWidget(QWidget):
         if not self.monitoring or not self.pilot_controller:
             return
 
-        midi_in = self.pilot_controller.clock_sync.midi_in
-        if not midi_in or not midi_in.poll():
-            return
+        messages = []
 
-        # Read messages
-        for data, _timestamp in midi_in.read(128):
+        if hasattr(self.pilot_controller, "get_recent_midi_messages"):
+            messages = self.pilot_controller.get_recent_midi_messages()
+        else:
+            midi_in = self.pilot_controller.clock_sync.midi_in
+            if midi_in and midi_in.poll():
+                messages = [data for data, _timestamp in midi_in.read(128)]
+
+        for data in messages:
             if not data or isinstance(data, int):
                 continue
 
-            # Ignore clock messages
+            # Ignore MIDI clock messages
             if data[0] in {0xF8, 0xFA, 0xFB, 0xFC}:
                 continue
 
@@ -476,8 +477,11 @@ class MidiLearnDialog(QDialog):
         self.save_button.setEnabled(False)
 
         # Clear any pending MIDI messages
-        if self.pilot_controller and self.pilot_controller.clock_sync.midi_in:
-            self.pilot_controller.clock_sync.midi_in.read(128)
+        if self.pilot_controller:
+            if hasattr(self.pilot_controller, "clear_midi_message_queue"):
+                self.pilot_controller.clear_midi_message_queue()
+            elif self.pilot_controller.clock_sync.midi_in:
+                self.pilot_controller.clock_sync.midi_in.read(128)
 
         self.listen_timer.start()
 
@@ -496,12 +500,16 @@ class MidiLearnDialog(QDialog):
         if not self.listening or not self.pilot_controller:
             return
 
-        midi_in = self.pilot_controller.clock_sync.midi_in
-        if not midi_in or not midi_in.poll():
-            return
+        messages = []
 
-        # Read MIDI messages
-        for data, _timestamp in midi_in.read(128):
+        if hasattr(self.pilot_controller, "get_recent_midi_messages"):
+            messages = self.pilot_controller.get_recent_midi_messages()
+        else:
+            midi_in = self.pilot_controller.clock_sync.midi_in
+            if midi_in and midi_in.poll():
+                messages = [data for data, _timestamp in midi_in.read(128)]
+
+        for data in messages:
             if not data or isinstance(data, int):
                 continue
 
