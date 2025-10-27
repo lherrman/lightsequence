@@ -17,12 +17,12 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QProgressBar,
-    QGroupBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
     QToolButton,
     QFrame,
+    QCheckBox,
 )
 
 from lumiblox.pilot.phrase_detector import CaptureRegion
@@ -38,7 +38,6 @@ from lumiblox.gui.ui_constants import (
     VALUE_LABEL_STYLE,
     HEADER_LABEL_STYLE,
     ICON_SIZE_SMALL,
-    COLOR_BG_NORMAL,
     COLOR_BG_LIGHT,
     COLOR_BG_DARK,
 )
@@ -345,8 +344,9 @@ class MidiLearnDialog(QDialog):
         instructions = QLabel(
             "1. Click 'Start Learning' below\n"
             "2. Press a button/pad on your MIDI controller\n"
-            "3. Give the action a name and select its type\n"
-            "4. Click 'Save' to create the action"
+            "3. Tick the Data 2 values (0/127/etc.) that should trigger it\n"
+            "4. Give the action a name and select its type\n"
+            "5. Click 'Save' to create the action"
         )
         instructions.setWordWrap(True)
         instructions.setStyleSheet(
@@ -378,6 +378,15 @@ class MidiLearnDialog(QDialog):
         details_layout.addWidget(self.status_byte_label)
         details_layout.addWidget(self.data1_label)
         details_layout.addWidget(self.data2_label)
+
+        # Data2 selection checkboxes (hidden until a value exists)
+        self.data2_checkbox_container = QWidget()
+        self.data2_checkbox_layout = QHBoxLayout(self.data2_checkbox_container)
+        self.data2_checkbox_layout.setContentsMargins(0, 0, 0, 0)
+        self.data2_checkbox_layout.setSpacing(8)
+        details_layout.addWidget(self.data2_checkbox_container)
+        self.data2_checkbox_container.setVisible(False)
+        self.data2_checkboxes: dict[int, QCheckBox] = {}
 
         self.details_widget.setVisible(False)
         layout.addWidget(self.details_widget)
@@ -445,8 +454,13 @@ class MidiLearnDialog(QDialog):
         self.save_button.setEnabled(False)
 
         # Clear any pending MIDI messages
-        if self.pilot_controller and self.pilot_controller.clock_sync.midi_in:
-            self.pilot_controller.clock_sync.midi_in.read(128)
+        if self.pilot_controller:
+            if hasattr(self.pilot_controller, "clear_midi_message_queue"):
+                self.pilot_controller.clear_midi_message_queue()
+            elif self.pilot_controller.clock_sync.midi_in:
+                self.pilot_controller.clock_sync.midi_in.read(128)
+
+        self._reset_data2_options()
 
         self.listen_timer.start()
 
@@ -465,12 +479,16 @@ class MidiLearnDialog(QDialog):
         if not self.listening or not self.pilot_controller:
             return
 
-        midi_in = self.pilot_controller.clock_sync.midi_in
-        if not midi_in or not midi_in.poll():
-            return
+        messages = []
 
-        # Read MIDI messages
-        for data, _timestamp in midi_in.read(128):
+        if hasattr(self.pilot_controller, "get_recent_midi_messages"):
+            messages = self.pilot_controller.get_recent_midi_messages()
+        else:
+            midi_in = self.pilot_controller.clock_sync.midi_in
+            if midi_in and midi_in.poll():
+                messages = [data for data, _timestamp in midi_in.read(128)]
+
+        for data in messages:
             if not data or isinstance(data, int):
                 continue
 
@@ -509,6 +527,7 @@ class MidiLearnDialog(QDialog):
         # Suggest a default name
         msg_type = self._get_message_type_name(status)
         self.name_input.setText(f"{msg_type} {data1 if data1 is not None else ''}")
+        self._populate_data2_options(data2)
 
     def _get_message_type_name(self, status: int) -> str:
         """Get a human-readable name for a MIDI message type."""
@@ -531,19 +550,75 @@ class MidiLearnDialog(QDialog):
         # Create action config
         status = self.learned_message[0]
         data1 = self.learned_message[1] if len(self.learned_message) > 1 else None
-        # Note: data2 is intentionally ignored - we trigger on any velocity/value
+        data2_values = [
+            value
+            for value, checkbox in self.data2_checkboxes.items()
+            if checkbox.isChecked()
+        ]
+
+        if len(data2_values) == 1:
+            data2_setting = data2_values[0]
+        elif len(data2_values) > 1:
+            data2_setting = sorted(data2_values)
+        else:
+            data2_setting = None
 
         action = MidiActionConfig(
             name=self.name_input.text().strip(),
             action_type=MidiActionType(self.action_type_combo.currentData()),
             status=status,
             data1=data1,
-            data2=None,  # Ignore velocity/value for now (trigger on any value)
+            data2=data2_setting,
             parameters={},
         )
 
         self.action_configured.emit(action)
         super().accept()
+
+    def _reset_data2_options(self) -> None:
+        """Clear any existing Data 2 checkboxes."""
+        self.data2_checkboxes.clear()
+        while self.data2_checkbox_layout.count():
+            item = self.data2_checkbox_layout.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.deleteLater()
+        self.data2_checkbox_container.setVisible(False)
+
+    def _populate_data2_options(self, learned_value: Optional[int]) -> None:
+        """Populate checkboxes for selecting Data 2 trigger values."""
+        self._reset_data2_options()
+        if learned_value is None:
+            return
+
+        values: list[int] = []
+
+        def add_value(val: Optional[int]) -> None:
+            if val is None:
+                return
+            if val not in values:
+                values.append(val)
+
+        add_value(learned_value)
+        add_value(0)
+        add_value(127)
+
+        if not values:
+            return
+
+        info_label = QLabel("Trigger when Data 2 equals:")
+        info_label.setStyleSheet("font-size: 10px; color: #cccccc;")
+        self.data2_checkbox_layout.addWidget(info_label)
+
+        for value in values:
+            checkbox = QCheckBox(str(value))
+            checkbox.setChecked(value == learned_value)
+            checkbox.setStyleSheet("font-size: 10px; color: #cccccc;")
+            self.data2_checkbox_layout.addWidget(checkbox)
+            self.data2_checkboxes[value] = checkbox
+
+        self.data2_checkbox_layout.addStretch()
+        self.data2_checkbox_container.setVisible(True)
 
 
 class PilotWidget(QWidget):

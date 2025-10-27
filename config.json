@@ -101,7 +101,7 @@
                 "timeline_region": {
                     "height": 88,
                     "width": 220,
-                    "x": -2540,
+                    "x": -2536,
                     "y": 390
                 }
             },
@@ -133,8 +133,16 @@
             {
                 "action_type": "phrase_sync",
                 "data1": 0,
-                "data2": null,
+                "data2": 127,
                 "name": "Note On 0",
+                "parameters": {},
+                "status": 144
+            },
+            {
+                "action_type": "phrase_sync",
+                "data1": 1,
+                "data2": 127,
+                "name": "Note On 1",
                 "parameters": {},
                 "status": 144
             }

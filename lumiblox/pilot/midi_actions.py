@@ -8,9 +8,10 @@ Allows mapping arbitrary MIDI messages to actions like phrase sync, sequence swi
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional, Callable, List
+from typing import Optional, Callable, List, Union
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +35,7 @@ class MidiActionConfig:
     action_type: MidiActionType  # What action to perform
     status: int  # MIDI status byte (e.g., 0x90 for note on, 0xB0 for CC)
     data1: Optional[int] = None  # MIDI data byte 1 (e.g., note number or CC number)
-    data2: Optional[int] = None  # MIDI data byte 2 (e.g., velocity), None to ignore
+    data2: Optional[Union[int, List[int]]] = None  # MIDI data byte 2(s), None to ignore
     parameters: Optional[dict] = None  # Additional action-specific parameters
 
     def matches(self, midi_data: list) -> bool:
@@ -60,9 +61,18 @@ class MidiActionConfig:
                 return False
 
         # Check data2 if specified
-        if self.data2 is not None and len(midi_data) > 2:
-            if midi_data[2] != self.data2:
+        if self.data2 is not None:
+            if len(midi_data) <= 2:
                 return False
+
+            if isinstance(self.data2, Sequence) and not isinstance(
+                self.data2, (str, bytes)
+            ):
+                if midi_data[2] not in self.data2:
+                    return False
+            else:
+                if midi_data[2] != self.data2:
+                    return False
 
         return True
 
@@ -73,7 +83,7 @@ class MidiActionConfig:
             "action_type": self.action_type.value,
             "status": self.status,
             "data1": self.data1,
-            "data2": self.data2,
+            "data2": self._serialize_data2(),
             "parameters": self.parameters or {},
         }
 
@@ -88,6 +98,16 @@ class MidiActionConfig:
             data2=data.get("data2"),
             parameters=data.get("parameters"),
         )
+
+    def _serialize_data2(self) -> Optional[Union[int, List[int]]]:
+        """Prepare data2 value for serialization."""
+        if self.data2 is None:
+            return None
+        if isinstance(self.data2, Sequence) and not isinstance(
+            self.data2, (str, bytes)
+        ):
+            return list(self.data2)
+        return self.data2
 
 
 class MidiActionHandler:
