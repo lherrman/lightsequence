@@ -140,6 +140,17 @@ class ConfigManager:
                 "data1": 60,
                 "data2": None,
             },
+            "midi_actions": [
+                # Example format:
+                # {
+                #     "name": "Phrase Sync",
+                #     "action_type": "phrase_sync",
+                #     "status": 144,  # 0x90 = Note On
+                #     "data1": 60,    # Middle C
+                #     "data2": None,  # Any velocity
+                #     "parameters": {}
+                # }
+            ],
             "model_path": "pilot-tests/resources/traktor/classifier_traktor.pkl",
             "template_dir": "pilot-tests/resources/traktor",
             "decks": {
@@ -293,6 +304,54 @@ class ConfigManager:
         decks = pilot_config.get("decks", {})
         deck_config = decks.get(deck, {})
         return deck_config.get(region_type)
+
+    def get_midi_actions(self) -> List[Dict]:
+        """Get all configured MIDI actions from config.
+
+        Returns:
+            List of MIDI action dictionaries
+        """
+        pilot_config = self.data.get("pilot", {})
+        return pilot_config.get("midi_actions", [])
+
+    def set_midi_actions(self, actions: List[Dict]) -> None:
+        """Set MIDI actions in config and save.
+
+        Args:
+            actions: List of MIDI action dictionaries
+        """
+        if "pilot" not in self.data:
+            self.data["pilot"] = self.DEFAULT_CONFIG.get("pilot", {}).copy()
+        self.data["pilot"]["midi_actions"] = actions
+        self.save()
+        logger.info(f"Saved {len(actions)} MIDI actions to config")
+
+    def add_midi_action(self, action: Dict) -> None:
+        """Add a MIDI action to config and save.
+
+        Args:
+            action: MIDI action dictionary
+        """
+        actions = self.get_midi_actions()
+        actions.append(action)
+        self.set_midi_actions(actions)
+
+    def remove_midi_action(self, name: str) -> bool:
+        """Remove a MIDI action by name from config and save.
+
+        Args:
+            name: Name of the action to remove
+
+        Returns:
+            True if action was found and removed
+        """
+        actions = self.get_midi_actions()
+        for i, action in enumerate(actions):
+            if action.get("name") == name:
+                actions.pop(i)
+                self.set_midi_actions(actions)
+                return True
+        return False
 
 
 # Global config manager instance

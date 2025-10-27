@@ -14,6 +14,7 @@ from PySide6.QtCore import QThread, Signal
 
 from lumiblox.controller.light_controller import LightController
 from lumiblox.pilot.pilot_controller import PilotController
+from lumiblox.pilot.midi_actions import MidiActionConfig
 from lumiblox.common.config import get_config
 
 logger = logging.getLogger(__name__)
@@ -123,6 +124,16 @@ class ControllerThread(QThread):
                     data1=zero_signal.get("data1"),
                     data2=zero_signal.get("data2"),
                 )
+
+            # Load MIDI actions from config
+            midi_actions = pilot_config.get("midi_actions", [])
+            for action_dict in midi_actions:
+                try:
+                    action = MidiActionConfig.from_dict(action_dict)
+                    self.pilot_controller.add_midi_action(action)
+                    logger.info(f"Loaded MIDI action: {action.name}")
+                except Exception as e:
+                    logger.error(f"Failed to load MIDI action: {e}")
 
             # Load model and templates
             model_path = pilot_config.get("model_path")

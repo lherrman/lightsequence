@@ -51,7 +51,7 @@ class LightController:
         
         # Hardware
         if simulation:
-            logger.info("🔧 Using simulated lighting software")
+            logger.info("Using simulated lighting software")
             self.light_software = LightSoftwareSim()
         else:
             self.light_software = LightSoftware(device_manager=self.device_manager)
@@ -124,7 +124,7 @@ class LightController:
         # Sync initial state from light software
         self._sync_initial_scenes()
         
-        logger.info("✅ Light controller initialized")
+        logger.info("Light controller initialized")
         return True
     
     def run_main_loop(self) -> None:

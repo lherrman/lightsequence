@@ -56,7 +56,7 @@
         "clear_button": {
             "button_type": "RIGHT",
             "coordinates": [
-                0,
+                8,
                 7
             ]
         },
@@ -92,23 +92,8 @@
     "pilot": {
         "decks": {
             "A": {
-<<<<<<< HEAD
                 "master_button_region": null,
                 "timeline_region": null
-=======
-                "master_button_region": {
-                    "height": 22,
-                    "width": 64,
-                    "x": -2925,
-                    "y": 411
-                },
-                "timeline_region": {
-                    "height": 88,
-                    "width": 220,
-                    "x": -2536,
-                    "y": 437
-                }
->>>>>>> 2857387bffd7d19e1d86695d29a35a3c891d2b4b
             },
             "B": {
                 "master_button_region": null,
@@ -124,6 +109,7 @@
             }
         },
         "enabled": false,
+        "midi_actions": [],
         "midiclock_device": "midiclock",
         "model_path": "pilot-tests/resources/traktor/classifier_traktor.pkl",
         "template_dir": "pilot-tests/resources/traktor",

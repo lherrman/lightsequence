@@ -14,6 +14,7 @@ from lumiblox.pilot.clock_sync import ClockSync
 from lumiblox.pilot.phrase_detector import PhraseDetector, CaptureRegion
 from lumiblox.pilot.pilot_preset import PilotPresetManager
 from lumiblox.pilot.rule_engine import RuleEngine
+from lumiblox.pilot.midi_actions import MidiActionConfig
 
 logger = logging.getLogger(__name__)
 
@@ -177,8 +178,38 @@ class PilotController:
         data1: Optional[int] = None,
         data2: Optional[int] = None,
     ) -> None:
-        """Configure MIDI signal for auto-alignment."""
+        """Configure MIDI signal for auto-alignment (legacy support)."""
         self.clock_sync.set_zero_signal(status, data1, data2)
+
+    def add_midi_action(self, action: MidiActionConfig) -> None:
+        """
+        Add a MIDI action configuration.
+
+        Args:
+            action: The MIDI action configuration to add
+        """
+        self.clock_sync.midi_action_handler.add_action(action)
+        logger.info(f"Added MIDI action: {action.name} -> {action.action_type.value}")
+
+    def remove_midi_action(self, name: str) -> bool:
+        """
+        Remove a MIDI action by name.
+
+        Args:
+            name: Name of the action to remove
+
+        Returns:
+            True if action was found and removed
+        """
+        return self.clock_sync.midi_action_handler.remove_action(name)
+
+    def get_midi_actions(self) -> list[MidiActionConfig]:
+        """Get all configured MIDI actions."""
+        return self.clock_sync.midi_action_handler.get_actions()
+
+    def clear_midi_actions(self) -> None:
+        """Clear all MIDI actions."""
+        self.clock_sync.midi_action_handler.clear_actions()
 
     def load_classifier_model(self, model_path: str) -> bool:
         """Load the SVM classifier model."""

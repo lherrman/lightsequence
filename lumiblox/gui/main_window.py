@@ -260,6 +260,12 @@ class LightSequenceGUI(QMainWindow):
         if self.controller_thread:
             self.controller = self.controller_thread.controller
 
+            # Set pilot controller on pilot widget
+            if self.controller_thread.pilot_controller:
+                self.pilot_widget.set_pilot_controller(
+                    self.controller_thread.pilot_controller
+                )
+
             # Set up pilot update callback
             if self.controller_thread.pilot_controller:
                 self.controller_thread.pilot_update_callback = (
