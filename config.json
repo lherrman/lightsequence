@@ -92,12 +92,32 @@
     "pilot": {
         "decks": {
             "A": {
-                "master_button_region": null,
-                "timeline_region": null
+                "master_button_region": {
+                    "height": 22,
+                    "width": 64,
+                    "x": -2925,
+                    "y": 364
+                },
+                "timeline_region": {
+                    "height": 88,
+                    "width": 220,
+                    "x": -2540,
+                    "y": 390
+                }
             },
             "B": {
-                "master_button_region": null,
-                "timeline_region": null
+                "master_button_region": {
+                    "height": 22,
+                    "width": 64,
+                    "x": -1901,
+                    "y": 365
+                },
+                "timeline_region": {
+                    "height": 88,
+                    "width": 220,
+                    "x": -1514,
+                    "y": 393
+                }
             },
             "C": {
                 "master_button_region": null,

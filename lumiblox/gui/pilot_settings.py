@@ -5,12 +5,9 @@ Comprehensive settings panel for pilot system configuration.
 """
 
 import logging
-from typing import Optional
-
 import qtawesome as qta
 import pygame.midi
 from PySide6.QtCore import Qt, Signal, QRect, QTimer
-from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -21,7 +18,6 @@ from PySide6.QtWidgets import (
     QComboBox,
     QGroupBox,
     QScrollArea,
-    QFrame,
 )
 
 from lumiblox.pilot.phrase_detector import CaptureRegion
@@ -31,10 +27,8 @@ from lumiblox.gui.ui_constants import (
     BUTTON_SIZE_SMALL,
     BUTTON_SIZE_LARGE,
     ICON_SIZE_SMALL,
-    ICON_SIZE_MEDIUM,
     BUTTON_STYLE,
     HEADER_LABEL_STYLE,
-    VALUE_LABEL_STYLE,
 )
 
 logger = logging.getLogger(__name__)
@@ -156,7 +150,8 @@ class DeckRegionWidget(QWidget):
 
         # Configure button
         config_btn = QPushButton("Set Regions")
-        config_btn.setFixedSize(BUTTON_SIZE_LARGE)
+        config_btn.setFixedHeight(BUTTON_SIZE_LARGE.height())
+        config_btn.setMinimumWidth(120)
         config_btn.setStyleSheet(BUTTON_STYLE)
         config_btn.clicked.connect(lambda: self.configure_requested.emit(deck_name))
         layout.addWidget(config_btn)
@@ -209,7 +204,8 @@ class MidiMonitorWidget(QWidget):
 
         # Monitor toggle button
         self.monitor_btn = QPushButton("Start Monitoring")
-        self.monitor_btn.setFixedSize(BUTTON_SIZE_LARGE)
+        self.monitor_btn.setFixedHeight(BUTTON_SIZE_LARGE.height())
+        self.monitor_btn.setMinimumWidth(150)
         self.monitor_btn.setStyleSheet(BUTTON_STYLE)
         self.monitor_btn.clicked.connect(self._toggle_monitoring)
         header.addWidget(self.monitor_btn)
@@ -662,7 +658,8 @@ class PilotSettingsDialog(QDialog):
         learn_btn = QPushButton("Learn New Action")
         learn_btn.setIcon(qta.icon("fa5s.wifi", color="white"))
         learn_btn.setIconSize(ICON_SIZE_SMALL)
-        learn_btn.setFixedSize(BUTTON_SIZE_LARGE)
+        learn_btn.setFixedHeight(BUTTON_SIZE_LARGE.height())
+        learn_btn.setMinimumWidth(150)
         learn_btn.setStyleSheet(BUTTON_STYLE)
         learn_btn.clicked.connect(self._on_midi_learn)
         actions_header.addWidget(learn_btn)
