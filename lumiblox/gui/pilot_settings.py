@@ -16,9 +16,10 @@ from PySide6.QtWidgets import (
     QPushButton,
     QDialog,
     QComboBox,
-    QGroupBox,
     QScrollArea,
     QCheckBox,
+    QGroupBox,
+    QToolButton,
 )
 
 from typing import Optional
@@ -122,6 +123,7 @@ class DeckRegionWidget(QWidget):
     """Widget for configuring a single deck's regions."""
 
     configure_requested = Signal(str)  # Emits deck name
+    reset_requested = Signal(str)  # Emits deck name when cleared
 
     def __init__(self, deck_name: str, parent=None):
         super().__init__(parent)
@@ -151,13 +153,27 @@ class DeckRegionWidget(QWidget):
 
         layout.addLayout(status_layout, 1)
 
-        # Configure button
+        # Action buttons
+        button_row = QHBoxLayout()
+        button_row.setSpacing(6)
+
+        self.reset_btn = QToolButton()
+        self.reset_btn.setIcon(qta.icon("fa5s.trash-alt", color="white"))
+        self.reset_btn.setIconSize(ICON_SIZE_SMALL)
+        self.reset_btn.setFixedSize(BUTTON_SIZE_SMALL)
+        self.reset_btn.setStyleSheet(BUTTON_STYLE)
+        self.reset_btn.setToolTip("Clear saved regions")
+        self.reset_btn.clicked.connect(lambda: self.reset_requested.emit(deck_name))
+        button_row.addWidget(self.reset_btn)
+
         config_btn = QPushButton("Set Regions")
         config_btn.setFixedHeight(BUTTON_SIZE_LARGE.height())
-        config_btn.setMinimumWidth(120)
+        config_btn.setMinimumWidth(140)
         config_btn.setStyleSheet(BUTTON_STYLE)
         config_btn.clicked.connect(lambda: self.configure_requested.emit(deck_name))
-        layout.addWidget(config_btn)
+        button_row.addWidget(config_btn)
+
+        layout.addLayout(button_row)
 
         # Load current status
         self.refresh_status()
@@ -186,6 +202,8 @@ class DeckRegionWidget(QWidget):
             self.timeline_status.setText("Timeline: Not set")
             self.timeline_status.setStyleSheet("font-size: 10px; color: #999;")
 
+        self.reset_btn.setEnabled(bool(button_region or timeline_region))
+
 
 class MidiMonitorWidget(QWidget):
     """Widget for monitoring MIDI messages."""
@@ -206,9 +224,12 @@ class MidiMonitorWidget(QWidget):
         header.addStretch()
 
         # Monitor toggle button
-        self.monitor_btn = QPushButton("Start Monitoring")
-        self.monitor_btn.setFixedHeight(BUTTON_SIZE_LARGE.height())
-        self.monitor_btn.setMinimumWidth(150)
+        self.monitor_btn = QToolButton()
+        self.monitor_btn.setCheckable(True)
+        self.monitor_btn.setChecked(False)
+        self.monitor_btn.setIcon(qta.icon("fa5s.play", color="white"))
+        self.monitor_btn.setIconSize(ICON_SIZE_SMALL)
+        self.monitor_btn.setToolTip("Start monitoring MIDI input")
         self.monitor_btn.setStyleSheet(BUTTON_STYLE)
         self.monitor_btn.clicked.connect(self._toggle_monitoring)
         header.addWidget(self.monitor_btn)
@@ -245,20 +266,40 @@ class MidiMonitorWidget(QWidget):
 
     def _toggle_monitoring(self) -> None:
         """Toggle MIDI monitoring."""
-        if self.monitoring:
-            self._stop_monitoring()
+        if self.monitor_btn.isChecked():
+            if not self._start_monitoring():
+                self.monitor_btn.setChecked(False)
         else:
-            self._start_monitoring()
+            self._stop_monitoring()
 
-    def _start_monitoring(self) -> None:
+    def _start_monitoring(self) -> bool:
         """Start monitoring MIDI messages."""
         if not self.pilot_controller:
-            return
+            from PySide6.QtWidgets import QMessageBox
+
+            QMessageBox.warning(
+                self,
+                "Pilot Not Available",
+                "No pilot controller is attached. Open the pilot module and try again.",
+            )
+            return False
+
+        if hasattr(self.pilot_controller, "ensure_running"):
+            if not self.pilot_controller.ensure_running():
+                from PySide6.QtWidgets import QMessageBox
+
+                QMessageBox.warning(
+                    self,
+                    "Pilot Not Running",
+                    "Could not start the pilot automatically. Start it manually and try again.",
+                )
+                return False
 
         self.monitoring = True
-        self.monitor_btn.setText("Stop Monitoring")
+        self.monitor_btn.setIcon(qta.icon("fa5s.stop", color="white"))
+        self.monitor_btn.setToolTip("Stop monitoring MIDI input")
         self.monitor_btn.setStyleSheet(
-            BUTTON_STYLE + "QPushButton { background-color: #c44; }"
+            BUTTON_STYLE + "QToolButton { background-color: #c44; }"
         )
 
         # Clear previous messages
@@ -273,12 +314,16 @@ class MidiMonitorWidget(QWidget):
             self.pilot_controller.clear_midi_message_queue()
 
         self.poll_timer.start()
+        return True
 
     def _stop_monitoring(self) -> None:
         """Stop monitoring MIDI messages."""
         self.monitoring = False
         self.poll_timer.stop()
-        self.monitor_btn.setText("Start Monitoring")
+        if self.monitor_btn.isChecked():
+            self.monitor_btn.setChecked(False)
+        self.monitor_btn.setIcon(qta.icon("fa5s.play", color="white"))
+        self.monitor_btn.setToolTip("Start monitoring MIDI input")
         self.monitor_btn.setStyleSheet(BUTTON_STYLE)
 
     def _poll_midi(self) -> None:
@@ -473,6 +518,20 @@ class MidiLearnDialog(QDialog):
 
     def _start_learning(self) -> None:
         """Start listening for MIDI messages."""
+        if not self.pilot_controller:
+            return
+
+        if hasattr(self.pilot_controller, "ensure_running"):
+            if not self.pilot_controller.ensure_running():
+                from PySide6.QtWidgets import QMessageBox
+
+                QMessageBox.warning(
+                    self,
+                    "Pilot Not Running",
+                    "Could not start the pilot automatically. Start it manually and try again.",
+                )
+                return
+
         self.listening = True
         self.learned_message = None
         self.learn_btn.setText("Stop Learning")
@@ -486,11 +545,10 @@ class MidiLearnDialog(QDialog):
         self.save_button.setEnabled(False)
 
         # Clear any pending MIDI messages
-        if self.pilot_controller:
-            if hasattr(self.pilot_controller, "clear_midi_message_queue"):
-                self.pilot_controller.clear_midi_message_queue()
-            elif self.pilot_controller.clock_sync.midi_in:
-                self.pilot_controller.clock_sync.midi_in.read(128)
+        if hasattr(self.pilot_controller, "clear_midi_message_queue"):
+            self.pilot_controller.clear_midi_message_queue()
+        elif self.pilot_controller.clock_sync.midi_in:
+            self.pilot_controller.clock_sync.midi_in.read(128)
 
         self._reset_data2_options()
 
@@ -684,8 +742,9 @@ class PilotSettingsDialog(QDialog):
         layout.setSpacing(15)
 
         # === MIDI DEVICES SECTION ===
-        devices_group = QGroupBox("MIDI Devices")
-        devices_layout = QVBoxLayout(devices_group)
+        devices_section = QGroupBox("MIDI Devices")
+        devices_layout = QVBoxLayout(devices_section)
+        devices_layout.setSpacing(8)
 
         # MIDI Clock device
         self.midiclock_selector = MidiDeviceSelector("MIDI Clock:", "midiclock")
@@ -703,24 +762,27 @@ class PilotSettingsDialog(QDialog):
         )
         devices_layout.addWidget(self.lightsw_out_selector)
 
-        layout.addWidget(devices_group)
+        layout.addWidget(devices_section)
 
         # === DECK REGIONS SECTION ===
-        decks_group = QGroupBox("Deck Capture Regions")
-        decks_layout = QVBoxLayout(decks_group)
+        decks_section = QGroupBox("Deck Capture Regions")
+        decks_layout = QVBoxLayout(decks_section)
+        decks_layout.setSpacing(8)
 
         self.deck_widgets = {}
         for deck in ["A", "B", "C", "D"]:
             deck_widget = DeckRegionWidget(deck)
             deck_widget.configure_requested.connect(self._configure_deck)
+            deck_widget.reset_requested.connect(self._reset_deck)
             self.deck_widgets[deck] = deck_widget
             decks_layout.addWidget(deck_widget)
 
-        layout.addWidget(decks_group)
+        layout.addWidget(decks_section)
 
         # === MIDI ACTIONS SECTION ===
-        actions_group = QGroupBox("MIDI Actions")
-        actions_layout = QVBoxLayout(actions_group)
+        actions_section = QGroupBox("MIDI Actions")
+        actions_layout = QVBoxLayout(actions_section)
+        actions_layout.setSpacing(8)
 
         # Header with learn button
         actions_header = QHBoxLayout()
@@ -728,7 +790,6 @@ class PilotSettingsDialog(QDialog):
         actions_header.addStretch()
 
         learn_btn = QPushButton("Learn New Action")
-        learn_btn.setIcon(qta.icon("fa5s.wifi", color="white"))
         learn_btn.setIconSize(ICON_SIZE_SMALL)
         learn_btn.setFixedHeight(BUTTON_SIZE_LARGE.height())
         learn_btn.setMinimumWidth(150)
@@ -743,16 +804,17 @@ class PilotSettingsDialog(QDialog):
         self.actions_container.setSpacing(2)
         actions_layout.addLayout(self.actions_container)
 
-        layout.addWidget(actions_group)
+        layout.addWidget(actions_section)
 
         # === MIDI MONITOR SECTION ===
-        monitor_group = QGroupBox("MIDI Monitor")
-        monitor_layout = QVBoxLayout(monitor_group)
+        monitor_section = QGroupBox("MIDI Monitor")
+        monitor_layout = QVBoxLayout(monitor_section)
+        monitor_layout.setSpacing(8)
 
         self.midi_monitor = MidiMonitorWidget(pilot_controller)
         monitor_layout.addWidget(self.midi_monitor)
 
-        layout.addWidget(monitor_group)
+        layout.addWidget(monitor_section)
 
         # Add stretch at the end
         layout.addStretch()
@@ -790,6 +852,29 @@ class PilotSettingsDialog(QDialog):
         config_dialog.show()
         config_dialog.raise_()
         config_dialog.activateWindow()
+
+    def _reset_deck(self, deck_name: str) -> None:
+        """Clear capture regions for a deck after confirmation."""
+        from PySide6.QtWidgets import QMessageBox
+
+        reply = QMessageBox.question(
+            self,
+            "Reset Deck Regions",
+            f"Clear all capture regions for deck {deck_name}?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        config = get_config()
+        config.clear_deck_regions(deck_name)
+
+        if self.pilot_controller:
+            self.pilot_controller.clear_deck_configuration(deck_name)
+
+        self.deck_widgets[deck_name].refresh_status()
+        logger.info("Cleared deck %s capture regions", deck_name)
 
     def _on_regions_configured(
         self, deck_name: str, button_rect: QRect, timeline_rect: QRect
@@ -923,6 +1008,17 @@ class PilotSettingsDialog(QDialog):
                 "Please start the pilot system first.",
             )
             return
+
+        if hasattr(self.pilot_controller, "ensure_running"):
+            if not self.pilot_controller.ensure_running():
+                from PySide6.QtWidgets import QMessageBox
+
+                QMessageBox.warning(
+                    self,
+                    "Pilot Not Running",
+                    "Could not start the pilot automatically. Start it manually and try again.",
+                )
+                return
 
         dialog = MidiLearnDialog(self.pilot_controller, self)
         dialog.action_configured.connect(self._on_midi_action_configured)

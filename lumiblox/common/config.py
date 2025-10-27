@@ -305,6 +305,33 @@ class ConfigManager:
         deck_config = decks.get(deck, {})
         return deck_config.get(region_type)
 
+    def clear_deck_regions(self, deck: str) -> None:
+        """Clear stored capture regions for a deck and save."""
+        if "pilot" not in self.data:
+            return
+
+        decks = self.data["pilot"].setdefault(
+            "decks",
+            {
+                "A": {"master_button_region": None, "timeline_region": None},
+                "B": {"master_button_region": None, "timeline_region": None},
+                "C": {"master_button_region": None, "timeline_region": None},
+                "D": {"master_button_region": None, "timeline_region": None},
+            },
+        )
+
+        if deck not in decks:
+            decks[deck] = {
+                "master_button_region": None,
+                "timeline_region": None,
+            }
+        else:
+            decks[deck]["master_button_region"] = None
+            decks[deck]["timeline_region"] = None
+
+        self.save()
+        logger.info(f"Cleared capture regions for deck {deck}")
+
     def get_midi_actions(self) -> List[Dict]:
         """Get all configured MIDI actions from config.
 

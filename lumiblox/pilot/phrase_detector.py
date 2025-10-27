@@ -229,6 +229,18 @@ class PhraseDetector:
             f"timeline={timeline_region is not None}"
         )
 
+    def clear_deck(self, deck_name: str) -> None:
+        """Clear stored capture regions for a deck."""
+        if deck_name not in self.decks:
+            logger.error(f"Invalid deck name: {deck_name}")
+            return
+
+        deck = self.decks[deck_name]
+        deck.master_button_region = None
+        deck.timeline_region = None
+        deck.is_master = False
+        logger.info(f"Cleared capture regions for deck {deck_name}")
+
     # Detection -------------------------------------------------------------
     def detect_active_deck(self) -> Optional[str]:
         """

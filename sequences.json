@@ -1,3 +1,19 @@
 {
-  "sequences": []
+  "sequences": [
+    {
+      "index": [
+        1,
+        0
+      ],
+      "loop": true,
+      "steps": [
+        {
+          "scenes": [],
+          "duration": 7.0,
+          "name": "Step 1",
+          "duration_unit": "bars"
+        }
+      ]
+    }
+  ]
 }

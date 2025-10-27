@@ -126,6 +126,16 @@ class PilotController:
         logger.info(f"Pilot started (state: {self.state.value})")
         return True
 
+    def ensure_running(self) -> bool:
+        """Ensure the pilot is running, starting it if necessary."""
+        if self.state != PilotState.STOPPED:
+            return True
+
+        success = self.start(enable_phrase_detection=False)
+        if not success:
+            logger.error("Unable to auto-start pilot controller for MIDI access")
+        return success
+
     def stop(self) -> None:
         """Stop the pilot system (keeps MIDI device open for quick restart)."""
         try:
@@ -216,6 +226,10 @@ class PilotController:
     def clear_midi_actions(self) -> None:
         """Clear all MIDI actions."""
         self.clock_sync.midi_action_handler.clear_actions()
+
+    def clear_deck_configuration(self, deck_name: str) -> None:
+        """Clear capture regions for a deck."""
+        self.phrase_detector.clear_deck(deck_name)
 
     # MIDI monitoring -------------------------------------------------------
     def _on_midi_message(self, data: list) -> None:
