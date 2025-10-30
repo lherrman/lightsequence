@@ -15,6 +15,9 @@ from lumiblox.pilot.phrase_detector import PhraseDetector, CaptureRegion
 from lumiblox.pilot.pilot_preset import PilotPresetManager
 from lumiblox.pilot.rule_engine import RuleEngine
 
+
+FALLBACK_PHRASE_TYPE = "any"
+
 logger = logging.getLogger(__name__)
 
 
@@ -168,6 +171,14 @@ class PilotController:
         self.phrase_detector.close()
         if self.state == PilotState.FULL:
             self.state = PilotState.SYNCING
+        current_bar = (
+            self.clock_sync.get_current_position()[2]
+            if self.clock_sync.is_aligned()
+            else 0
+        )
+        self.phrase_start_bar = current_bar
+        self.phrase_bars_elapsed = 0
+        self.current_phrase_type = None
         logger.info("Phrase detection disabled")
 
     # Configuration ---------------------------------------------------------
@@ -243,6 +254,8 @@ class PilotController:
     # Internal callbacks ----------------------------------------------------
     def _on_aligned(self) -> None:
         """Internal alignment callback - reset rule cooldowns."""
+        self.phrase_start_bar = 0
+        self.phrase_bars_elapsed = 0
         if self.rule_engine:
             self.rule_engine.reset_cooldowns()
             logger.debug("Rule cooldowns reset after alignment")
@@ -256,13 +269,15 @@ class PilotController:
     def _on_bar(self, bar_index: int) -> None:
         """Internal bar callback - triggers phrase detection."""
         # Update phrase duration tracking
-        if self.current_phrase_type:
-            self.phrase_bars_elapsed = bar_index - self.phrase_start_bar
+        delta = bar_index - self.phrase_start_bar
+        self.phrase_bars_elapsed = delta if delta >= 0 else 0
 
         # Update rule engine state
-        if self.rule_engine and self.current_phrase_type:
-            bars, _ = self.get_phrase_duration()
-            self.rule_engine.update_state(self.current_phrase_type, bars, bar_index)
+        if self.rule_engine:
+            bars = self.phrase_bars_elapsed
+            self.rule_engine.update_state(
+                self._effective_phrase_type(), bars, bar_index
+            )
 
             # Evaluate rules
             active_preset = self.preset_manager.get_active_preset()
@@ -307,7 +322,9 @@ class PilotController:
             new_type = self.phrase_detector.get_current_phrase_type()
 
             # Reset duration tracking if phrase type changed
-            if new_type != old_type:
+            if new_type is None:
+                logger.debug("Phrase detection returned no type; keeping previous state")
+            elif new_type != old_type:
                 previous_phrase_bars = self.phrase_bars_elapsed
                 self.current_phrase_type = new_type
                 current_bar = (
@@ -403,3 +420,7 @@ class PilotController:
             logger.error(f"Error closing phrase detector: {e}")
 
         logger.info("Pilot controller cleaned up")
+
+    def _effective_phrase_type(self) -> str:
+        """Return a usable phrase label even when detection is inactive."""
+        return self.current_phrase_type or FALLBACK_PHRASE_TYPE
