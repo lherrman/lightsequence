@@ -88,10 +88,19 @@ class ControllerThread(QThread):
         """Forward pilot bar events to the sequence controller."""
         if not self.controller:
             return
+        # Bar advancement is handled via beat notifications to support sub-bar durations.
+        pass
+
+    def _handle_pilot_beat(
+        self, beat_in_bar: int, bar_index: int, phrase_index: int
+    ) -> None:
+        """Forward pilot beat events to the sequence controller."""
+        if not self.controller:
+            return
         try:
-            self.controller.sequence_ctrl.notify_bar_advanced()
+            self.controller.sequence_ctrl.notify_beat_advanced()
         except Exception as exc:
-            logger.debug(f"Failed to forward bar event: {exc}")
+            logger.debug(f"Failed to forward beat event: {exc}")
 
     def _handle_capturing(self, is_capturing: bool) -> None:
         """Forward capture state changes to GUI thread."""
@@ -108,6 +117,7 @@ class ControllerThread(QThread):
             midiclock_device = pilot_config.get("midiclock_device", "midiclock")
             self.pilot_controller = PilotController(
                 midiclock_device=midiclock_device,
+                on_beat=self._handle_pilot_beat,
                 on_bar=self._handle_pilot_bar,
                 on_bpm_change=lambda bpm: logger.info(f"BPM: {bpm:.2f}"),
                 on_phrase_type_change=lambda phrase_type: logger.info(

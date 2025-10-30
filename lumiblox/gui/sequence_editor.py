@@ -24,7 +24,6 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
 )
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QFont
 import qtawesome as qta
 
 from lumiblox.controller.sequence_controller import SequenceStep, SequenceDurationUnit
@@ -45,6 +44,24 @@ from lumiblox.gui.widgets import SelectAllLineEdit, SceneButton
 # Configuration constants
 DEFAULT_STEP_DURATION = 2.0  # Default duration in seconds for new steps
 DEFAULT_STEP_BARS = 4  # Default duration in bars for new steps
+BAR_DURATION_INCREMENT = 0.25
+MIN_BAR_DURATION = 0.25
+MAX_BAR_DURATION = 512.0
+
+
+def quantize_bar_duration(value: float) -> float:
+    """Snap a bar duration to the nearest quarter-bar within valid bounds."""
+    steps = max(1, int(round(value / BAR_DURATION_INCREMENT)))
+    quantized = steps * BAR_DURATION_INCREMENT
+    return min(MAX_BAR_DURATION, quantized)
+
+
+def format_bar_duration(value: float) -> str:
+    """Format a bar duration without trailing zeros."""
+    quantized = quantize_bar_duration(value)
+    if float(quantized).is_integer():
+        return str(int(quantized))
+    return f"{quantized:.2f}".rstrip("0").rstrip(".")
 
 logger = logging.getLogger(__name__)
 
@@ -245,7 +262,8 @@ class SequenceStepWidget(QFrame):
         """Decrease duration value using the active unit."""
         current = self.step.duration
         if self.step.duration_unit == SequenceDurationUnit.BARS:
-            new_value = max(1.0, current - 1)
+            normalized = quantize_bar_duration(current)
+            new_value = quantize_bar_duration(normalized - BAR_DURATION_INCREMENT)
         else:
             new_value = max(0.1, current - 0.5)
         self.step.duration = new_value
@@ -256,7 +274,8 @@ class SequenceStepWidget(QFrame):
         """Increase duration value using the active unit."""
         current = self.step.duration
         if self.step.duration_unit == SequenceDurationUnit.BARS:
-            new_value = min(512.0, current + 1)
+            normalized = quantize_bar_duration(current)
+            new_value = quantize_bar_duration(normalized + BAR_DURATION_INCREMENT)
         else:
             new_value = min(3600.0, current + 0.5)
         self.step.duration = new_value
@@ -271,15 +290,12 @@ class SequenceStepWidget(QFrame):
     def on_duration_editing_finished(self):
         """Called when user finishes editing duration text."""
         try:
-            text = self.duration_input.text().strip()
+            text = self.duration_input.text().strip().replace(",", ".")
             if self.step.duration_unit == SequenceDurationUnit.BARS:
-                value = int(round(float(text)))
-                if value < 1:
-                    value = 1
-                elif value > 512:
-                    value = 512
-                self.step.duration = float(value)
-                self.duration_input.setText(str(value))
+                value = float(text)
+                quantized = quantize_bar_duration(value)
+                self.step.duration = quantized
+                self.duration_input.setText(format_bar_duration(quantized))
             else:
                 value = float(text)
 
@@ -326,9 +342,9 @@ class SequenceStepWidget(QFrame):
 
     def _refresh_duration_input(self) -> None:
         if self.step.duration_unit == SequenceDurationUnit.BARS:
-            value = max(1, int(round(self.step.duration)))
-            self.step.duration = float(value)
-            self.duration_input.setText(str(value))
+            quantized = quantize_bar_duration(self.step.duration)
+            self.step.duration = quantized
+            self.duration_input.setText(format_bar_duration(quantized))
         else:
             self.duration_input.setText(f"{self.step.duration:.1f}")
 
@@ -344,11 +360,12 @@ class SequenceStepWidget(QFrame):
         if unit == SequenceDurationUnit.BARS:
             if self.step.duration_unit == SequenceDurationUnit.SECONDS:
                 converted = round(self.step.duration)
-                if converted < 1:
+                if converted < MIN_BAR_DURATION:
                     converted = DEFAULT_STEP_BARS
                 self.step.duration = float(converted)
             else:
-                self.step.duration = max(1.0, self.step.duration)
+                self.step.duration = max(MIN_BAR_DURATION, self.step.duration)
+            self.step.duration = quantize_bar_duration(self.step.duration)
         else:
             new_value = max(0.1, float(self.step.duration))
             if new_value > 3600.0:
@@ -581,7 +598,9 @@ class PresetSequenceEditor(QWidget):
                 f"{i + 1}. {step.name}" if step.name else f"{i + 1}. Step {i + 1}"
             )
             if step.duration_unit == SequenceDurationUnit.BARS:
-                duration_text = f" ({int(step.duration)} bars)"
+                duration_text = (
+                    f" ({format_bar_duration(step.duration)} bars)"
+                )
             else:
                 duration_text = f" ({step.duration:.1f}s)"
             scene_count = f" [{len(step.scenes)} scenes]" if step.scenes else " [empty]"

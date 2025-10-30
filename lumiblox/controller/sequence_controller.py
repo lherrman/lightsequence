@@ -51,6 +51,8 @@ class SequenceController:
     - Step transitions
     """
 
+    _BEATS_PER_BAR = 4
+
     def __init__(self, storage_file: Path):
         """Initialize sequence controller."""
         self.storage_file = storage_file
@@ -64,7 +66,7 @@ class SequenceController:
         self.playback_thread: t.Optional[threading.Thread] = None
         self.stop_event = threading.Event()
         self._bar_condition = threading.Condition()
-        self._bars_remaining: t.Optional[int] = None
+        self._beats_remaining: t.Optional[int] = None
 
         # Callbacks
         self.on_step_change: t.Optional[
@@ -228,7 +230,7 @@ class SequenceController:
         self.current_step_index = 0
         self.playback_state = PlaybackState.PAUSED
         with self._bar_condition:
-            self._bars_remaining = None
+            self._beats_remaining = None
             self._bar_condition.notify_all()
 
     def activate_sequence(self, index: t.Tuple[int, int]) -> bool:
@@ -252,7 +254,7 @@ class SequenceController:
         self.current_step_index = 0
         self.stop_event.clear()
         with self._bar_condition:
-            self._bars_remaining = None
+            self._beats_remaining = None
             self._bar_condition.notify_all()
 
         # Trigger first step
@@ -318,7 +320,7 @@ class SequenceController:
         self.active_sequence = None
         self.current_step_index = 0
         with self._bar_condition:
-            self._bars_remaining = None
+            self._beats_remaining = None
             self._bar_condition.notify_all()
 
         # Don't change playback state - it stays as is
@@ -338,7 +340,7 @@ class SequenceController:
         if self.on_step_change:
             self.on_step_change(sequence[self.current_step_index].scenes)
         with self._bar_condition:
-            self._bars_remaining = None
+            self._beats_remaining = None
 
         logger.debug(f"Advanced to step {self.current_step_index + 1}/{len(sequence)}")
         return True
@@ -399,7 +401,7 @@ class SequenceController:
         if self.playback_thread and self.playback_thread.is_alive():
             self.playback_thread.join(timeout=1.0)
         with self._bar_condition:
-            self._bars_remaining = None
+            self._beats_remaining = None
             self._bar_condition.notify_all()
 
     # ------------------------------------------------------------------
@@ -408,21 +410,27 @@ class SequenceController:
 
     def notify_bar_advanced(self) -> None:
         """Notify the controller that one full bar has elapsed."""
+        self.notify_beat_advanced(self._BEATS_PER_BAR)
+
+    def notify_beat_advanced(self, beats: int = 1) -> None:
+        """Notify the controller that beats have elapsed for the current step."""
+        if beats <= 0:
+            return
         if self.playback_state != PlaybackState.PLAYING:
             return
         if not self.active_sequence:
             return
 
         with self._bar_condition:
-            if self._bars_remaining is None or self._bars_remaining <= 0:
+            if self._beats_remaining is None or self._beats_remaining <= 0:
                 return
 
-            self._bars_remaining -= 1
+            self._beats_remaining = max(0, self._beats_remaining - beats)
             logger.debug(
-                "Bar advanced for sequence step; remaining=%s",
-                self._bars_remaining,
+                "Beat advanced for sequence step; remaining_beats=%s",
+                self._beats_remaining,
             )
-            if self._bars_remaining <= 0:
+            if self._beats_remaining <= 0:
                 self._bar_condition.notify_all()
 
     def _wait_for_seconds(self, step: SequenceStep) -> bool:
@@ -441,14 +449,20 @@ class SequenceController:
         return not self.stop_event.is_set()
 
     def _wait_for_bars(self, step: SequenceStep) -> bool:
-        bars_to_wait = max(1, int(round(step.duration)))
+        beats_to_wait = max(
+            1, int(round(step.duration * self._BEATS_PER_BAR))
+        )
         with self._bar_condition:
-            self._bars_remaining = bars_to_wait
-        logger.debug("Waiting for %d bars before advancing sequence step", bars_to_wait)
+            self._beats_remaining = beats_to_wait
+        logger.debug(
+            "Waiting for %d beats (~%.2f bars) before advancing sequence step",
+            beats_to_wait,
+            beats_to_wait / self._BEATS_PER_BAR,
+        )
 
         while not self.stop_event.is_set():
             with self._bar_condition:
-                if self._bars_remaining is None or self._bars_remaining <= 0:
+                if self._beats_remaining is None or self._beats_remaining <= 0:
                     break
                 if self.playback_state != PlaybackState.PLAYING:
                     self._bar_condition.wait(timeout=0.1)
@@ -456,7 +470,7 @@ class SequenceController:
                 self._bar_condition.wait(timeout=0.5)
 
         with self._bar_condition:
-            self._bars_remaining = None
+            self._beats_remaining = None
 
         return not self.stop_event.is_set()
 
