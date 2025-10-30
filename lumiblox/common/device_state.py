@@ -109,7 +109,7 @@ class DeviceManager:
             new_state = DeviceState.CONNECTED
         
         if old_state != new_state:
-            logger.info(f"✅ {device_type.value} connected")
+            logger.info(f"{device_type.value} connected")
             self._notify_state_change(device_type, new_state)
     
     def set_disconnected(self, device_type: DeviceType) -> None:
@@ -120,7 +120,7 @@ class DeviceManager:
             new_state = DeviceState.DISCONNECTED
         
         if old_state != new_state:
-            logger.warning(f"❌ {device_type.value} disconnected")
+            logger.warning(f"{device_type.value} disconnected")
             self._notify_state_change(device_type, new_state)
     
     def set_connecting(self, device_type: DeviceType) -> None:
@@ -132,7 +132,7 @@ class DeviceManager:
         
         if old_state != new_state:
             attempts = self._devices[device_type].reconnect_attempts
-            logger.info(f"🔄 {device_type.value} connecting (attempt {attempts})...")
+            logger.info(f"{device_type.value} connecting (attempt {attempts})...")
             self._notify_state_change(device_type, new_state)
     
     def set_error(self, device_type: DeviceType, error_msg: str) -> None:

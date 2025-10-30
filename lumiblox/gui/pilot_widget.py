@@ -17,16 +17,17 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QProgressBar,
-    QGroupBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
     QToolButton,
     QFrame,
+    QCheckBox,
 )
 
 from lumiblox.pilot.phrase_detector import CaptureRegion
 from lumiblox.pilot.pilot_preset import PilotPresetManager
+from lumiblox.pilot.midi_actions import MidiActionConfig, MidiActionType
 from lumiblox.gui.rule_editor import PresetEditorDialog
 from lumiblox.common.config import get_config
 from lumiblox.gui.ui_constants import (
@@ -37,7 +38,6 @@ from lumiblox.gui.ui_constants import (
     VALUE_LABEL_STYLE,
     HEADER_LABEL_STYLE,
     ICON_SIZE_SMALL,
-    COLOR_BG_NORMAL,
     COLOR_BG_LIGHT,
     COLOR_BG_DARK,
 )
@@ -323,6 +323,304 @@ class RegionConfigDialog(QDialog):
         super().accept()
 
 
+class MidiLearnDialog(QDialog):
+    """Dialog for learning MIDI messages and creating actions."""
+
+    action_configured = Signal(object)  # Emits MidiActionConfig
+
+    def __init__(self, pilot_controller, parent=None):
+        super().__init__(parent)
+        self.pilot_controller = pilot_controller
+        self.learned_message = None
+        self.listening = False
+
+        self.setWindowTitle("MIDI Learn")
+        self.setModal(True)
+        self.setMinimumWidth(400)
+
+        layout = QVBoxLayout(self)
+
+        # Instructions
+        instructions = QLabel(
+            "1. Click 'Start Learning' below\n"
+            "2. Press a button/pad on your MIDI controller\n"
+            "3. Tick the Data 2 values (0/127/etc.) that should trigger it\n"
+            "4. Give the action a name and select its type\n"
+            "5. Click 'Save' to create the action"
+        )
+        instructions.setWordWrap(True)
+        instructions.setStyleSheet(
+            "padding: 10px; background-color: #2d2d2d; border-radius: 5px;"
+        )
+        layout.addWidget(instructions)
+
+        # Learn button
+        self.learn_btn = QPushButton("Start Learning")
+        self.learn_btn.clicked.connect(self._toggle_learning)
+        self.learn_btn.setStyleSheet(BUTTON_STYLE)
+        layout.addWidget(self.learn_btn)
+
+        # Status label
+        self.status_label = QLabel("Not learning")
+        self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.status_label.setStyleSheet("font-size: 12px; padding: 10px;")
+        layout.addWidget(self.status_label)
+
+        # MIDI message details (hidden initially)
+        self.details_widget = QWidget()
+        details_layout = QVBoxLayout(self.details_widget)
+        details_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.status_byte_label = QLabel()
+        self.data1_label = QLabel()
+        self.data2_label = QLabel()
+
+        details_layout.addWidget(self.status_byte_label)
+        details_layout.addWidget(self.data1_label)
+        details_layout.addWidget(self.data2_label)
+
+        # Data2 selection checkboxes (hidden until a value exists)
+        self.data2_checkbox_container = QWidget()
+        self.data2_checkbox_layout = QHBoxLayout(self.data2_checkbox_container)
+        self.data2_checkbox_layout.setContentsMargins(0, 0, 0, 0)
+        self.data2_checkbox_layout.setSpacing(8)
+        details_layout.addWidget(self.data2_checkbox_container)
+        self.data2_checkbox_container.setVisible(False)
+        self.data2_checkboxes: dict[int, QCheckBox] = {}
+
+        self.details_widget.setVisible(False)
+        layout.addWidget(self.details_widget)
+
+        # Action configuration (hidden initially)
+        self.config_widget = QWidget()
+        config_layout = QVBoxLayout(self.config_widget)
+        config_layout.setContentsMargins(0, 0, 0, 0)
+
+        # Action name
+        from PySide6.QtWidgets import QLineEdit
+
+        config_layout.addWidget(QLabel("Action Name:"))
+        self.name_input = QLineEdit()
+        self.name_input.setPlaceholderText("e.g., Phrase Sync")
+        config_layout.addWidget(self.name_input)
+
+        # Action type
+        config_layout.addWidget(QLabel("Action Type:"))
+        self.action_type_combo = QComboBox()
+        self.action_type_combo.addItem("Phrase Sync", MidiActionType.PHRASE_SYNC.value)
+        # Future action types can be added here
+        # self.action_type_combo.addItem("Switch Sequence", MidiActionType.SEQUENCE_SWITCH.value)
+        config_layout.addWidget(self.action_type_combo)
+
+        self.config_widget.setVisible(False)
+        layout.addWidget(self.config_widget)
+
+        # Dialog buttons
+        button_box = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Save
+            | QDialogButtonBox.StandardButton.Cancel
+        )
+        self.save_button = button_box.button(QDialogButtonBox.StandardButton.Save)
+        self.save_button.setEnabled(False)
+        self.save_button.clicked.connect(self.accept)
+        cancel_button = button_box.button(QDialogButtonBox.StandardButton.Cancel)
+        cancel_button.clicked.connect(self.reject)
+        layout.addWidget(button_box)
+
+        # Start listening timer (polls for MIDI messages)
+        self.listen_timer = QTimer(self)
+        self.listen_timer.timeout.connect(self._check_for_midi)
+        self.listen_timer.setInterval(50)  # Check every 50ms
+
+    def _toggle_learning(self) -> None:
+        """Toggle MIDI learning mode."""
+        if self.listening:
+            self._stop_learning()
+        else:
+            self._start_learning()
+
+    def _start_learning(self) -> None:
+        """Start listening for MIDI messages."""
+        self.listening = True
+        self.learned_message = None
+        self.learn_btn.setText("Stop Learning")
+        self.learn_btn.setStyleSheet(
+            BUTTON_STYLE + "QPushButton { background-color: #c44; }"
+        )
+        self.status_label.setText("Listening... Press a MIDI button/pad")
+        self.status_label.setStyleSheet("font-size: 12px; padding: 10px; color: #4f4;")
+        self.details_widget.setVisible(False)
+        self.config_widget.setVisible(False)
+        self.save_button.setEnabled(False)
+
+        # Clear any pending MIDI messages
+        if self.pilot_controller:
+            if hasattr(self.pilot_controller, "clear_midi_message_queue"):
+                self.pilot_controller.clear_midi_message_queue()
+            elif self.pilot_controller.clock_sync.midi_in:
+                self.pilot_controller.clock_sync.midi_in.read(128)
+
+        self._reset_data2_options()
+
+        self.listen_timer.start()
+
+    def _stop_learning(self) -> None:
+        """Stop listening for MIDI messages."""
+        self.listening = False
+        self.listen_timer.stop()
+        self.learn_btn.setText("Start Learning")
+        self.learn_btn.setStyleSheet(BUTTON_STYLE)
+        if not self.learned_message:
+            self.status_label.setText("Not learning")
+            self.status_label.setStyleSheet("font-size: 12px; padding: 10px;")
+
+    def _check_for_midi(self) -> None:
+        """Check for incoming MIDI messages during learning."""
+        if not self.listening or not self.pilot_controller:
+            return
+
+        messages = []
+
+        if hasattr(self.pilot_controller, "get_recent_midi_messages"):
+            messages = self.pilot_controller.get_recent_midi_messages()
+        else:
+            midi_in = self.pilot_controller.clock_sync.midi_in
+            if midi_in and midi_in.poll():
+                messages = [data for data, _timestamp in midi_in.read(128)]
+
+        for data in messages:
+            if not data or isinstance(data, int):
+                continue
+
+            # Ignore MIDI clock messages
+            if data[0] in {0xF8, 0xFA, 0xFB, 0xFC}:
+                continue
+
+            # Got a valid message!
+            self._on_midi_learned(data)
+            break
+
+    def _on_midi_learned(self, data: list) -> None:
+        """Handle a learned MIDI message."""
+        self.learned_message = data
+        self._stop_learning()
+
+        # Display message details
+        status = data[0]
+        data1 = data[1] if len(data) > 1 else None
+        data2 = data[2] if len(data) > 2 else None
+
+        self.status_byte_label.setText(f"Status: 0x{status:02X} ({status})")
+        self.data1_label.setText(
+            f"Data 1: {data1}" if data1 is not None else "Data 1: None"
+        )
+        self.data2_label.setText(
+            f"Data 2: {data2}" if data2 is not None else "Data 2: None"
+        )
+
+        self.details_widget.setVisible(True)
+        self.config_widget.setVisible(True)
+        self.status_label.setText("MIDI message learned! Configure the action below.")
+        self.status_label.setStyleSheet("font-size: 12px; padding: 10px; color: #4f4;")
+        self.save_button.setEnabled(True)
+
+        # Suggest a default name
+        msg_type = self._get_message_type_name(status)
+        self.name_input.setText(f"{msg_type} {data1 if data1 is not None else ''}")
+        self._populate_data2_options(data2)
+
+    def _get_message_type_name(self, status: int) -> str:
+        """Get a human-readable name for a MIDI message type."""
+        if status >= 0x90 and status <= 0x9F:
+            return "Note On"
+        elif status >= 0x80 and status <= 0x8F:
+            return "Note Off"
+        elif status >= 0xB0 and status <= 0xBF:
+            return "CC"
+        elif status >= 0xC0 and status <= 0xCF:
+            return "Program Change"
+        else:
+            return f"MIDI 0x{status:02X}"
+
+    def accept(self) -> None:
+        """Handle dialog acceptance - create the action."""
+        if not self.learned_message or not self.name_input.text().strip():
+            return
+
+        # Create action config
+        status = self.learned_message[0]
+        data1 = self.learned_message[1] if len(self.learned_message) > 1 else None
+        data2_values = [
+            value
+            for value, checkbox in self.data2_checkboxes.items()
+            if checkbox.isChecked()
+        ]
+
+        if len(data2_values) == 1:
+            data2_setting = data2_values[0]
+        elif len(data2_values) > 1:
+            data2_setting = sorted(data2_values)
+        else:
+            data2_setting = None
+
+        action = MidiActionConfig(
+            name=self.name_input.text().strip(),
+            action_type=MidiActionType(self.action_type_combo.currentData()),
+            status=status,
+            data1=data1,
+            data2=data2_setting,
+            parameters={},
+        )
+
+        self.action_configured.emit(action)
+        super().accept()
+
+    def _reset_data2_options(self) -> None:
+        """Clear any existing Data 2 checkboxes."""
+        self.data2_checkboxes.clear()
+        while self.data2_checkbox_layout.count():
+            item = self.data2_checkbox_layout.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.deleteLater()
+        self.data2_checkbox_container.setVisible(False)
+
+    def _populate_data2_options(self, learned_value: Optional[int]) -> None:
+        """Populate checkboxes for selecting Data 2 trigger values."""
+        self._reset_data2_options()
+        if learned_value is None:
+            return
+
+        values: list[int] = []
+
+        def add_value(val: Optional[int]) -> None:
+            if val is None:
+                return
+            if val not in values:
+                values.append(val)
+
+        add_value(learned_value)
+        add_value(0)
+        add_value(127)
+
+        if not values:
+            return
+
+        info_label = QLabel("Trigger when Data 2 equals:")
+        info_label.setStyleSheet("font-size: 10px; color: #cccccc;")
+        self.data2_checkbox_layout.addWidget(info_label)
+
+        for value in values:
+            checkbox = QCheckBox(str(value))
+            checkbox.setChecked(value == learned_value)
+            checkbox.setStyleSheet("font-size: 10px; color: #cccccc;")
+            self.data2_checkbox_layout.addWidget(checkbox)
+            self.data2_checkboxes[value] = checkbox
+
+        self.data2_checkbox_layout.addStretch()
+        self.data2_checkbox_container.setVisible(True)
+
+
 class PilotWidget(QWidget):
     """Compact pilot control widget with automation rules."""
 
@@ -330,10 +628,17 @@ class PilotWidget(QWidget):
     phrase_detection_enable_requested = Signal(bool)
     align_requested = Signal()
     deck_region_configured = Signal(str, str, CaptureRegion)
+    midi_action_added = Signal(object)  # Emits MidiActionConfig
+    midi_action_removed = Signal(str)  # Emits action name
 
-    def __init__(self, refresh_callback: Optional[Callable[[], None]] = None):
+    def __init__(
+        self,
+        refresh_callback: Optional[Callable[[], None]] = None,
+        pilot_controller=None,
+    ):
         super().__init__()
         self.refresh_callback = refresh_callback
+        self.pilot_controller = pilot_controller
         self.phrase_detection_enabled = False
         self.preset_manager = PilotPresetManager()
 
@@ -382,7 +687,7 @@ class PilotWidget(QWidget):
         header_layout.addWidget(self.align_btn)
 
         settings_btn = QPushButton()
-        settings_btn.setToolTip("Configure Deck Regions")
+        settings_btn.setToolTip("Pilot Settings")
         settings_btn.setFixedSize(BUTTON_SIZE_LARGE)
         settings_btn.setStyleSheet(BUTTON_STYLE)
         settings_btn.setIcon(qta.icon("fa5s.cog", color="white"))
@@ -561,92 +866,32 @@ class PilotWidget(QWidget):
         self.align_requested.emit()
 
     def _on_settings_requested(self) -> None:
-        """Show deck configuration dialog."""
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Configure Deck Regions")
-        layout = QVBoxLayout(dialog)
+        """Show comprehensive pilot settings dialog."""
+        from lumiblox.gui.pilot_settings import PilotSettingsDialog
 
-        label = QLabel("Select which deck to configure:")
-        layout.addWidget(label)
-
-        for deck in ["A", "B", "C", "D"]:
-            btn = QPushButton(f"Deck {deck}")
-            btn.clicked.connect(lambda checked, d=deck: self._configure_deck(d, dialog))
-            layout.addWidget(btn)
-
-        close_btn = QPushButton("Close")
-        close_btn.clicked.connect(dialog.accept)
-        layout.addWidget(close_btn)
-
-        # Show modeless so overlay selectors remain interactive
+        dialog = PilotSettingsDialog(self.pilot_controller, self)
         dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+
+        # Connect signals
+        dialog.regions_configured.connect(
+            lambda deck, btn, tl: self.deck_region_configured.emit(
+                deck, "timeline", CaptureRegion(tl.x(), tl.y(), tl.width(), tl.height())
+            )
+        )
+        dialog.midi_action_added.connect(
+            lambda action: self.midi_action_added.emit(action)
+        )
+        dialog.midi_action_removed.connect(
+            lambda name: self.midi_action_removed.emit(name)
+        )
+
+        # Refresh MIDI actions display when dialog closes
+        if self.refresh_callback:
+            dialog.accepted.connect(self.refresh_callback)
+
         dialog.show()
         dialog.raise_()
         dialog.activateWindow()
-
-    def _configure_deck(self, deck_name: str, parent_dialog: QDialog) -> None:
-        """Open region configuration for a specific deck."""
-        config_dialog = RegionConfigDialog(deck_name, parent_dialog)
-        config_dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
-        config_dialog.regions_configured.connect(self._on_regions_configured)
-
-        if self.refresh_callback:
-            config_dialog.accepted.connect(self.refresh_callback)
-
-        config_dialog.show()
-        config_dialog.raise_()
-        config_dialog.activateWindow()
-
-    def _on_regions_configured(
-        self, deck_name: str, button_rect: QRect, timeline_rect: QRect
-    ) -> None:
-        """Handle deck region configuration."""
-        # Save to config with correct region type names
-        config = get_config()
-        config.set_deck_region(
-            deck_name,
-            "master_button_region",
-            {
-                "x": button_rect.x(),
-                "y": button_rect.y(),
-                "width": button_rect.width(),
-                "height": button_rect.height(),
-            },
-        )
-        config.set_deck_region(
-            deck_name,
-            "timeline_region",
-            {
-                "x": timeline_rect.x(),
-                "y": timeline_rect.y(),
-                "width": timeline_rect.width(),
-                "height": timeline_rect.height(),
-            },
-        )
-
-        # Emit signals for controller
-        self.deck_region_configured.emit(
-            deck_name,
-            "button",
-            CaptureRegion(
-                button_rect.x(),
-                button_rect.y(),
-                button_rect.width(),
-                button_rect.height(),
-            ),
-        )
-        self.deck_region_configured.emit(
-            deck_name,
-            "timeline",
-            CaptureRegion(
-                timeline_rect.x(),
-                timeline_rect.y(),
-                timeline_rect.width(),
-                timeline_rect.height(),
-            ),
-        )
-
-        logger.info(f"Configured regions for deck {deck_name}")
 
     # Update methods
     def update_position(
@@ -905,3 +1150,7 @@ class PilotWidget(QWidget):
             if reply == QMessageBox.StandardButton.Yes:
                 self.preset_manager.remove_preset(current_index)
                 self._load_presets()
+
+    def set_pilot_controller(self, pilot_controller) -> None:
+        """Set the pilot controller reference (called after initialization)."""
+        self.pilot_controller = pilot_controller

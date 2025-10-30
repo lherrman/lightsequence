@@ -56,7 +56,7 @@
         "clear_button": {
             "button_type": "RIGHT",
             "coordinates": [
-                0,
+                8,
                 7
             ]
         },
@@ -92,27 +92,32 @@
     "pilot": {
         "decks": {
             "A": {
-<<<<<<< HEAD
-                "master_button_region": null,
-                "timeline_region": null
-=======
                 "master_button_region": {
                     "height": 22,
                     "width": 64,
                     "x": -2925,
-                    "y": 411
+                    "y": 364
                 },
                 "timeline_region": {
                     "height": 88,
                     "width": 220,
                     "x": -2536,
-                    "y": 437
+                    "y": 390
                 }
->>>>>>> 2857387bffd7d19e1d86695d29a35a3c891d2b4b
             },
             "B": {
-                "master_button_region": null,
-                "timeline_region": null
+                "master_button_region": {
+                    "height": 22,
+                    "width": 64,
+                    "x": -1901,
+                    "y": 365
+                },
+                "timeline_region": {
+                    "height": 88,
+                    "width": 220,
+                    "x": -1514,
+                    "y": 393
+                }
             },
             "C": {
                 "master_button_region": null,
@@ -124,6 +129,24 @@
             }
         },
         "enabled": false,
+        "midi_actions": [
+            {
+                "action_type": "phrase_sync",
+                "data1": 0,
+                "data2": 127,
+                "name": "Note On 0",
+                "parameters": {},
+                "status": 144
+            },
+            {
+                "action_type": "phrase_sync",
+                "data1": 1,
+                "data2": 127,
+                "name": "Note On 1",
+                "parameters": {},
+                "status": 144
+            }
+        ],
         "midiclock_device": "midiclock",
         "model_path": "pilot-tests/resources/traktor/classifier_traktor.pkl",
         "template_dir": "pilot-tests/resources/traktor",

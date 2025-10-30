@@ -7,13 +7,16 @@ Main coordinator for MIDI clock sync and phrase detection.
 from __future__ import annotations
 
 import logging
-from typing import Optional, Callable
+import threading
+from collections import deque
+from typing import Optional, Callable, Deque
 from enum import Enum
 
 from lumiblox.pilot.clock_sync import ClockSync
 from lumiblox.pilot.phrase_detector import PhraseDetector, CaptureRegion
 from lumiblox.pilot.pilot_preset import PilotPresetManager
 from lumiblox.pilot.rule_engine import RuleEngine
+from lumiblox.pilot.midi_actions import MidiActionConfig
 
 
 FALLBACK_PHRASE_TYPE = "any"
@@ -57,6 +60,9 @@ class PilotController:
         self.state = PilotState.STOPPED
 
         # Create clock sync
+        self._midi_lock = threading.Lock()
+        self._midi_messages: Deque[list] = deque(maxlen=512)
+
         self.clock_sync = ClockSync(
             device_keyword=midiclock_device,
             on_beat=self._on_beat,
@@ -64,6 +70,7 @@ class PilotController:
             on_phrase=self._on_phrase,
             on_bpm_change=on_bpm_change,
             on_aligned=self._on_aligned,
+            on_midi_message=self._on_midi_message,
         )
 
         # Create phrase detector
@@ -121,6 +128,16 @@ class PilotController:
 
         logger.info(f"Pilot started (state: {self.state.value})")
         return True
+
+    def ensure_running(self) -> bool:
+        """Ensure the pilot is running, starting it if necessary."""
+        if self.state != PilotState.STOPPED:
+            return True
+
+        success = self.start(enable_phrase_detection=False)
+        if not success:
+            logger.error("Unable to auto-start pilot controller for MIDI access")
+        return success
 
     def stop(self) -> None:
         """Stop the pilot system (keeps MIDI device open for quick restart)."""
@@ -188,8 +205,62 @@ class PilotController:
         data1: Optional[int] = None,
         data2: Optional[int] = None,
     ) -> None:
-        """Configure MIDI signal for auto-alignment."""
+        """Configure MIDI signal for auto-alignment (legacy support)."""
         self.clock_sync.set_zero_signal(status, data1, data2)
+
+    def add_midi_action(self, action: MidiActionConfig) -> None:
+        """
+        Add a MIDI action configuration.
+
+        Args:
+            action: The MIDI action configuration to add
+        """
+        self.clock_sync.midi_action_handler.add_action(action)
+        logger.info(f"Added MIDI action: {action.name} -> {action.action_type.value}")
+
+    def remove_midi_action(self, name: str) -> bool:
+        """
+        Remove a MIDI action by name.
+
+        Args:
+            name: Name of the action to remove
+
+        Returns:
+            True if action was found and removed
+        """
+        return self.clock_sync.midi_action_handler.remove_action(name)
+
+    def get_midi_actions(self) -> list[MidiActionConfig]:
+        """Get all configured MIDI actions."""
+        return self.clock_sync.midi_action_handler.get_actions()
+
+    def clear_midi_actions(self) -> None:
+        """Clear all MIDI actions."""
+        self.clock_sync.midi_action_handler.clear_actions()
+
+    def clear_deck_configuration(self, deck_name: str) -> None:
+        """Clear capture regions for a deck."""
+        self.phrase_detector.clear_deck(deck_name)
+
+    # MIDI monitoring -------------------------------------------------------
+    def _on_midi_message(self, data: list) -> None:
+        """Internal callback for raw MIDI messages."""
+        with self._midi_lock:
+            self._midi_messages.append(list(data))
+
+    def clear_midi_message_queue(self) -> None:
+        """Clear stored MIDI messages."""
+        with self._midi_lock:
+            self._midi_messages.clear()
+
+    def get_recent_midi_messages(self) -> list[list]:
+        """Return and clear recent MIDI messages."""
+        with self._midi_lock:
+            if not self._midi_messages:
+                return []
+            messages = list(self._midi_messages)
+            self._midi_messages.clear()
+            return messages
 
     def load_classifier_model(self, model_path: str) -> bool:
         """Load the SVM classifier model."""

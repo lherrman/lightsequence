@@ -76,7 +76,7 @@ FONT_SIZE_LARGE = "18px"
 # ============================================================================
 
 BUTTON_STYLE = f"""
-    QPushButton {{
+    QPushButton, QToolButton {{
         background-color: {COLOR_BG_NORMAL};
         border: 1px solid {COLOR_BORDER_NORMAL};
         border-radius: 2px;
@@ -85,21 +85,21 @@ BUTTON_STYLE = f"""
         padding: 2px;
         margin: 2px;
     }}
-    QPushButton:hover {{
+    QPushButton:hover, QToolButton:hover {{
         background-color: {COLOR_BG_HOVER};
         border: 1px solid {COLOR_BORDER_LIGHT};
     }}
-    QPushButton:pressed {{
+    QPushButton:pressed, QToolButton:pressed {{
         background-color: {COLOR_BG_DARK};
     }}
-    QPushButton:checked {{
+    QPushButton:checked, QToolButton:checked {{
         background-color: {COLOR_ACTIVE};
         border: 1px solid {COLOR_ACTIVE_DARK};
     }}
 """
 
 BUTTON_STYLE_ACTIVE = f"""
-    QPushButton {{
+    QPushButton, QToolButton {{
         background-color: {COLOR_ACTIVE};
         border: 1px solid {COLOR_ACTIVE_DARK};
         border-radius: 2px;
@@ -108,10 +108,10 @@ BUTTON_STYLE_ACTIVE = f"""
         padding: 2px;
         margin: 2px;
     }}
-    QPushButton:hover {{
+    QPushButton:hover, QToolButton:hover {{
         background-color: {COLOR_ACTIVE_DARK};
     }}
-    QPushButton:pressed {{
+    QPushButton:pressed, QToolButton:pressed {{
         background-color: {COLOR_ACTIVE};
     }}
 """

@@ -17,6 +17,8 @@ os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
 
 import pygame.midi
 
+from lumiblox.pilot.midi_actions import MidiActionHandler
+
 logger = logging.getLogger(__name__)
 
 # MIDI Constants
@@ -40,6 +42,7 @@ class ClockSync:
         on_phrase: Optional[Callable[[int], None]] = None,
         on_bpm_change: Optional[Callable[[float], None]] = None,
         on_aligned: Optional[Callable[[], None]] = None,
+        on_midi_message: Optional[Callable[[list], None]] = None,
     ):
         """
         Initialize clock sync.
@@ -68,6 +71,7 @@ class ClockSync:
         self.on_phrase = on_phrase
         self.on_bpm_change = on_bpm_change
         self.on_aligned = on_aligned
+        self.on_midi_message = on_midi_message
 
         # State tracking
         self.total_pulses = 0
@@ -79,7 +83,17 @@ class ClockSync:
         self.beat_intervals: Deque[float] = deque(maxlen=16)
         self.current_bpm: Optional[float] = None
 
-        # Zero signal configuration (for MIDI-based zeroing)
+        # MIDI action handler for configurable MIDI message actions
+        self.midi_action_handler = MidiActionHandler()
+
+        # Register default MIDI action callback
+        from lumiblox.pilot.midi_actions import MidiActionType
+
+        self.midi_action_handler.register_callback(
+            MidiActionType.PHRASE_SYNC, lambda _: self.align_to_tap()
+        )
+
+        # Legacy zero signal configuration (for backward compatibility)
         self.zero_signal_status: Optional[int] = None
         self.zero_signal_data1: Optional[int] = None
         self.zero_signal_data2: Optional[int] = None
@@ -194,8 +208,16 @@ class ClockSync:
                     self._on_clock()
                 elif status in {MIDI_START, MIDI_CONTINUE, MIDI_STOP}:
                     self._reset_alignment()
-                elif self._is_zero_signal(data):
-                    self.align_to_tap()
+                    if self.on_midi_message:
+                        self.on_midi_message(data)
+                else:
+                    if self.on_midi_message:
+                        self.on_midi_message(data)
+                    # Check for MIDI actions (including legacy zero signal)
+                    if self._is_zero_signal(data):
+                        self.align_to_tap()
+                    # Process through action handler
+                    self.midi_action_handler.process_midi_message(data)
 
     def _is_zero_signal(self, data: list) -> bool:
         """Check if MIDI message matches configured zero signal."""
