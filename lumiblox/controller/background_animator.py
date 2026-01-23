@@ -253,3 +253,15 @@ class BackgroundManager:
     def get_current_background(self) -> str:
         """Get the current background animation name."""
         return self.current_background
+
+    def set_background(self, animation_type: str) -> None:
+        """Set the active background animation if valid."""
+        if animation_type in self.background_animations:
+            self.current_background = animation_type
+            self.current_background_index = self.background_animations.index(
+                animation_type
+            )
+        else:
+            # Unknown value - fall back to default
+            self.current_background_index = 0
+            self.current_background = self.background_animations[0]

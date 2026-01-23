@@ -1,10 +1,10 @@
 {
-    "brightness_background": 0.2,
+    "background_animation": "default",
+    "brightness_background": 0.0,
     "brightness_background_effect": 1.0,
     "brightness_background_top_row": 0.5,
     "brightness_foreground": 1.0,
     "colors": {
-        "background_cycle": "#00ff00",
         "column_colors": {
             "0": "#ff0000",
             "1": "#00ff00",
@@ -32,27 +32,6 @@
         "yellow_bright": "#ffff00"
     },
     "key_bindings": {
-        "background_brightness_down": {
-            "button_type": "CONTROL",
-            "coordinates": [
-                5,
-                0
-            ]
-        },
-        "background_brightness_up": {
-            "button_type": "CONTROL",
-            "coordinates": [
-                6,
-                0
-            ]
-        },
-        "background_button": {
-            "button_type": "CONTROL",
-            "coordinates": [
-                7,
-                0
-            ]
-        },
         "clear_button": {
             "button_type": "CONTROL",
             "coordinates": [
@@ -71,6 +50,13 @@
             "button_type": "CONTROL",
             "coordinates": [
                 4,
+                0
+            ]
+        },
+        "pilot_toggle_button": {
+            "button_type": "CONTROL",
+            "coordinates": [
+                5,
                 0
             ]
         },

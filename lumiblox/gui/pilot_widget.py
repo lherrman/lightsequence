@@ -941,6 +941,13 @@ class PilotWidget(QWidget):
         phrase_duration: Optional[tuple[int, int]] = None,
     ) -> None:
         """Update status display."""
+        # Keep toggle button in sync with actual pilot state
+        should_be_checked = pilot_state.lower() != "stopped"
+        if self.pilot_toggle_btn.isChecked() != should_be_checked:
+            self.pilot_toggle_btn.blockSignals(True)
+            self.pilot_toggle_btn.setChecked(should_be_checked)
+            self.pilot_toggle_btn.blockSignals(False)
+
         if aligned:
             # Update BPM value
             if bpm:

@@ -67,10 +67,10 @@ def test_key_bindings(config_manager):
     
     # Check essential bindings exist
     assert 'save_button' in bindings
-    assert 'background_button' in bindings
     assert 'playback_toggle_button' in bindings
     assert 'clear_button' in bindings
     assert 'pilot_select_button' in bindings
+    assert 'pilot_toggle_button' in bindings
     
     # Check binding structure
     save_button = bindings['save_button']
@@ -78,6 +78,12 @@ def test_key_bindings(config_manager):
     assert 'coordinates' in save_button
     assert isinstance(save_button['coordinates'], list)
     assert len(save_button['coordinates']) == 2
+
+
+def test_background_animation_config(config_manager):
+    """Ensure background animation is configurable via config."""
+    assert 'background_animation' in config_manager.data
+    assert config_manager.data['background_animation'] in {"default", "none"}
 
 
 def test_reload_config(config_manager, temp_config_file):

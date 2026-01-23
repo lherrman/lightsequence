@@ -8,12 +8,30 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 from enum import Enum
 
 logger = logging.getLogger(__name__)
+
+
+def _json_default(obj: Any) -> Any:
+    """Convert a few common non-JSON types to primitives."""
+    if isinstance(obj, Enum):
+        return obj.value
+    try:  # Avoid hard dependency on numpy
+        import numpy as np
+
+        if isinstance(obj, np.generic):
+            return obj.item()
+    except Exception:
+        pass
+    if isinstance(obj, Path):
+        return str(obj)
+    raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
 
 
 class ConditionType(Enum):
@@ -252,11 +270,13 @@ class PilotPresetManager:
 
     def load(self) -> bool:
         """Load presets from file."""
+        previous_presets = list(self.presets)
         if not self.config_path.exists():
-            logger.info("No pilots.json found, creating default preset")
-            self.presets = [self._create_default_preset()]
-            self.save()
-            return True
+            logger.warning("No pilots.json found at %s; keeping current presets", self.config_path)
+            # Do not create a new file automatically; keep in-memory presets
+            if not self.presets:
+                self.presets = [self._create_default_preset()]
+            return False
 
         try:
             with open(self.config_path, "r") as f:
@@ -270,16 +290,36 @@ class PilotPresetManager:
 
         except Exception as e:
             logger.error(f"Failed to load pilots.json: {e}")
-            self.presets = [self._create_default_preset()]
+            # Keep the last known good presets to avoid overwriting with defaults
+            # in case of a transient read/parse error.
+            if previous_presets:
+                self.presets = previous_presets
+            else:
+                self.presets = [self._create_default_preset()]
             return False
 
     def save(self) -> bool:
         """Save presets to file."""
+        tmp_path: Optional[Path] = None
         try:
             data = {"version": "1.0", "presets": [p.to_dict() for p in self.presets]}
 
-            with open(self.config_path, "w") as f:
-                json.dump(data, f, indent=2)
+            # Write atomically to avoid corrupting the main file if writing fails
+            self.config_path.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                delete=False,
+                dir=str(self.config_path.parent),
+                prefix=f"{self.config_path.stem}_",
+                suffix=self.config_path.suffix,
+            ) as tmp_file:
+                json.dump(data, tmp_file, indent=2, default=_json_default)
+                tmp_file.flush()
+                os.fsync(tmp_file.fileno())
+                tmp_path = Path(tmp_file.name)
+
+            tmp_path.replace(self.config_path)
 
             logger.info(
                 f"Saved {len(self.presets)} pilot presets to {self.config_path}"
@@ -288,6 +328,11 @@ class PilotPresetManager:
 
         except Exception as e:
             logger.error(f"Failed to save pilots.json: {e}")
+            if tmp_path and tmp_path.exists():
+                try:
+                    tmp_path.unlink()
+                except Exception:
+                    logger.debug("Failed to remove temporary pilots file", exc_info=True)
             return False
 
     def _create_default_preset(self) -> PilotPreset:

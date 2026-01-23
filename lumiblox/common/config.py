@@ -41,7 +41,6 @@ class ColorConfig(TypedDict):
     save_mode_preset_background: str
     scene_on: str
     save_mode_on: str
-    background_cycle: str
     success_flash: str
     yellow_bright: str
     playback_playing: str
@@ -64,13 +63,11 @@ class KeyBindings(TypedDict):
 
     save_button: KeyBinding
     save_shift_button: KeyBinding
-    background_button: KeyBinding
     playback_toggle_button: KeyBinding
     next_step_button: KeyBinding
     clear_button: KeyBinding
-    background_brightness_down: KeyBinding
-    background_brightness_up: KeyBinding
     pilot_select_button: KeyBinding
+    pilot_toggle_button: KeyBinding
 
 
 class ConfigData(TypedDict):
@@ -80,6 +77,7 @@ class ConfigData(TypedDict):
     brightness_background: float
     brightness_background_effect: float
     brightness_background_top_row: float
+    background_animation: str
     scene_on_color_from_column: bool
     colors: ColorConfig
     key_bindings: KeyBindings
@@ -94,6 +92,7 @@ class ConfigManager:
         "brightness_background": 0.2,
         "brightness_background_effect": 1.0,
         "brightness_background_top_row": 0.5,
+        "background_animation": "default",
         "scene_on_color_from_column": True,
         "colors": {
             "column_colors": {
@@ -113,7 +112,6 @@ class ConfigManager:
             "save_mode_preset_background": "#ffffff",
             "scene_on": "#00ff00",
             "save_mode_on": "#ff0080",
-            "background_cycle": "#00ff00",
             "success_flash": "#00ff00",
             "yellow_bright": "#ffff00",
             "playback_playing": "#00ff00",
@@ -126,13 +124,11 @@ class ConfigManager:
         "key_bindings": {
             "save_button": {"button_type": "CONTROL", "coordinates": [0, 0]},
             "save_shift_button": {"button_type": "CONTROL", "coordinates": [1, 0]},
-            "background_button": {"button_type": "CONTROL", "coordinates": [7, 0]},
             "playback_toggle_button": {"button_type": "CONTROL", "coordinates": [8, 7]},
             "next_step_button": {"button_type": "CONTROL", "coordinates": [8, 6]},
             "clear_button": {"button_type": "CONTROL", "coordinates": [8, 8]},
-            "background_brightness_down": {"button_type": "CONTROL", "coordinates": [5, 0]},
-            "background_brightness_up": {"button_type": "CONTROL", "coordinates": [6, 0]},
             "pilot_select_button": {"button_type": "CONTROL", "coordinates": [4, 0]},
+            "pilot_toggle_button": {"button_type": "CONTROL", "coordinates": [5, 0]},
         },
         "pilot": {
             "enabled": False,
@@ -206,8 +202,27 @@ class ConfigManager:
 
                     self._normalize_control_bindings(key_bindings)
 
+                    # Remove deprecated background controls now handled via config only
+                    deprecated_keys = {
+                        "background_button",
+                        "background_brightness_up",
+                        "background_brightness_down",
+                    }
+                    removed_any = False
+                    for deprecated_key in deprecated_keys:
+                        if deprecated_key in key_bindings:
+                            key_bindings.pop(deprecated_key, None)
+                            removed_any = True
+
+                    # Ensure new pilot toggle binding exists
+                    if "pilot_toggle_button" not in key_bindings:
+                        key_bindings["pilot_toggle_button"] = self.DEFAULT_CONFIG[
+                            "key_bindings"
+                        ]["pilot_toggle_button"]
+                        removed_any = True
+
                     # Save back to file if new keys were added
-                    if merged_config != config_data:
+                    if merged_config != config_data or removed_any:
                         self._save_config(merged_config)
                         logger.info("Updated config file with missing default values")
 

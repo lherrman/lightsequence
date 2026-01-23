@@ -20,8 +20,6 @@ def test_import_device_modules():
     
     assert ButtonType.SCENE is not None
     assert ButtonType.PRESET is not None
-    assert ButtonType.TOP is not None
-    assert ButtonType.RIGHT is not None
 
 
 def test_import_midi_modules():

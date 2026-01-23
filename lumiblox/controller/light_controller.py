@@ -76,6 +76,11 @@ class LightController:
         self.pilot_preset_manager = PilotPresetManager()
         self.pilot_controller: t.Optional["PilotController"] = None
 
+        # Apply background animation from config (set once at startup)
+        self.background_mgr.set_background(
+            self.config.data.get("background_animation", "default")
+        )
+
         
         # External callbacks (for GUI)
         self.on_sequence_changed: t.Optional[t.Callable[[t.Optional[t.Tuple[int, int]]], None]] = None
@@ -117,7 +122,19 @@ class LightController:
     def _register_control_buttons(self) -> None:
         """Register control buttons from configuration."""
         bindings = self.config.data.get("key_bindings", {})
+        allowed_controls = {
+            "save_button",
+            "save_shift_button",
+            "playback_toggle_button",
+            "next_step_button",
+            "clear_button",
+            "pilot_select_button",
+            "pilot_toggle_button",
+        }
         for name, binding in bindings.items():
+            if name not in allowed_controls:
+                logger.debug("Skipping unsupported control binding: %s", name)
+                continue
             coords = tuple(binding["coordinates"])
             self.input_handler.register_control_button(name, coords)
     
@@ -269,13 +286,11 @@ class LightController:
         handlers = {
             "save_button": self._toggle_save_mode,
             "save_shift_button": self._toggle_save_shift_mode,
-            "background_button": self._cycle_background,
-            "background_brightness_up": self._increase_bg_brightness,
-            "background_brightness_down": self._decrease_bg_brightness,
             "playback_toggle_button": self._toggle_playback,
             "next_step_button": self._next_step,
             "clear_button": self._clear_all_scenes,
             "pilot_select_button": self._toggle_pilot_select_mode,
+            "pilot_toggle_button": self._toggle_pilot_enabled,
         }
         
         handler = handlers.get(name)
@@ -571,24 +586,41 @@ class LightController:
             self.active_sequence = None
         
         self.scene_ctrl.clear_all()
-    
-    def _cycle_background(self) -> None:
-        """Cycle background animation."""
-        self.background_mgr.cycle_background()
-    
-    def _increase_bg_brightness(self) -> None:
-        """Increase background brightness."""
-        current = self.config.data["brightness_background"]
-        new_value = min(1.0, current + 0.03)
-        self.config.data["brightness_background"] = new_value
-        self.config._save_config(self.config.data)
-    
-    def _decrease_bg_brightness(self) -> None:
-        """Decrease background brightness."""
-        current = self.config.data["brightness_background"]
-        new_value = max(0.0, current - 0.03)
-        self.config.data["brightness_background"] = new_value
-        self.config._save_config(self.config.data)
+
+    def _toggle_pilot_enabled(self) -> None:
+        """Toggle pilot controller on/off and persist configuration."""
+        pilot_running = False
+        if self.pilot_controller:
+            try:
+                pilot_running = self.pilot_controller.is_running()
+            except Exception as exc:
+                logger.debug("Could not read pilot state: %s", exc)
+        else:
+            pilot_running = bool(self.config.data.get("pilot", {}).get("enabled", False))
+
+        target_enabled = not pilot_running
+
+        if target_enabled:
+            if not self.pilot_controller:
+                logger.warning("Pilot controller not attached; cannot enable pilot mode")
+                return
+            try:
+                started = self.pilot_controller.start(enable_phrase_detection=False)
+            except Exception as exc:
+                logger.warning("Failed to start pilot controller: %s", exc)
+                return
+            if not started:
+                logger.warning("Pilot controller did not start")
+                return
+            self.config.set_pilot_enabled(True)
+        else:
+            if self.pilot_controller and pilot_running:
+                try:
+                    self.pilot_controller.stop()
+                except Exception as exc:
+                    logger.warning("Failed to stop pilot controller: %s", exc)
+                    return
+            self.config.set_pilot_enabled(False)
     
     def _update_leds(self) -> None:
         """Update all LED displays."""

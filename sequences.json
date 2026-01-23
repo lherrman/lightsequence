@@ -49,33 +49,9 @@
       "next_sequences": [],
       "steps": [
         {
-          "scenes": [
-            [
-              0,
-              2
-            ],
-            [
-              1,
-              1
-            ]
-          ],
+          "scenes": [],
           "duration": 2.0,
           "name": "Step 1",
-          "duration_unit": "seconds"
-        },
-        {
-          "scenes": [
-            [
-              0,
-              1
-            ],
-            [
-              1,
-              2
-            ]
-          ],
-          "duration": 2.0,
-          "name": "Step 2",
           "duration_unit": "seconds"
         }
       ]
