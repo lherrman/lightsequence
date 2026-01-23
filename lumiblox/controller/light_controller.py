@@ -595,6 +595,39 @@ class LightController:
         if self.launchpad.is_connected:
             bg_type = self.background_mgr.get_current_background()
             self.led_ctrl.update_background(bg_type, self.app_state)
+
+            # Playback toggle LED reflects play/pause state
+            playback_coords = tuple(
+                self.config.data["key_bindings"]["playback_toggle_button"][
+                    "coordinates"
+                ]
+            )
+            playback_color = (
+                "playback_playing"
+                if self.sequence_ctrl.playback_state == PlaybackState.PLAYING
+                else "playback_paused"
+            )
+            self.led_ctrl.update_control_led(playback_coords, playback_color)
+
+            # Next-step LED is shown when paused on a multi-step sequence
+            next_step_coords = tuple(
+                self.config.data["key_bindings"]["next_step_button"][
+                    "coordinates"
+                ]
+            )
+            active_index = self.sequence_ctrl.active_sequence
+            active_sequence = (
+                self.sequence_ctrl.get_sequence(active_index)
+                if active_index
+                else None
+            )
+            can_advance = (
+                self.sequence_ctrl.playback_state == PlaybackState.PAUSED
+                and active_sequence is not None
+                and len(active_sequence) > 1
+            )
+            next_color = "next_step" if can_advance else "off"
+            self.led_ctrl.update_control_led(next_step_coords, next_color)
             
             # Update clear button
             coords = tuple(self.config.data["key_bindings"]["clear_button"]["coordinates"])
