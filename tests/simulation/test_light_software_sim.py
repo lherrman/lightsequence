@@ -27,19 +27,19 @@ def test_scene_note_mapping(simulator):
     assert simulator._scene_to_note_map[(1, 0)] == 82
 
 
-def test_send_scene_command(simulator):
-    """Test sending scene commands"""
+def test_set_scene_state(simulator):
+    """Setting scene state should be idempotent and explicit."""
     scene_coords = (0, 0)
-    
-    # Initial state should be off
-    assert simulator.get_scene_state(scene_coords) is False
-    
-    # Send command to toggle on
-    simulator.send_scene_command(scene_coords)
+
+    simulator.set_scene_state(scene_coords, True)
     assert simulator.get_scene_state(scene_coords) is True
-    
-    # Send command to toggle off
-    simulator.send_scene_command(scene_coords)
+
+    # Re-assert ON should keep it on
+    simulator.set_scene_state(scene_coords, True)
+    assert simulator.get_scene_state(scene_coords) is True
+
+    # Explicit off
+    simulator.set_scene_state(scene_coords, False)
     assert simulator.get_scene_state(scene_coords) is False
 
 
@@ -57,9 +57,9 @@ def test_get_scene_coordinates_for_note(simulator):
 def test_get_all_active_scenes(simulator):
     """Test getting all active scenes"""
     # Activate some scenes
-    simulator.send_scene_command((0, 0))
-    simulator.send_scene_command((1, 1))
-    simulator.send_scene_command((2, 2))
+    simulator.set_scene_state((0, 0), True)
+    simulator.set_scene_state((1, 1), True)
+    simulator.set_scene_state((2, 2), True)
     
     active_scenes = simulator.get_all_active_scenes()
     assert len(active_scenes) == 3
@@ -71,7 +71,7 @@ def test_get_all_active_scenes(simulator):
 def test_process_feedback(simulator):
     """Test processing MIDI feedback"""
     # Activate a scene
-    simulator.send_scene_command((0, 0))
+    simulator.set_scene_state((0, 0), True)
     
     # Process feedback should return changes
     changes = simulator.process_feedback()

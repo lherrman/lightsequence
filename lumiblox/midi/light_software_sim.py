@@ -106,37 +106,33 @@ class LightSoftwareSim:
             self.connection_good = False
             return False
 
-    def send_scene_command(self, scene_index: t.Tuple[int, int]) -> None:
-        """
-        Process scene activation command (simulates receiving from controller).
-        This is called by the controller to activate scenes.
-
-        Args:
-            scene_index: Tuple of (x, y) coordinates relative to scene area
-        """
+    def set_scene_state(self, scene_index: t.Tuple[int, int], active: bool) -> None:
+        """Set an explicit scene state (used to mirror deterministic controller diffs)."""
         scene_note = self._scene_to_note_map.get(scene_index)
-        if not scene_note:
+        if scene_note is None:
             logger.warning(
-                f"[SIM] No MIDI note mapped for scene coordinates {scene_index}"
+                "[SIM] No MIDI note mapped for scene coordinates %s", scene_index
             )
             return
 
-        logger.debug(
-            f"[SIM] Received scene command: {scene_index} -> note {scene_note}"
-        )
-
-        # Toggle scene state (this is what the real lighting software does)
-        current_state = self.scene_states.get(scene_index, False)
-        new_state = not current_state
-        self.scene_states[scene_index] = new_state
-
-        # Queue feedback with the new state
-        velocity = 127 if new_state else 0
+        self.scene_states[scene_index] = active
+        velocity = 127 if active else 0
         self.feedback_queue.append((scene_note, velocity))
-
         logger.debug(
-            f"[SIM] Scene {scene_index} toggled to {'ON' if new_state else 'OFF'}"
+            "[SIM] Scene %s set to %s (note %s, velocity %s)",
+            scene_index,
+            "ON" if active else "OFF",
+            scene_note,
+            velocity,
         )
+
+    def send_scene_command(self, scene_index: t.Tuple[int, int]) -> None:
+        """
+        Legacy toggle helper. Prefer ``set_scene_state`` for deterministic control.
+        """
+
+        current_state = self.scene_states.get(scene_index, False)
+        self.set_scene_state(scene_index, not current_state)
 
     def get_scene_coordinates_for_note(
         self, note: int

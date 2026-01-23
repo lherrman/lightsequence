@@ -116,33 +116,45 @@ class LightSoftware:
             
             return False
 
-    def send_scene_command(self, scene_index: t.Tuple[int, int]) -> None:
-        """
-        Send scene activation command to LightSoftware.
-
-        Args:
-            scene_index: Tuple of (x, y) coordinates relative to scene area
-        """
+    def set_scene_state(self, scene_index: t.Tuple[int, int], active: bool) -> None:
+        """Set scene state explicitly using a note-on message with velocity for on/off."""
         if not self.midi_out:
             logger.debug("MIDI output not connected - skipping scene command")
             return
 
         scene_note = self._scene_to_note_map.get(scene_index)
-        if not scene_note:
-            logger.warning(f"No MIDI note mapped for scene coordinates {scene_index}")
+        if scene_note is None:
+            logger.warning("No MIDI note mapped for scene coordinates %s", scene_index)
             return
 
+        velocity = 127 if active else 0
+
         try:
-            self.midi_out.write([[[0x90, scene_note, 127], pygame.midi.time()]])
+            self.midi_out.write([[[0x90, scene_note, velocity], pygame.midi.time()]])
             logger.debug(
-                f"Sent to LightSoftware: Scene {scene_index} -> note {scene_note}"
+                "Sent to LightSoftware: Scene %s -> note %s, velocity %s",
+                scene_index,
+                scene_note,
+                velocity,
             )
         except Exception as e:
-            logger.error(f"MIDI send error: {e}")
-            # Mark as disconnected on error
+            logger.error("MIDI send error: %s", e)
             self.connection_good = False
             if self.device_manager:
-                self.device_manager.set_error(DeviceType.LIGHT_SOFTWARE, f"Send error: {e}")
+                self.device_manager.set_error(
+                    DeviceType.LIGHT_SOFTWARE, f"Send error: {e}"
+                )
+
+    def send_scene_command(self, scene_index: t.Tuple[int, int]) -> None:
+        """
+        Backwards-compatible toggle helper. Prefer ``set_scene_state`` for deterministic
+        state transitions. Since we do not track remote state here, this simply sends an
+        "on" command which is idempotent for momentary bindings and a no-op for toggle
+        bindings that are already on.
+        """
+
+        # Delegate to explicit setter to avoid duplication
+        self.set_scene_state(scene_index, True)
 
     def get_scene_coordinates_for_note(
         self, note: int
