@@ -31,27 +31,45 @@ class ActionType(Enum):
 
 @dataclass
 class SequenceChoice:
-    """Weighted sequence choice."""
+    """Weighted sequence choice, optionally representing a no-op."""
 
-    sequence_index: str  # Format: "x.y" or just "x" (converted to tuple internally)
+    sequence_index: Optional[str]  # Format: "x.y", "x", or None when doing nothing
     weight: float  # 0.0 to 1.0, weights should sum to 1.0
+    do_nothing: bool = False
 
     def to_dict(self) -> Dict[str, Any]:
-        return {"sequence_index": self.sequence_index, "weight": self.weight}
+        data: Dict[str, Any] = {"weight": self.weight}
+        data["sequence_index"] = self.sequence_index
+        if self.do_nothing:
+            data["do_nothing"] = True
+        return data
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> SequenceChoice:
-        return cls(sequence_index=str(data["sequence_index"]), weight=data["weight"])
+        sequence_index = data.get("sequence_index")
+        if sequence_index is not None:
+            sequence_index = str(sequence_index)
+        return cls(
+            sequence_index=sequence_index,
+            weight=data["weight"],
+            do_nothing=bool(data.get("do_nothing", False)),
+        )
 
     def get_index_tuple(self) -> tuple[int, int]:
         """Convert string index to (x, y) tuple."""
+        if self.sequence_index is None:
+            raise ValueError("Do-nothing choices do not map to a sequence index")
+
         if "." in self.sequence_index:
             parts = self.sequence_index.split(".")
             return (int(parts[0]), int(parts[1]))
-        else:
-            # Single number: assume it's an old linear index, convert to grid
-            idx = int(self.sequence_index)
-            return (idx % 8, idx // 8)
+        # Single number: assume it's an old linear index, convert to grid
+        idx = int(self.sequence_index)
+        return (idx % 8, idx // 8)
+
+    def is_noop(self) -> bool:
+        """Return True when this choice represents doing nothing."""
+        return self.do_nothing or self.sequence_index is None
 
 
 @dataclass

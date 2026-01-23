@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 import random
-from typing import Optional, Callable, Dict
+from typing import Optional, Callable, Dict, List
 from lumiblox.pilot.pilot_preset import (
     PilotPreset,
     AutomationRule,
@@ -196,43 +196,101 @@ class RuleEngine:
 
         if action.action_type == ActionType.ACTIVATE_SEQUENCE:
             if action.sequences:
-                sequence_index = self._select_weighted_sequence(action.sequences)
-                logger.info(f"Activating sequence {sequence_index}")
+                selected_choice = self._select_weighted_choice(action.sequences)
+                if not selected_choice:
+                    logger.debug("Rule action had no sequence choices to execute")
+                    return
+
+                if selected_choice.do_nothing or selected_choice.sequence_index is None:
+                    logger.info("Rule randomly chose to do nothing for this trigger")
+                    return
+
+                logger.info(f"Activating sequence {selected_choice.sequence_index}")
                 if self.on_sequence_switch:
-                    self.on_sequence_switch(sequence_index)
+                    self.on_sequence_switch(selected_choice.sequence_index)
 
-    def _select_weighted_sequence(self, choices: list[SequenceChoice]) -> str:
-        """
-        Select a sequence based on weighted random selection.
+    def trigger_rule(
+        self,
+        rule: AutomationRule,
+        *,
+        ignore_cooldown: bool = False,
+    ) -> bool:
+        """Trigger a rule manually, respecting cooldown unless overridden."""
+        current_bar = self.current_bar if self.current_bar is not None else 0
 
-        Args:
-            choices: List of weighted sequence choices
+        if not ignore_cooldown and rule.cooldown_bars > 0:
+            last_executed = self.rule_cooldowns.get(rule.name)
+            if last_executed is not None:
+                bars_since = current_bar - last_executed
+                if bars_since < rule.cooldown_bars:
+                    logger.debug(
+                        "Manual trigger blocked for '%s' (%s/%s bars)",
+                        rule.name,
+                        bars_since,
+                        rule.cooldown_bars,
+                    )
+                    return False
 
-        Returns:
-            Selected sequence index (as string "x.y")
-        """
+        logger.info("Manually triggering rule '%s'", rule.name)
+
+        if self.on_rule_fired:
+            self.on_rule_fired(rule.name)
+
+        self._execute_action(rule)
+
+        self.rule_cooldowns[rule.name] = current_bar
+
+        return True
+
+    def get_cooldown_snapshot(
+        self, rules: List[AutomationRule]
+    ) -> Dict[str, Dict[str, int]]:
+        """Return remaining/total bars for each rule with a cooldown."""
+        snapshot: Dict[str, Dict[str, int]] = {}
+        current_bar = self.current_bar
+
+        for rule in rules:
+            total = max(rule.cooldown_bars, 0)
+            remaining = 0
+            last_executed = self.rule_cooldowns.get(rule.name)
+
+            if total > 0 and last_executed is not None:
+                if current_bar is None:
+                    remaining = total
+                else:
+                    bars_since = current_bar - last_executed
+                    if bars_since < 0:
+                        remaining = total
+                    else:
+                        remaining = max(total - bars_since, 0)
+
+            snapshot[rule.name] = {"remaining": remaining, "total": total}
+
+        return snapshot
+
+    def _select_weighted_choice(
+        self, choices: list[SequenceChoice]
+    ) -> Optional[SequenceChoice]:
+        """Return a weighted random choice, including optional no-op entries."""
         if not choices:
-            return "0.0"
+            return None
 
         if len(choices) == 1:
-            return choices[0].sequence_index
+            return choices[0]
 
-        # Normalize weights
         total_weight = sum(c.weight for c in choices)
         if total_weight <= 0:
-            return choices[0].sequence_index
+            return choices[0]
 
-        # Weighted random selection
         r = random.random() * total_weight
         cumulative = 0.0
 
         for choice in choices:
             cumulative += choice.weight
             if r <= cumulative:
-                return choice.sequence_index
+                return choice
 
-        # Fallback (shouldn't happen)
-        return choices[-1].sequence_index
+        return choices[-1]
 
     def reset_cooldowns(self) -> None:
         """Reset all rule cooldowns."""

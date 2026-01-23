@@ -140,5 +140,49 @@ def test_bar_duration_advances_with_beats(controller: SequenceController):
     controller.stop_playback()
 
 
+def test_followup_sequences_persist(sequence_file: Path):
+    """Follow-up sequence lists should save to disk and reload."""
+    primary_index = (4, 4)
+    next_index = (5, 5)
+    steps = _sample_steps()
+
+    controller = SequenceController(sequence_file)
+    controller.save_sequence(primary_index, steps, loop=False, next_sequences=[next_index])
+    controller.save_sequence(next_index, steps, loop=True)
+    controller.cleanup()
+
+    reloaded = SequenceController(sequence_file)
+    assert reloaded.get_followup_sequences(primary_index) == [next_index]
+    reloaded.cleanup()
+
+
+def test_sequence_auto_chains_to_followup(controller: SequenceController):
+    """Non-looping sequences should automatically jump to configured follow-ups."""
+    first = (6, 6)
+    follower = (7, 7)
+    first_steps = [
+        SequenceStep(scenes=[(0, 0)], duration=0.05, name="A1"),
+        SequenceStep(scenes=[(0, 1)], duration=0.05, name="A2"),
+    ]
+    follower_steps = [
+        SequenceStep(scenes=[(2, 2)], duration=0.05, name="B1"),
+        SequenceStep(scenes=[(2, 3)], duration=0.05, name="B2"),
+    ]
+
+    controller.save_sequence(first, first_steps, loop=False, next_sequences=[follower])
+    controller.save_sequence(follower, follower_steps, loop=True)
+
+    controller.activate_sequence(first)
+    controller.play()
+
+    for _ in range(100):
+        if controller.active_sequence == follower:
+            break
+        time.sleep(0.02)
+
+    assert controller.active_sequence == follower
+    controller.stop_playback()
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

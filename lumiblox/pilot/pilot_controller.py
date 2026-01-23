@@ -304,6 +304,42 @@ class PilotController:
         self.rule_engine = None
         logger.info("Automation disabled")
 
+    def trigger_rule_action(
+        self, rule_name: str, *, ignore_cooldown: bool = False
+    ) -> bool:
+        """Manually trigger a rule by name."""
+        if not self.rule_engine:
+            logger.warning(
+                "Manual trigger requested for '%s' but automation is disabled",
+                rule_name,
+            )
+            return False
+
+        preset = self.preset_manager.get_active_preset()
+        if not preset:
+            logger.warning("No active preset selected; cannot trigger rule")
+            return False
+
+        target_rule = next((r for r in preset.rules if r.name == rule_name), None)
+        if not target_rule:
+            logger.warning("Rule '%s' not found in active preset", rule_name)
+            return False
+
+        return self.rule_engine.trigger_rule(
+            target_rule, ignore_cooldown=ignore_cooldown
+        )
+
+    def get_rule_cooldowns(self) -> dict[str, dict[str, int]]:
+        """Return remaining cooldown bars for rules in the active preset."""
+        if not self.rule_engine:
+            return {}
+
+        preset = self.preset_manager.get_active_preset()
+        if not preset:
+            return {}
+
+        return self.rule_engine.get_cooldown_snapshot(preset.rules)
+
     # Control ---------------------------------------------------------------
     def align_to_beat(self) -> None:
         """Manually align to the current beat."""

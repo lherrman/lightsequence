@@ -389,6 +389,7 @@ class PresetSequenceEditor(QWidget):
         self.current_step_index = 0
         self.current_step_widget: t.Optional[SequenceStepWidget] = None
         self.auto_update_enabled = True  # Auto-update during playback
+        self.next_sequence_candidates: t.List[t.Tuple[int, int]] = []
 
         self.setup_ui()
         self.load_sequence()
@@ -444,6 +445,22 @@ class PresetSequenceEditor(QWidget):
         self.loop_checkbox.setStyleSheet(CHECKBOX_STYLE)
         self.loop_checkbox.stateChanged.connect(self.auto_save_sequence)
         header_layout.addWidget(self.loop_checkbox)
+
+        followup_label = QLabel("Next sequences")
+        followup_label.setStyleSheet(HEADER_LABEL_STYLE)
+        header_layout.addWidget(followup_label)
+
+        self.followup_input = SelectAllLineEdit()
+        self.followup_input.setPlaceholderText("e.g. 0,0; 1,2")
+        self.followup_input.setFixedWidth(160)
+        self.followup_input.setStyleSheet(EDIT_FIELD_STYLE)
+        self.followup_input.setToolTip(
+            "List of sequences to trigger after completion (format: x,y; a,b)"
+        )
+        self.followup_input.editingFinished.connect(
+            self._on_followup_editing_finished
+        )
+        header_layout.addWidget(self.followup_input)
 
         header_layout.addStretch()
 
@@ -581,6 +598,10 @@ class PresetSequenceEditor(QWidget):
             self.preset_index, True
         )
         self.loop_checkbox.setChecked(loop_setting)
+        self.next_sequence_candidates = self.controller.sequence_ctrl.get_followup_sequences(
+            self.preset_index
+        )
+        self._refresh_followup_input()
 
         self.rebuild_step_list()
 
@@ -698,7 +719,10 @@ class PresetSequenceEditor(QWidget):
         try:
             loop_enabled = self.loop_checkbox.isChecked()
             self.controller.sequence_ctrl.save_sequence(
-                self.preset_index, self.sequence_steps, loop_enabled
+                self.preset_index,
+                self.sequence_steps,
+                loop_enabled,
+                next_sequences=self.next_sequence_candidates,
             )
         except Exception as e:
             logger.error(f"Failed to save sequence: {e}")
@@ -801,3 +825,50 @@ class PresetSequenceEditor(QWidget):
             self.rebuild_step_list()
             self.auto_save_sequence()
             self.step_list.setCurrentRow(step_index + 1)
+
+    def _refresh_followup_input(self) -> None:
+        if not hasattr(self, "followup_input"):
+            return
+        text = "; ".join(
+            f"{coords[0]},{coords[1]}" for coords in self.next_sequence_candidates
+        )
+        self.followup_input.setText(text)
+
+    def _on_followup_editing_finished(self) -> None:
+        text = self.followup_input.text().strip()
+        if not text:
+            self.next_sequence_candidates = []
+            self.auto_save_sequence()
+            return
+
+        entries = [
+            entry.strip()
+            for entry in text.replace("\n", ";").split(";")
+            if entry.strip()
+        ]
+        parsed: t.List[t.Tuple[int, int]] = []
+        invalid: t.List[str] = []
+        for entry in entries:
+            parts = [part.strip() for part in entry.split(",")]
+            if len(parts) != 2:
+                invalid.append(entry)
+                continue
+            try:
+                x = int(parts[0])
+                y = int(parts[1])
+                parsed.append((x, y))
+            except ValueError:
+                invalid.append(entry)
+
+        if invalid:
+            QMessageBox.warning(
+                self,
+                "Invalid Coordinates",
+                "Could not parse the following entries: "
+                + ", ".join(invalid),
+            )
+            self._refresh_followup_input()
+            return
+
+        self.next_sequence_candidates = parsed
+        self.auto_save_sequence()

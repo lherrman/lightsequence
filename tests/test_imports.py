@@ -11,6 +11,7 @@ def test_import_common_modules():
     assert AppState.NORMAL is not None
     assert AppState.SAVE_MODE is not None
     assert AppState.SAVE_SHIFT_MODE is not None
+    assert AppState.PILOT_SELECT_MODE is not None
 
 
 def test_import_device_modules():

@@ -67,6 +67,13 @@
                 6
             ]
         },
+        "pilot_select_button": {
+            "button_type": "TOP",
+            "coordinates": [
+                4,
+                0
+            ]
+        },
         "playback_toggle_button": {
             "button_type": "RIGHT",
             "coordinates": [

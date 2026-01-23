@@ -122,6 +122,34 @@ class LEDController:
                     [x, y],
                     color
                 )
+
+    def display_pilot_selection(self, pilot_count: int, active_index: t.Optional[int]) -> None:
+        """Show pilot selection state across sequence buttons."""
+        if not self.launchpad.is_connected:
+            return
+
+        pilot_count = max(0, min(pilot_count, 24))
+
+        active_color = self.config.data["colors"]["preset_on"]
+        available_color = self.config.data["colors"].get(
+            "presets_background",
+            self.config.data["colors"]["off"],
+        )
+        off_color = self.config.data["colors"]["off"]
+
+        for slot in range(24):
+            x = slot % 8
+            y = slot // 8
+            if slot < pilot_count:
+                color = active_color if active_index == slot else available_color
+            else:
+                color = off_color
+
+            self.launchpad.set_button_led(
+                LaunchpadButtonType.PRESET,
+                [x, y],
+                color,
+            )
     
     def flash_success(self, index: t.Tuple[int, int]) -> None:
         """Flash a button green to indicate success."""

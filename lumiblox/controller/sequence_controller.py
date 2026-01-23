@@ -7,6 +7,7 @@ Handles playback, storage, and state management.
 
 import json
 import logging
+import random
 import threading
 import time
 import typing as t
@@ -58,6 +59,9 @@ class SequenceController:
         self.storage_file = storage_file
         self.sequences: t.Dict[t.Tuple[int, int], t.List[SequenceStep]] = {}
         self.loop_settings: t.Dict[t.Tuple[int, int], bool] = {}
+        self.followup_sequences: t.Dict[
+            t.Tuple[int, int], t.List[t.Tuple[int, int]]
+        ] = {}
 
         # Playback state
         self.active_sequence: t.Optional[t.Tuple[int, int]] = None
@@ -102,6 +106,11 @@ class SequenceController:
             for seq_data in data.get("sequences", []):
                 index = tuple(seq_data["index"])
                 loop = seq_data.get("loop", True)
+                next_sequences = [
+                    tuple(candidate)
+                    for candidate in seq_data.get("next_sequences", [])
+                    if isinstance(candidate, list) and len(candidate) == 2
+                ]
 
                 steps = []
                 for step_data in seq_data.get("steps", []):
@@ -118,6 +127,8 @@ class SequenceController:
                 if steps:
                     self.sequences[index] = steps
                     self.loop_settings[index] = loop
+                    if next_sequences:
+                        self.followup_sequences[index] = next_sequences
 
             logger.info(f"Loaded {len(self.sequences)} sequences from storage")
 
@@ -143,6 +154,10 @@ class SequenceController:
                 seq_data = {
                     "index": list(index),
                     "loop": self.loop_settings.get(index, True),
+                    "next_sequences": [
+                        list(candidate)
+                        for candidate in self.followup_sequences.get(index, [])
+                    ],
                     "steps": [
                         {
                             "scenes": [list(s) for s in step.scenes],
@@ -171,7 +186,11 @@ class SequenceController:
     # ============================================================================
 
     def save_sequence(
-        self, index: t.Tuple[int, int], steps: t.List[SequenceStep], loop: bool = True
+        self,
+        index: t.Tuple[int, int],
+        steps: t.List[SequenceStep],
+        loop: bool = True,
+        next_sequences: t.Optional[t.Sequence[t.Tuple[int, int]]] = None,
     ) -> None:
         """Save or update a sequence."""
         if not steps:
@@ -180,6 +199,12 @@ class SequenceController:
 
         self.sequences[index] = steps
         self.loop_settings[index] = loop
+        if next_sequences is not None:
+            normalized = self._normalize_followups(next_sequences)
+            if normalized:
+                self.followup_sequences[index] = normalized
+            else:
+                self.followup_sequences.pop(index, None)
         self._save_to_storage()
 
         logger.info(f"Saved sequence {index} with {len(steps)} steps (loop={loop})")
@@ -199,6 +224,8 @@ class SequenceController:
 
             del self.sequences[index]
             self.loop_settings.pop(index, None)
+            self.followup_sequences.pop(index, None)
+            self._prune_followup_references(index)
             self._save_to_storage()
             logger.info(f"Deleted sequence {index}")
             return True
@@ -216,6 +243,12 @@ class SequenceController:
     def get_loop_setting(self, index: t.Tuple[int, int]) -> bool:
         """Get loop setting for a sequence."""
         return self.loop_settings.get(index, True)
+
+    def get_followup_sequences(
+        self, index: t.Tuple[int, int]
+    ) -> t.List[t.Tuple[int, int]]:
+        """Get configured follow-up sequences for the given index."""
+        return list(self.followup_sequences.get(index, []))
 
     # ============================================================================
     # PLAYBACK CONTROL
@@ -363,20 +396,25 @@ class SequenceController:
 
     def _playback_loop(self) -> None:
         """Main playback loop (runs in thread)."""
-        if not self.active_sequence:
-            return
-
-        sequence = self.sequences[self.active_sequence]
-        should_loop = self.loop_settings.get(self.active_sequence, True)
-
+        queued_sequence: t.Optional[t.Tuple[int, int]] = None
         try:
             while not self.stop_event.is_set():
                 if self.playback_state == PlaybackState.PAUSED:
                     time.sleep(0.1)
                     continue
 
-                if not (0 <= self.current_step_index < len(sequence)):
+                active_index = self.active_sequence
+                if not active_index:
                     break
+
+                sequence = self.sequences.get(active_index)
+                if not sequence or len(sequence) <= 0:
+                    break
+
+                should_loop = self.loop_settings.get(active_index, True)
+
+                if not (0 <= self.current_step_index < len(sequence)):
+                    self.current_step_index = 0
 
                 step = sequence[self.current_step_index]
 
@@ -399,18 +437,21 @@ class SequenceController:
                 if self.current_step_index >= len(sequence):
                     if should_loop:
                         self.current_step_index = 0
-                    else:
-                        if self.on_sequence_complete:
-                            try:
-                                self.on_sequence_complete()
-                            except Exception as e:
-                                logger.error(
-                                    f"Error in complete callback: {e}"
-                                )
-                        break
+                        continue
+
+                    if self.on_sequence_complete:
+                        try:
+                            self.on_sequence_complete()
+                        except Exception as e:
+                            logger.error(f"Error in complete callback: {e}")
+
+                    queued_sequence = self._select_followup_sequence(active_index)
+                    break
         finally:
             with self._thread_lock:
                 self.playback_thread = None
+            if queued_sequence and not self.stop_event.is_set():
+                self._activate_followup_sequence(queued_sequence)
             logger.debug("Playback loop exited")
 
     def cleanup(self) -> None:
@@ -499,3 +540,67 @@ class SequenceController:
                 raw_value,
             )
             return SequenceDurationUnit.SECONDS
+
+    def _normalize_followups(
+        self, candidates: t.Sequence[t.Tuple[int, int]]
+    ) -> t.List[t.Tuple[int, int]]:
+        normalized: t.List[t.Tuple[int, int]] = []
+        for candidate in candidates:
+            if (
+                isinstance(candidate, tuple)
+                and len(candidate) == 2
+                and all(isinstance(coord, int) for coord in candidate)
+            ):
+                normalized.append(candidate)
+            elif (
+                isinstance(candidate, list)
+                and len(candidate) == 2
+                and all(isinstance(coord, int) for coord in candidate)
+            ):
+                normalized.append((candidate[0], candidate[1]))
+        return normalized
+
+    def _select_followup_sequence(
+        self, index: t.Tuple[int, int]
+    ) -> t.Optional[t.Tuple[int, int]]:
+        candidates = [
+            seq
+            for seq in self.followup_sequences.get(index, [])
+            if seq in self.sequences
+        ]
+        if not candidates:
+            return None
+        return random.choice(candidates)
+
+    def _activate_followup_sequence(self, index: t.Tuple[int, int]) -> None:
+        sequence = self.sequences.get(index)
+        if not sequence:
+            logger.debug(
+                "Skipping follow-up activation for %s (sequence missing)", index
+            )
+            return
+
+        logger.info("Automatically activating follow-up sequence %s", index)
+        self.active_sequence = index
+        self.current_step_index = 0
+        self.stop_event.clear()
+        with self._bar_condition:
+            self._beats_remaining = None
+            self._bar_condition.notify_all()
+
+        if self.on_step_change and sequence:
+            try:
+                self.on_step_change(sequence[0].scenes)
+            except Exception as e:
+                logger.error(f"Error in step change callback during follow-up: {e}")
+
+        if self.playback_state == PlaybackState.PLAYING:
+            self._start_playback_thread_if_needed()
+
+    def _prune_followup_references(self, target: t.Tuple[int, int]) -> None:
+        updated: t.Dict[t.Tuple[int, int], t.List[t.Tuple[int, int]]] = {}
+        for owner, candidates in self.followup_sequences.items():
+            filtered = [seq for seq in candidates if seq != target]
+            if filtered:
+                updated[owner] = filtered
+        self.followup_sequences = updated

@@ -34,6 +34,7 @@ class ControllerThread(QThread):
         self.should_stop = False
         self.simulation = simulation
         self.pilot_update_callback: t.Optional[t.Callable[[], None]] = None
+        self.pilot_selection_callback: t.Optional[t.Callable[[int], None]] = None
 
     def run(self):
         """Run the controller in a separate thread."""
@@ -44,6 +45,13 @@ class ControllerThread(QThread):
 
             # Initialize pilot controller
             self._initialize_pilot()
+
+            if self.controller:
+                if hasattr(self.controller, "set_pilot_controller"):
+                    self.controller.set_pilot_controller(self.pilot_controller)
+                self.controller.on_pilot_selection_changed = (
+                    self._handle_pilot_selection_changed
+                )
 
             # Always emit ready signal - app works without hardware
             self.controller_ready.emit()
@@ -105,6 +113,11 @@ class ControllerThread(QThread):
     def _handle_capturing(self, is_capturing: bool) -> None:
         """Forward capture state changes to GUI thread."""
         self.capturing_signal.emit(is_capturing)
+
+    def _handle_pilot_selection_changed(self, index: int) -> None:
+        """Forward pilot selection change events."""
+        if self.pilot_selection_callback:
+            self.pilot_selection_callback(index)
 
     def _initialize_pilot(self) -> None:
         """Initialize the pilot controller with configuration."""

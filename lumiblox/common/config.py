@@ -69,6 +69,7 @@ class KeyBindings(TypedDict):
     clear_button: KeyBinding
     background_brightness_down: KeyBinding
     background_brightness_up: KeyBinding
+    pilot_select_button: KeyBinding
 
 
 class ConfigData(TypedDict):
@@ -130,6 +131,7 @@ class ConfigManager:
             "clear_button": {"button_type": "RIGHT", "coordinates": [8, 7]},
             "background_brightness_down": {"button_type": "TOP", "coordinates": [5, 0]},
             "background_brightness_up": {"button_type": "TOP", "coordinates": [6, 0]},
+            "pilot_select_button": {"button_type": "TOP", "coordinates": [4, 0]},
         },
         "pilot": {
             "enabled": False,

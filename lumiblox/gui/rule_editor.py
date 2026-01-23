@@ -67,9 +67,11 @@ class SequenceChoiceWidget(QWidget):
         self.sequence_edit.setPlaceholderText("e.g. 0.0 or 1.2")
         self.sequence_edit.setFixedWidth(80)
         if choice:
-            self.sequence_edit.setText(str(choice.sequence_index))
+            text_value = str(choice.sequence_index) if choice.sequence_index else ""
+            self.sequence_edit.setText(text_value)
         else:
             self.sequence_edit.setText("0.0")
+        self._cached_sequence_text = self.sequence_edit.text() or "0.0"
         layout.addWidget(self.sequence_edit)
 
         layout.addSpacing(10)
@@ -109,16 +111,42 @@ class SequenceChoiceWidget(QWidget):
 
         layout.addStretch()
 
+        self.do_nothing_check = QCheckBox("Do nothing")
+        if choice and getattr(choice, "do_nothing", False):
+            self.do_nothing_check.setChecked(True)
+        self.do_nothing_check.toggled.connect(self._on_do_nothing_toggled)
+        layout.addWidget(self.do_nothing_check)
+
+        # Initialize sequence input state based on checkbox
+        self._on_do_nothing_toggled(self.do_nothing_check.isChecked())
+
         remove_btn = QPushButton("✕")
         remove_btn.setFixedWidth(30)
         remove_btn.clicked.connect(self.remove_requested.emit)
         layout.addWidget(remove_btn)
 
+    def _on_do_nothing_toggled(self, checked: bool) -> None:
+        """Disable sequence input when this choice should do nothing."""
+        if checked:
+            # Remember last typed sequence so it can be restored later
+            text = self.sequence_edit.text().strip()
+            if text:
+                self._cached_sequence_text = text
+            self.sequence_edit.clear()
+        elif not self.sequence_edit.text():
+            # Restore previous value when re-enabling the field
+            self.sequence_edit.setText(self._cached_sequence_text or "0.0")
+
+        self.sequence_edit.setEnabled(not checked)
+
     def get_choice(self) -> SequenceChoice:
         """Get the sequence choice."""
+        is_noop = self.do_nothing_check.isChecked()
+        text_value = self.sequence_edit.text().strip()
         return SequenceChoice(
-            sequence_index=self.sequence_edit.text().strip() or "0.0",
+            sequence_index=None if is_noop else (text_value or "0.0"),
             weight=self.weight_spin.value(),
+            do_nothing=is_noop,
         )
 
 

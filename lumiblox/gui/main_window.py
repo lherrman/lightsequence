@@ -48,6 +48,7 @@ class LightSequenceGUI(QMainWindow):
     playback_state_changed_signal = Signal(object)
     pilot_update_signal = Signal()  # For pilot updates from controller thread
     automation_rule_fired_signal = Signal(str)
+    pilot_selection_signal = Signal(int)
 
     def __init__(self, simulation: bool = False):
         super().__init__()
@@ -63,6 +64,7 @@ class LightSequenceGUI(QMainWindow):
         self.device_status_update_signal.connect(self._update_device_status_display)
         self.playback_state_changed_signal.connect(self._update_playback_controls)
         self.pilot_update_signal.connect(self._update_pilot_display)
+        self.pilot_selection_signal.connect(self._handle_pilot_selection_changed)
 
         self.setWindowTitle("Light Sequence Controller")
         self.setMinimumSize(470, 200)
@@ -97,6 +99,9 @@ class LightSequenceGUI(QMainWindow):
         self.pilot_widget.align_requested.connect(self._on_align_requested)
         self.pilot_widget.deck_region_configured.connect(
             self._on_deck_region_configured
+        )
+        self.pilot_widget.rule_trigger_requested.connect(
+            self._on_rule_trigger_requested
         )
         main_layout.addWidget(self.pilot_widget)  # No stretch, fixed height
 
@@ -270,6 +275,9 @@ class LightSequenceGUI(QMainWindow):
             if self.controller_thread.pilot_controller:
                 self.controller_thread.pilot_update_callback = (
                     lambda: self.pilot_update_signal.emit()
+                )
+                self.controller_thread.pilot_selection_callback = (
+                    lambda idx: self.pilot_selection_signal.emit(idx)
                 )
 
             # Set up callbacks for sequence changes and saves
@@ -569,6 +577,41 @@ class LightSequenceGUI(QMainWindow):
 
         logger.info(f"Configured deck {deck_name} {region_type} region")
 
+    def _on_rule_trigger_requested(self, rule_name: str) -> None:
+        """Handle manual rule trigger requests from the UI."""
+        if not self.controller_thread:
+            return
+
+        pilot = self.controller_thread.pilot_controller
+        if not pilot:
+            QMessageBox.warning(
+                self,
+                "Pilot Not Ready",
+                "Pilot controller is unavailable. Start the pilot and try again.",
+            )
+            return
+
+        if not pilot.rule_engine:
+            QMessageBox.information(
+                self,
+                "Automation Disabled",
+                "Enable phrase detection to use manual rule triggers.",
+            )
+            return
+
+        success = pilot.trigger_rule_action(rule_name)
+        if not success:
+            QMessageBox.warning(
+                self,
+                "Trigger Failed",
+                "Could not trigger the selected rule. Make sure it exists in the active preset.",
+            )
+            return
+
+        # Refresh cooldown snapshot immediately so the UI reflects the manual trigger
+        cooldowns = pilot.get_rule_cooldowns()
+        self.pilot_widget.update_rule_cooldowns(cooldowns)
+
     def _update_pilot_display(self) -> None:
         """Update pilot widget display (called on main thread)."""
         if not self.controller_thread:
@@ -600,6 +643,13 @@ class LightSequenceGUI(QMainWindow):
         self.pilot_widget.update_status(
             state.value, bpm, aligned, active_deck, phrase_type, phrase_duration
         )
+
+        cooldowns = pilot.get_rule_cooldowns()
+        self.pilot_widget.update_rule_cooldowns(cooldowns)
+
+    def _handle_pilot_selection_changed(self, pilot_index: int) -> None:
+        """Refresh pilot widget when selection changes externally."""
+        self.pilot_widget.reload_presets()
 
     # ============================================================================
     # AUTOMATION CALLBACKS

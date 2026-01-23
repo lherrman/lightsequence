@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
 )
 
 from lumiblox.pilot.phrase_detector import CaptureRegion
-from lumiblox.pilot.pilot_preset import PilotPresetManager
+from lumiblox.pilot.pilot_preset import PilotPresetManager, AutomationRule
 from lumiblox.pilot.midi_actions import MidiActionConfig, MidiActionType
 from lumiblox.gui.rule_editor import PresetEditorDialog
 from lumiblox.common.config import get_config
@@ -43,6 +43,30 @@ from lumiblox.gui.ui_constants import (
 )
 
 logger = logging.getLogger(__name__)
+
+COOLDOWN_BAR_STYLE_READY = """
+QProgressBar {
+    border: 1px solid #444444;
+    border-radius: 3px;
+    background-color: #1f1f1f;
+}
+QProgressBar::chunk {
+    background-color: #3cb371;
+    border-radius: 2px;
+}
+"""
+
+COOLDOWN_BAR_STYLE_ACTIVE = """
+QProgressBar {
+    border: 1px solid #444444;
+    border-radius: 3px;
+    background-color: #1f1f1f;
+}
+QProgressBar::chunk {
+    background-color: #d2872b;
+    border-radius: 2px;
+}
+"""
 
 
 # Region selector and config dialog remain the same
@@ -630,6 +654,7 @@ class PilotWidget(QWidget):
     deck_region_configured = Signal(str, str, CaptureRegion)
     midi_action_added = Signal(object)  # Emits MidiActionConfig
     midi_action_removed = Signal(str)  # Emits action name
+    rule_trigger_requested = Signal(str)
 
     def __init__(
         self,
@@ -641,6 +666,7 @@ class PilotWidget(QWidget):
         self.pilot_controller = pilot_controller
         self.phrase_detection_enabled = False
         self.preset_manager = PilotPresetManager()
+        self._cooldown_cache: dict[str, dict[str, int]] = {}
 
         self.setup_ui()
         self._load_presets()
@@ -839,7 +865,7 @@ class PilotWidget(QWidget):
         # Rules list with flash indicators
         self.rules_container = QVBoxLayout()
         self.rules_container.setSpacing(2)
-        self.rule_widgets = {}  # rule_name -> QLabel widget
+        self.rule_widgets: dict[str, dict[str, object]] = {}
         presets_layout.addLayout(self.rules_container)
 
         # Add stretch to push rules to the top
@@ -860,6 +886,7 @@ class PilotWidget(QWidget):
         """Handle phrase detection enable/disable."""
         self.phrase_detection_enabled = checked
         self.phrase_detection_enable_requested.emit(checked)
+        self.update_rule_cooldowns(self._cooldown_cache)
 
     def _on_align_requested(self) -> None:
         """Handle manual alignment request."""
@@ -1008,17 +1035,8 @@ class PilotWidget(QWidget):
             preset = self.preset_manager.presets[current_index]
             if preset.rules:
                 for rule in preset.rules:
-                    # Create rule label
-                    rule_label = QLabel()
-                    rule_label.setWordWrap(True)
-                    rule_label.setStyleSheet(
-                        "color: #999999; font-size: 10px; padding: 2px 4px; "
-                        "background: {COLOR_BG_LIGHT}; border-radius: 3px; margin: 1px;"
-                    )
-                    self._update_rule_label(rule_label, rule, False)
-
-                    self.rules_container.addWidget(rule_label)
-                    self.rule_widgets[rule.name] = rule_label
+                    row_widget = self._create_rule_row(rule)
+                    self.rules_container.addWidget(row_widget)
             else:
                 # Show "no rules" message
                 no_rules_label = QLabel("No rules defined")
@@ -1034,22 +1052,132 @@ class PilotWidget(QWidget):
             )
             self.rules_container.addWidget(no_preset_label)
 
-    def _update_rule_label(self, label: QLabel, rule, is_firing: bool) -> None:
+        self.update_rule_cooldowns(self._cooldown_cache)
+
+    def _create_rule_row(self, rule: AutomationRule) -> QWidget:
+        """Create the UI row for a single rule entry."""
+        row = QWidget()
+        row_layout = QHBoxLayout(row)
+        row_layout.setContentsMargins(2, 2, 2, 2)
+        row_layout.setSpacing(6)
+
+        trigger_btn = QToolButton()
+        trigger_btn.setIcon(qta.icon("fa5s.play", color="white"))
+        trigger_btn.setIconSize(ICON_SIZE_SMALL)
+        trigger_btn.setFixedSize(BUTTON_SIZE_SMALL)
+        trigger_btn.setStyleSheet(
+            BUTTON_STYLE + "QToolButton { padding: 0px; border-radius: 3px; }"
+        )
+        trigger_btn.clicked.connect(
+            lambda _checked=False, rn=rule.name: self.rule_trigger_requested.emit(rn)
+        )
+
+        label = QLabel()
+        label.setWordWrap(True)
+        row_layout.addWidget(trigger_btn)
+        row_layout.addWidget(label, 1)
+
+        cooldown_bar = QProgressBar()
+        cooldown_bar.setMaximum(100)
+        cooldown_bar.setValue(0)
+        cooldown_bar.setTextVisible(False)
+        cooldown_bar.setFixedHeight(6)
+        cooldown_bar.setMinimumWidth(90)
+        cooldown_bar.setMaximumWidth(140)
+        cooldown_bar.setStyleSheet(COOLDOWN_BAR_STYLE_READY)
+        row_layout.addWidget(cooldown_bar)
+
+        self._update_rule_label(label, rule, False)
+
+        trigger_btn.setEnabled(rule.enabled and self.phrase_detection_enabled)
+        if not rule.enabled:
+            trigger_btn.setToolTip("Rule disabled")
+        elif not self.phrase_detection_enabled:
+            trigger_btn.setToolTip("Enable phrase detection to trigger manually")
+        else:
+            trigger_btn.setToolTip("Trigger rule manually")
+
+        cooldown_bar.setVisible(rule.cooldown_bars > 0)
+
+        self.rule_widgets[rule.name] = {
+            "label": label,
+            "button": trigger_btn,
+            "cooldown_bar": cooldown_bar,
+            "cooldown_total": max(rule.cooldown_bars, 0),
+            "rule": rule,
+        }
+
+        return row
+
+    def update_rule_cooldowns(self, cooldowns: dict[str, dict[str, int]]) -> None:
+        """Update cooldown indicators and button states for each rule."""
+        self._cooldown_cache = cooldowns or {}
+
+        for rule_name, data in self.rule_widgets.items():
+            rule = data["rule"]
+            button: QToolButton = data["button"]
+            bar: QProgressBar = data["cooldown_bar"]
+            total = data["cooldown_total"]
+            snapshot = self._cooldown_cache.get(rule_name, {})
+            remaining = max(0, snapshot.get("remaining", 0))
+            total_override = snapshot.get("total")
+            if isinstance(total_override, int) and total_override > 0:
+                total = total_override
+
+            if total <= 0:
+                bar.setVisible(False)
+                ready = True
+                bar.setToolTip("No cooldown")
+            else:
+                bar.setVisible(True)
+                ratio = 1.0
+                if total > 0:
+                    ratio = 1.0 - min(remaining / total, 1.0)
+                bar.setValue(int(ratio * 100))
+
+                if remaining > 0:
+                    bar.setStyleSheet(COOLDOWN_BAR_STYLE_ACTIVE)
+                else:
+                    bar.setStyleSheet(COOLDOWN_BAR_STYLE_READY)
+
+                bar.setToolTip(
+                    "Ready"
+                    if remaining == 0
+                    else f"{remaining} bars remaining"
+                )
+
+                ready = remaining == 0
+
+            can_trigger = rule.enabled and self.phrase_detection_enabled and ready
+            button.setEnabled(can_trigger)
+
+            if not rule.enabled:
+                tooltip = "Rule disabled"
+            elif not self.phrase_detection_enabled:
+                tooltip = "Enable phrase detection to trigger manually"
+            elif total > 0 and not ready:
+                tooltip = f"Cooling down ({remaining} bars left)"
+            else:
+                tooltip = "Trigger rule manually"
+
+            button.setToolTip(tooltip)
+
+    def _update_rule_label(
+        self, label: QLabel, rule: AutomationRule, is_firing: bool
+    ) -> None:
         """Update rule label text and style."""
-        status = ""
-        condition_str = f"{rule.condition.condition_type.value}"
+        condition_parts: list[str] = [rule.condition.condition_type.value]
         if rule.condition.phrase_type:
-            condition_str += f" ({rule.condition.phrase_type})"
+            condition_parts.append(f"({rule.condition.phrase_type})")
         if rule.condition.duration_bars:
-            condition_str += f" {rule.condition.duration_bars}bars"
+            condition_parts.append(f"{rule.condition.duration_bars} bars")
 
-        label.setText(f"{status} {rule.name}: {condition_str}")
+        label.setText(f"{rule.name}: {' '.join(condition_parts)}")
 
-        # Flash effect when firing
         if is_firing:
             label.setStyleSheet(
                 "color: #00ff00; font-size: 10px; padding: 2px 4px; "
-                "background: #004400;  border-radius: 3px; margin: 1px;"
+                "background: #004400; border-radius: 3px; margin: 1px;"
             )
         elif rule.enabled:
             label.setStyleSheet(
@@ -1065,8 +1193,8 @@ class PilotWidget(QWidget):
     def flash_rule(self, rule_name: str) -> None:
         """Flash a rule indicator when it fires."""
         # Only flash if we have a widget and the rule is enabled
-        widget = self.rule_widgets.get(rule_name)
-        if not widget:
+        row = self.rule_widgets.get(rule_name)
+        if not row:
             return
 
         current_index = self.preset_combo.currentIndex()
@@ -1085,13 +1213,14 @@ class PilotWidget(QWidget):
             return
 
         # Flash on briefly then restore default appearance
-        self._update_rule_label(widget, matched_rule, True)
+        label = row["label"]
+        self._update_rule_label(label, matched_rule, True)
 
         from PySide6.QtCore import QTimer
 
-        def _flash_off(w=widget, r=matched_rule, rn=rule_name):
+        def _flash_off(rn=rule_name, r=matched_rule):
             if rn in self.rule_widgets:
-                self._update_rule_label(w, r, False)
+                self._update_rule_label(self.rule_widgets[rn]["label"], r, False)
 
         QTimer.singleShot(500, _flash_off)
 
@@ -1154,3 +1283,9 @@ class PilotWidget(QWidget):
     def set_pilot_controller(self, pilot_controller) -> None:
         """Set the pilot controller reference (called after initialization)."""
         self.pilot_controller = pilot_controller
+        self.reload_presets()
+
+    def reload_presets(self) -> None:
+        """Reload pilot presets from disk and refresh UI."""
+        self.preset_manager.load()
+        self._load_presets()

@@ -14,6 +14,7 @@ import logging
 import time
 import typing as t
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from lumiblox.controller.sequence_controller import (
     SequenceController,
@@ -31,6 +32,10 @@ from lumiblox.midi.light_software_sim import LightSoftwareSim
 from lumiblox.common.device_state import DeviceManager, DeviceType
 from lumiblox.common.config import get_config
 from lumiblox.common.enums import AppState
+from lumiblox.pilot.pilot_preset import PilotPresetManager
+
+if TYPE_CHECKING:
+    from lumiblox.pilot.pilot_controller import PilotController
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -68,10 +73,13 @@ class LightController:
         self.app_state = AppState.NORMAL
         self.active_sequence: t.Optional[t.Tuple[int, int]] = None
         self.config = get_config()
+        self.pilot_preset_manager = PilotPresetManager()
+        self.pilot_controller: t.Optional["PilotController"] = None
         
         # External callbacks (for GUI)
         self.on_sequence_changed: t.Optional[t.Callable[[t.Optional[t.Tuple[int, int]]], None]] = None
         self.on_sequence_saved: t.Optional[t.Callable[[], None]] = None
+        self.on_pilot_selection_changed: t.Optional[t.Callable[[int], None]] = None
         
         # Wire up callbacks
         self._setup_callbacks()
@@ -237,6 +245,9 @@ class LightController:
             self._save_sequence(index)
         elif self.app_state == AppState.SAVE_SHIFT_MODE:
             self._add_step_to_sequence(index)
+        elif self.app_state == AppState.PILOT_SELECT_MODE:
+            if pressed:
+                self._handle_pilot_selection_button(index)
         else:
             self._activate_deactivate_sequence(index)
     
@@ -254,6 +265,7 @@ class LightController:
             "playback_toggle_button": self._toggle_playback,
             "next_step_button": self._next_step,
             "clear_button": self._clear_all_scenes,
+            "pilot_select_button": self._toggle_pilot_select_mode,
         }
         
         handler = handlers.get(name)
@@ -283,6 +295,15 @@ class LightController:
     
     def _handle_step_change(self, scenes: t.List[t.Tuple[int, int]]) -> None:
         """Handle sequence step change."""
+        current_sequence = self.sequence_ctrl.active_sequence
+        if current_sequence != self.active_sequence:
+            if self.active_sequence:
+                self._set_sequence_led_state(self.active_sequence, False)
+            self.active_sequence = current_sequence
+            if self.active_sequence:
+                self._set_sequence_led_state(self.active_sequence, True)
+            if self.on_sequence_changed:
+                self.on_sequence_changed(self.active_sequence)
         self.scene_ctrl.activate_scenes(scenes, controlled=True)
     
     def _handle_sequence_complete(self) -> None:
@@ -300,18 +321,18 @@ class LightController:
             self.sequence_ctrl.clear()
             self.scene_ctrl.clear_controlled()
             self.active_sequence = None
-            self.led_ctrl.update_sequence_led(index, False)
+            self._set_sequence_led_state(index, False)
             if self.on_sequence_changed:
                 self.on_sequence_changed(None)
         else:
             # Deactivate old sequence first
             if self.active_sequence:
-                self.led_ctrl.update_sequence_led(self.active_sequence, False)
+                self._set_sequence_led_state(self.active_sequence, False)
             
             # Activate new sequence
             self.active_sequence = index
             self.sequence_ctrl.activate_sequence(index)
-            self.led_ctrl.update_sequence_led(index, True)
+            self._set_sequence_led_state(index, True)
             if self.on_sequence_changed:
                 self.on_sequence_changed(index)
     
@@ -368,6 +389,8 @@ class LightController:
     
     def _enter_save_mode(self) -> None:
         """Enter save mode."""
+        if self.app_state == AppState.PILOT_SELECT_MODE:
+            self._exit_pilot_select_mode()
         self.app_state = AppState.SAVE_MODE
         self.sequence_ctrl.stop_playback()
         
@@ -379,6 +402,8 @@ class LightController:
     
     def _enter_save_shift_mode(self) -> None:
         """Enter save shift mode."""
+        if self.app_state == AppState.PILOT_SELECT_MODE:
+            self._exit_pilot_select_mode()
         self.app_state = AppState.SAVE_SHIFT_MODE
         self.sequence_ctrl.stop_playback()
         
@@ -398,7 +423,108 @@ class LightController:
         
         self.led_ctrl.clear_sequence_leds()
         if self.active_sequence:
-            self.led_ctrl.update_sequence_led(self.active_sequence, True)
+            self._set_sequence_led_state(self.active_sequence, True)
+
+    def _toggle_pilot_select_mode(self) -> None:
+        """Toggle pilot selection mode."""
+        if self.app_state == AppState.PILOT_SELECT_MODE:
+            self._exit_pilot_select_mode()
+            return
+
+        if self.app_state in (AppState.SAVE_MODE, AppState.SAVE_SHIFT_MODE):
+            self._exit_save_mode()
+        self._enter_pilot_select_mode()
+
+    def _enter_pilot_select_mode(self) -> None:
+        """Enter pilot selection mode and update LEDs."""
+        self._refresh_pilot_presets()
+        self.app_state = AppState.PILOT_SELECT_MODE
+
+        coords = tuple(
+            self.config.data["key_bindings"]["pilot_select_button"]["coordinates"]
+        )
+        self.led_ctrl.update_control_led(coords, "save_mode_on")
+        self._render_pilot_selection_leds()
+
+    def _exit_pilot_select_mode(self) -> None:
+        """Exit pilot selection mode and restore sequence LEDs."""
+        if self.app_state != AppState.PILOT_SELECT_MODE:
+            return
+
+        self.app_state = AppState.NORMAL
+        coords = tuple(
+            self.config.data["key_bindings"]["pilot_select_button"]["coordinates"]
+        )
+        self.led_ctrl.update_control_led(coords, "off")
+
+        self.led_ctrl.clear_sequence_leds()
+        if self.active_sequence:
+            self._set_sequence_led_state(self.active_sequence, True)
+
+    def _render_pilot_selection_leds(self) -> None:
+        """Render pilot selection grid on sequence buttons."""
+        pilot_count = len(self.pilot_preset_manager.presets)
+        active_index = self._get_active_pilot_index()
+        self.led_ctrl.display_pilot_selection(pilot_count, active_index)
+
+    def _handle_pilot_selection_button(self, index: t.Tuple[int, int]) -> None:
+        """Handle pilot selection via sequence pads."""
+        self._refresh_pilot_presets()
+        pilot_slot = self._sequence_index_to_linear(index)
+        if pilot_slot is None:
+            return
+
+        if pilot_slot >= len(self.pilot_preset_manager.presets):
+            return
+
+        self._activate_pilot_by_index(pilot_slot)
+        self._exit_pilot_select_mode()
+
+    def _activate_pilot_by_index(self, pilot_index: int) -> None:
+        """Activate pilot preset by index and notify listeners."""
+        changed = False
+        for i, preset in enumerate(self.pilot_preset_manager.presets):
+            new_state = i == pilot_index
+            if preset.enabled != new_state:
+                preset.enabled = new_state
+                changed = True
+
+        if changed:
+            self.pilot_preset_manager.save()
+            if self.pilot_controller:
+                self.pilot_controller.preset_manager.load()
+
+        if self.on_pilot_selection_changed:
+            try:
+                self.on_pilot_selection_changed(pilot_index)
+            except Exception as exc:
+                logger.debug(f"Pilot selection callback failed: {exc}")
+
+    def _get_active_pilot_index(self) -> t.Optional[int]:
+        """Return the currently enabled pilot preset index."""
+        for i, preset in enumerate(self.pilot_preset_manager.presets):
+            if getattr(preset, "enabled", False):
+                return i
+        return None
+
+    def _sequence_index_to_linear(self, index: t.Tuple[int, int]) -> t.Optional[int]:
+        """Convert (x, y) sequence coordinates to linear slot index."""
+        x, y = index
+        if not (0 <= x <= 7 and 0 <= y <= 2):
+            return None
+        return y * 8 + x
+
+    def _refresh_pilot_presets(self) -> None:
+        """Reload pilot presets from disk if possible."""
+        success = self.pilot_preset_manager.load()
+        if not success:
+            logger.warning("Unable to reload pilot presets; using last known state")
+
+    def _set_sequence_led_state(self, index: t.Tuple[int, int], active: bool) -> None:
+        """Update a sequence LED unless overridden by pilot mode."""
+        if self.app_state == AppState.PILOT_SELECT_MODE:
+            return
+        self.led_ctrl.update_sequence_led(index, active)
     
     # ============================================================================
     # OTHER CONTROLS
@@ -422,7 +548,7 @@ class LightController:
         """Clear all active scenes."""
         if self.active_sequence:
             self.sequence_ctrl.stop_playback()
-            self.led_ctrl.update_sequence_led(self.active_sequence, False)
+            self._set_sequence_led_state(self.active_sequence, False)
             self.active_sequence = None
         
         self.scene_ctrl.clear_all()
@@ -479,6 +605,10 @@ class LightController:
     def process_midi_feedback_from_external(self) -> None:
         """Process MIDI feedback (for GUI compatibility)."""
         self._process_midi_feedback()
+
+    def set_pilot_controller(self, pilot_controller: "PilotController") -> None:
+        """Attach a pilot controller for preset synchronization."""
+        self.pilot_controller = pilot_controller
 
 
 # ============================================================================

@@ -6,3 +6,4 @@ class AppState(str, Enum):
     NORMAL = "normal"
     SAVE_MODE = "save_mode"
     SAVE_SHIFT_MODE = "save_shift_mode"
+    PILOT_SELECT_MODE = "pilot_select_mode"

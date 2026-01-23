@@ -70,6 +70,7 @@ def test_key_bindings(config_manager):
     assert 'background_button' in bindings
     assert 'playback_toggle_button' in bindings
     assert 'clear_button' in bindings
+    assert 'pilot_select_button' in bindings
     
     # Check binding structure
     save_button = bindings['save_button']
