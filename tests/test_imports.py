@@ -34,15 +34,20 @@ def test_import_midi_modules():
 
 def test_import_controller_modules():
     """Test importing controller modules"""
-    from lumiblox.controller.main import LightController
-    from lumiblox.controller.sequence import SequenceManager, SequenceStep, SequenceState
-    from lumiblox.controller.preset_manager import PresetManager
+    from lumiblox.controller.light_controller import LightController
+    from lumiblox.controller.sequence_controller import (
+        SequenceController,
+        SequenceStep,
+        SequenceDurationUnit,
+        PlaybackState,
+    )
     from lumiblox.controller.background_animator import BackgroundManager, BackgroundAnimator
     
     assert LightController is not None
-    assert SequenceManager is not None
     assert SequenceStep is not None
-    assert PresetManager is not None
+    assert SequenceController is not None
+    assert SequenceDurationUnit is not None
+    assert PlaybackState is not None
     assert BackgroundManager is not None
 
 

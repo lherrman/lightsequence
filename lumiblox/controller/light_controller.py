@@ -15,7 +15,11 @@ import time
 import typing as t
 from pathlib import Path
 
-from lumiblox.controller.sequence_controller import SequenceController, SequenceStep
+from lumiblox.controller.sequence_controller import (
+    SequenceController,
+    SequenceStep,
+    PlaybackState,
+)
 from lumiblox.controller.scene_controller import SceneController
 from lumiblox.controller.input_handler import InputHandler, ButtonEvent, ButtonType
 from lumiblox.controller.led_controller import LEDController
@@ -405,10 +409,10 @@ class LightController:
         if not self.active_sequence:
             return
         
-        if self.sequence_ctrl.playback_state.value == "playing":
-            self.sequence_ctrl.pause_playback()
-        elif self.sequence_ctrl.playback_state.value == "paused":
-            self.sequence_ctrl.resume_playback()
+        if self.sequence_ctrl.playback_state == PlaybackState.PLAYING:
+            self.sequence_ctrl.pause()
+        else:
+            self.sequence_ctrl.play()
     
     def _next_step(self) -> None:
         """Advance to next step."""
