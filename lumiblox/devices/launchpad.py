@@ -16,8 +16,7 @@ logger = logging.getLogger(__name__)
 class ButtonType(str, Enum):
     SCENE = "scene"
     PRESET = "preset"
-    TOP = "top"
-    RIGHT = "right"
+    CONTROL = "control"
     UNKNOWN = "unknown"
 
 
@@ -152,20 +151,13 @@ class LaunchpadMK2:
             abs_y = self.BOUNDS_SCENES[0][1] + rel_y
             return abs_x, abs_y
 
-        elif button_type == ButtonType.PRESET:
+        if button_type == ButtonType.PRESET:
             abs_x = self.BOUNDS_PRESETS[0][0] + rel_x
             abs_y = self.BOUNDS_PRESETS[0][1] + rel_y
             return abs_x, abs_y
 
-        elif button_type == ButtonType.TOP:
-            abs_x = self.BOUNDS_TOP[0][0] + rel_x
-            abs_y = self.BOUNDS_TOP[0][1] + rel_y
-            return abs_x, abs_y
-
-        elif button_type == ButtonType.RIGHT:
-            abs_x = self.BOUNDS_RIGHT[0][0] + rel_x
-            abs_y = self.BOUNDS_RIGHT[0][1] + rel_y
-            return abs_x, abs_y
+        if button_type == ButtonType.CONTROL:
+            return rel_x, rel_y
 
         return None, None
 
@@ -239,19 +231,16 @@ class LaunchpadMK2:
                     self.BOUNDS_TOP[0][0] <= x <= self.BOUNDS_TOP[1][0]
                     and self.BOUNDS_TOP[0][1] <= y <= self.BOUNDS_TOP[1][1]
                 ):
-                    button_type = ButtonType.TOP
-                    relative_coords = [x - self.BOUNDS_TOP[0][0], y - self.BOUNDS_TOP[0][1]]
+                    button_type = ButtonType.CONTROL
+                    relative_coords = [x, y]
 
                 # Check if button is in right area
                 elif (
                     self.BOUNDS_RIGHT[0][0] <= x <= self.BOUNDS_RIGHT[1][0]
                     and self.BOUNDS_RIGHT[0][1] <= y <= self.BOUNDS_RIGHT[1][1]
                 ):
-                    button_type = ButtonType.RIGHT
-                    relative_coords = [
-                        x - self.BOUNDS_RIGHT[0][0],
-                        y - self.BOUNDS_RIGHT[0][1],
-                    ]
+                    button_type = ButtonType.CONTROL
+                    relative_coords = [x, y]
 
                 # Update button state tracking
                 button_key = (button_type, relative_coords[0], relative_coords[1])

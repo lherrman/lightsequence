@@ -98,8 +98,9 @@ def test_get_button_type_enum():
     from lumiblox.common.config import get_button_type_enum
     from lumiblox.devices.launchpad import ButtonType
     
-    assert get_button_type_enum("TOP") == ButtonType.TOP
-    assert get_button_type_enum("RIGHT") == ButtonType.RIGHT
+    assert get_button_type_enum("CONTROL") == ButtonType.CONTROL
+    assert get_button_type_enum("TOP") == ButtonType.CONTROL
+    assert get_button_type_enum("RIGHT") == ButtonType.CONTROL
     assert get_button_type_enum("SCENE") == ButtonType.SCENE
     assert get_button_type_enum("PRESET") == ButtonType.PRESET
     assert get_button_type_enum("invalid") == ButtonType.UNKNOWN

@@ -20,8 +20,9 @@ def get_button_type_enum(button_type_str: str):
     from lumiblox.devices.launchpad import ButtonType
 
     button_type_map = {
-        "TOP": ButtonType.TOP,
-        "RIGHT": ButtonType.RIGHT,
+        "CONTROL": ButtonType.CONTROL,
+        "TOP": ButtonType.CONTROL,  # legacy alias
+        "RIGHT": ButtonType.CONTROL,  # legacy alias
         "SCENE": ButtonType.SCENE,
         "PRESET": ButtonType.PRESET,
     }
@@ -54,8 +55,8 @@ class ColorConfig(TypedDict):
 class KeyBinding(TypedDict):
     """Type definition for a single key binding."""
 
-    button_type: str  # "TOP", "RIGHT", "SCENE", "PRESET"
-    coordinates: List[int]  # [x, y] relative coordinates
+    button_type: str  # "SCENE", "PRESET", "CONTROL"
+    coordinates: List[int]  # [x, y] coordinates on the MK2 grid
 
 
 class KeyBindings(TypedDict):
@@ -123,15 +124,15 @@ class ConfigManager:
             "off": "#000000",
         },
         "key_bindings": {
-            "save_button": {"button_type": "TOP", "coordinates": [0, 0]},
-            "save_shift_button": {"button_type": "TOP", "coordinates": [1, 0]},
-            "background_button": {"button_type": "TOP", "coordinates": [7, 0]},
-            "playback_toggle_button": {"button_type": "RIGHT", "coordinates": [0, 5]},
-            "next_step_button": {"button_type": "RIGHT", "coordinates": [8, 6]},
-            "clear_button": {"button_type": "RIGHT", "coordinates": [8, 6]},
-            "background_brightness_down": {"button_type": "TOP", "coordinates": [5, 0]},
-            "background_brightness_up": {"button_type": "TOP", "coordinates": [6, 0]},
-            "pilot_select_button": {"button_type": "TOP", "coordinates": [4, 0]},
+            "save_button": {"button_type": "CONTROL", "coordinates": [0, 0]},
+            "save_shift_button": {"button_type": "CONTROL", "coordinates": [1, 0]},
+            "background_button": {"button_type": "CONTROL", "coordinates": [7, 0]},
+            "playback_toggle_button": {"button_type": "CONTROL", "coordinates": [8, 7]},
+            "next_step_button": {"button_type": "CONTROL", "coordinates": [8, 6]},
+            "clear_button": {"button_type": "CONTROL", "coordinates": [8, 8]},
+            "background_brightness_down": {"button_type": "CONTROL", "coordinates": [5, 0]},
+            "background_brightness_up": {"button_type": "CONTROL", "coordinates": [6, 0]},
+            "pilot_select_button": {"button_type": "CONTROL", "coordinates": [4, 0]},
         },
         "pilot": {
             "enabled": False,
@@ -203,24 +204,7 @@ class ConfigManager:
                             "connection_status_button"
                         )
 
-                    clear_binding = key_bindings.get("clear_button")
-                    if clear_binding:
-                        coords = clear_binding.get("coordinates", [])
-                        btn_type = clear_binding.get("button_type", "").upper()
-                        if (
-                            btn_type == "RIGHT"
-                            and isinstance(coords, list)
-                            and len(coords) == 2
-                            and isinstance(coords[0], (int, float))
-                            and coords[0] >= 8
-                        ):
-                            clear_binding["coordinates"] = [
-                                int(coords[0] - 8),
-                                int(max(0, coords[1] - 1)) if isinstance(coords[1], (int, float)) else 6,
-                            ]
-                            logger.info(
-                                "Migrated clear_button coordinates to right-column relative space"
-                            )
+                    self._normalize_control_bindings(key_bindings)
 
                     # Save back to file if new keys were added
                     if merged_config != config_data:
@@ -262,6 +246,48 @@ class ConfigManager:
                 # Use user value for non-dict values or new keys
                 merged[key] = value
         return merged
+
+    def _normalize_control_bindings(self, key_bindings: Dict[str, Any]) -> None:
+        """Ensure control bindings use CONTROL type and absolute coordinates."""
+        for binding in key_bindings.values():
+            if not isinstance(binding, dict):
+                continue
+
+            btn_type_raw = binding.get("button_type", "")
+            btn_type_upper = btn_type_raw.upper() if isinstance(btn_type_raw, str) else ""
+            coords = binding.get("coordinates")
+
+            if not isinstance(coords, list) or len(coords) != 2:
+                continue
+
+            x_val, y_val = coords
+            converted_from_right = False
+
+            if btn_type_upper in {"TOP", "RIGHT"}:
+                binding["button_type"] = "CONTROL"
+            elif btn_type_upper not in {"SCENE", "PRESET", "CONTROL"}:
+                # Default to control for unknown legacy values
+                binding["button_type"] = "CONTROL"
+
+            if btn_type_upper == "RIGHT":
+                if isinstance(x_val, (int, float)) and x_val <= 1:
+                    x_val = int(8 + x_val)
+                    converted_from_right = True
+                elif isinstance(x_val, (int, float)):
+                    x_val = int(x_val)
+
+                if isinstance(y_val, (int, float)):
+                    if converted_from_right:
+                        y_val = int(1 + y_val)
+                    else:
+                        y_val = int(y_val)
+            else:
+                if isinstance(x_val, (int, float)):
+                    x_val = int(x_val)
+                if isinstance(y_val, (int, float)):
+                    y_val = int(y_val)
+
+            binding["coordinates"] = [x_val, y_val]
 
     def reload_config(self) -> None:
         """Reload configuration from file."""

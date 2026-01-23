@@ -198,7 +198,7 @@ class LightController:
             btn_type = ButtonType.SCENE
         elif lp_type == LPButtonType.PRESET:
             btn_type = ButtonType.SEQUENCE
-        elif lp_type in [LPButtonType.TOP, LPButtonType.RIGHT]:
+        elif lp_type == LPButtonType.CONTROL:
             btn_type = ButtonType.CONTROL
         else:
             btn_type = ButtonType.UNKNOWN

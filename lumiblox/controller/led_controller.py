@@ -62,12 +62,10 @@ class LEDController:
         if not self.launchpad.is_connected:
             return
         
-        # Determine button type from coordinates
-        button_type = self._get_button_type_for_control(coordinates)
         color = self.config.data["colors"].get(color_key, [0, 0, 0])
         
         self.launchpad.set_button_led(
-            button_type,
+            LaunchpadButtonType.CONTROL,
             [coordinates[0], coordinates[1]],
             color
         )
@@ -179,13 +177,3 @@ class LEDController:
         
         return self.config.data["colors"]["scene_on"]
     
-    def _get_button_type_for_control(self, coordinates: t.Tuple[int, int]) -> LaunchpadButtonType:
-        """Determine Launchpad button type from coordinates."""
-        # Top row
-        if coordinates[1] == 0:
-            return LaunchpadButtonType.TOP
-        # Right column
-        elif coordinates[0] == 8:
-            return LaunchpadButtonType.RIGHT
-        # Default to scene
-        return LaunchpadButtonType.SCENE

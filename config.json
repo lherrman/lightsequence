@@ -33,63 +33,63 @@
     },
     "key_bindings": {
         "background_brightness_down": {
-            "button_type": "TOP",
+            "button_type": "CONTROL",
             "coordinates": [
                 5,
                 0
             ]
         },
         "background_brightness_up": {
-            "button_type": "TOP",
+            "button_type": "CONTROL",
             "coordinates": [
                 6,
                 0
             ]
         },
         "background_button": {
-            "button_type": "TOP",
+            "button_type": "CONTROL",
             "coordinates": [
                 7,
                 0
             ]
         },
         "clear_button": {
-            "button_type": "RIGHT",
+            "button_type": "CONTROL",
             "coordinates": [
-                7,
-                6
+                8,
+                8
             ]
         },
         "next_step_button": {
-            "button_type": "RIGHT",
+            "button_type": "CONTROL",
             "coordinates": [
-                7,
+                8,
                 6
             ]
         },
         "pilot_select_button": {
-            "button_type": "TOP",
+            "button_type": "CONTROL",
             "coordinates": [
                 4,
                 0
             ]
         },
         "playback_toggle_button": {
-            "button_type": "RIGHT",
+            "button_type": "CONTROL",
             "coordinates": [
-                0,
-                5
+                8,
+                7
             ]
         },
         "save_button": {
-            "button_type": "TOP",
+            "button_type": "CONTROL",
             "coordinates": [
                 0,
                 0
             ]
         },
         "save_shift_button": {
-            "button_type": "TOP",
+            "button_type": "CONTROL",
             "coordinates": [
                 1,
                 0

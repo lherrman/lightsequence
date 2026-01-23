@@ -643,6 +643,7 @@ class PresetSequenceEditor(QWidget):
 
         self.current_step_index = row
         self._show_step_details(row)
+        self._preview_step(row)
 
     def _show_step_details(self, step_index: int):
         """Show details for the specified step."""
@@ -682,6 +683,7 @@ class PresetSequenceEditor(QWidget):
         """Handle step details change."""
         self.rebuild_step_list()
         self.auto_save_sequence()
+        self._preview_step(self.current_step_index)
 
     def _on_auto_update_changed(self, state):
         """Handle auto-update checkbox change."""
@@ -825,6 +827,22 @@ class PresetSequenceEditor(QWidget):
             self.rebuild_step_list()
             self.auto_save_sequence()
             self.step_list.setCurrentRow(step_index + 1)
+
+    def _preview_step(self, step_index: int) -> None:
+        """Trigger live preview for the specified step."""
+        if (
+            not self.controller
+            or not hasattr(self.controller, "scene_ctrl")
+            or step_index < 0
+            or step_index >= len(self.sequence_steps)
+        ):
+            return
+
+        step = self.sequence_steps[step_index]
+        try:
+            self.controller.scene_ctrl.activate_scenes(step.scenes, controlled=True)
+        except Exception as exc:
+            logger.warning(f"Failed to preview step {step_index}: {exc}")
 
     def _refresh_followup_input(self) -> None:
         if not hasattr(self, "followup_input"):
