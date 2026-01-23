@@ -25,8 +25,6 @@ class BackgroundAnimator:
         self.BOUNDS_PRESETS = np.array([[0, 6], [7, 8]])
 
         self.last_animation_type = None
-        self.force_update = False
-        self.last_update_time = 0.0
 
     def get_background(
         self,
@@ -37,9 +35,7 @@ class BackgroundAnimator:
 
         Returns pixel_buffer.
         """
-        # Always update now since hardware-level optimization handles redundant updates
         self.last_animation_type = animation_type
-        self.force_update = False
 
         # Clear buffer
         self.pixel_buffer.fill(0.0)
@@ -65,7 +61,6 @@ class BackgroundAnimator:
 
         # Apply zone colors and brightness to the completed animation buffer
         self._apply_zone_colors_and_brightness(app_state)
-        self.last_update_time = self.time
 
         return self.pixel_buffer.copy()
 
@@ -216,16 +211,6 @@ class BackgroundAnimator:
 
                 # For areas without zone colors, just use the effect brightness
                 self.pixel_buffer[x, y] = effect_color
-
-    def force_background_update(self):
-        """Force next background update."""
-        self.force_update = True
-
-    def reset_animation_timer(self):
-        """Reset the animation timer to start a new cycle."""
-        self.start_time = time.time()
-        self.time = 0.0
-
 
 class BackgroundManager:
     """Manages background animation cycling."""

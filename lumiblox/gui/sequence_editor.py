@@ -167,7 +167,7 @@ class SequenceStepWidget(QFrame):
         for y in range(5):
             for x in range(8):
                 btn = SceneButton(x, y)
-                btn.setFixedSize(BUTTON_SIZE_TINY)
+                btn.setMinimumSize(BUTTON_SIZE_TINY)
                 btn.scene_toggled.connect(self.on_scene_toggled)
                 self.scene_buttons[(x, y)] = btn
                 scenes_layout.addWidget(btn, y, x)

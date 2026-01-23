@@ -31,14 +31,9 @@ class LaunchpadMK2:
             (9, 9, 3), dtype=float
         )  # 9x9 grid for Launchpad MK2
 
-        # Track previous state to detect when LEDs are turned off
-        self.previous_pixel_buffer = np.zeros((9, 9, 3), dtype=float)
-
         # Track hardware LED state (0-63 range) to avoid unnecessary updates
         self.hardware_led_state = np.zeros((9, 9, 3), dtype=int)
 
-        # Track pressed buttons state: {(button_type, rel_x, rel_y): True}
-        self._pressed_buttons: t.Dict[t.Tuple[ButtonType, int, int], bool] = {}
         self.animator = Animator(preset_manager)
         self.config = get_config()
         
@@ -134,9 +129,6 @@ class LaunchpadMK2:
         brightness = self.config.data["brightness_foreground"]
         adjusted_color = [c * brightness for c in color]
 
-        self.previous_pixel_buffer[abs_x, abs_y] = self.pixel_buffer_output[
-            abs_x, abs_y
-        ].copy()
         self.pixel_buffer_output[abs_x, abs_y] = color
         self.set_led(abs_x, abs_y, adjusted_color)
 
@@ -242,13 +234,6 @@ class LaunchpadMK2:
                     button_type = ButtonType.CONTROL
                     relative_coords = [x, y]
 
-                # Update button state tracking
-                button_key = (button_type, relative_coords[0], relative_coords[1])
-                if state:
-                    self._pressed_buttons[button_key] = True
-                else:
-                    self._pressed_buttons.pop(button_key, None)
-
                 return {"type": button_type, "index": relative_coords, "active": state}
 
         except Exception as e:
@@ -261,55 +246,9 @@ class LaunchpadMK2:
 
         return None
 
-    def get_pressed_buttons(self) -> t.List[t.Dict[str, t.Any]]:
-        """
-        Get all currently pressed buttons.
-
-        Returns:
-            List of button dictionaries with 'type' and 'index' keys
-        """
-        pressed = []
-        for button_type, rel_x, rel_y in self._pressed_buttons.keys():
-            pressed.append({"type": button_type, "index": [rel_x, rel_y]})
-        return pressed
-
-    def is_button_pressed(self, button_type: ButtonType, coords: t.List[int]) -> bool:
-        """
-        Check if a specific button is currently pressed.
-
-        Args:
-            button_type: The type of button
-            coords: Relative coordinates [x, y]
-
-        Returns:
-            True if the button is currently pressed
-        """
-        if len(coords) < 2:
-            return False
-        button_key = (button_type, coords[0], coords[1])
-        return button_key in self._pressed_buttons
-
-    def clear_pressed_buttons(self) -> None:
-        """Clear all tracked pressed button states."""
-        self._pressed_buttons.clear()
-
-    def _detect_leds_turned_off(self) -> bool:
-        """Check if any LEDs changed from active to inactive."""
-        for x in range(8):
-            for y in range(1, 9):
-                was_active = self.previous_pixel_buffer[x, y, :].any()
-                is_active = self.pixel_buffer_output[x, y, :].any()
-
-                if was_active and not is_active:
-                    self.previous_pixel_buffer[x, y] = [0.0, 0.0, 0.0]
-                    return True
-
-        return False
-
     def draw_background(
         self,
         animation_type: str = "ocean_waves",
-        force_update: bool = False,
         app_state: AppState = AppState.NORMAL,
     ) -> bool:
         """Update background animation.
@@ -318,13 +257,6 @@ class LaunchpadMK2:
         """
         if not self.is_connected:
             return False
-
-        # Check if any LEDs were turned off (changed from active to inactive)
-        leds_turned_off = self._detect_leds_turned_off()
-
-        # Force update if requested or if LEDs were turned off
-        if force_update or leds_turned_off:
-            self.animator.force_background_update()
 
         # Get complete background buffer with animation, zone colors, and brightness already applied
         background_buffer = self.animator.get_background(

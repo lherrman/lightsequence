@@ -161,16 +161,6 @@ class DeviceManager:
         with self._lock:
             return self._devices[device_type].last_error
     
-    def get_all_statuses(self) -> t.Dict[DeviceType, DeviceStatus]:
-        """Get status of all devices."""
-        with self._lock:
-            return {dt: DeviceStatus(**vars(ds)) for dt, ds in self._devices.items()}
-    
-    def are_all_connected(self) -> bool:
-        """Check if all devices are connected."""
-        with self._lock:
-            return all(status.is_connected() for status in self._devices.values())
-    
     def register_state_change_callback(
         self, callback: t.Callable[[DeviceType, DeviceState], None]
     ) -> None:

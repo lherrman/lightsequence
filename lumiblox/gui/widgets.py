@@ -39,8 +39,8 @@ class SceneButton(QPushButton):
         self.coord_y = y
         self.is_active = False
         self.setCheckable(True)
-        self.setMinimumSize(35, 35)
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.setMinimumSize(26, 22)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.MinimumExpanding)
         self.clicked.connect(self._on_clicked)
         self.update_style()
 
