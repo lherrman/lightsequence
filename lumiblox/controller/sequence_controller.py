@@ -151,18 +151,23 @@ class SequenceController:
         try:
             sequences_data = []
             for index, steps in self.sequences.items():
+                index_payload = [int(index[0]), int(index[1])]
                 seq_data = {
-                    "index": list(index),
+                    "index": index_payload,
                     "loop": self.loop_settings.get(index, True),
                     "next_sequences": [
-                        list(candidate)
+                        [int(candidate[0]), int(candidate[1])]
                         for candidate in self.followup_sequences.get(index, [])
                     ],
                     "steps": [
                         {
-                            "scenes": [list(s) for s in step.scenes],
-                            "duration": step.duration,
-                            "name": step.name,
+                            "scenes": [
+                                [int(scene[0]), int(scene[1])]
+                                for scene in step.scenes
+                                if len(scene) >= 2
+                            ],
+                            "duration": float(step.duration),
+                            "name": str(step.name),
                             "duration_unit": step.duration_unit.value,
                         }
                         for step in steps

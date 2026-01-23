@@ -55,6 +55,31 @@
           "duration_unit": "seconds"
         }
       ]
+    },
+    {
+      "index": [
+        2,
+        0
+      ],
+      "loop": true,
+      "next_sequences": [],
+      "steps": [
+        {
+          "scenes": [
+            [
+              2,
+              0
+            ],
+            [
+              5,
+              0
+            ]
+          ],
+          "duration": 1.0,
+          "name": "Step 1",
+          "duration_unit": "seconds"
+        }
+      ]
     }
   ]
 }
