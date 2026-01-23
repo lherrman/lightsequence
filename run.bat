@@ -1,1 +1,1 @@
-uv run run.py --mode controller
+uv run run.py --mode controller --log-level DEBUG

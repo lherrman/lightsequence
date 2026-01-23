@@ -37,7 +37,7 @@ from lumiblox.pilot.pilot_preset import PilotPresetManager
 if TYPE_CHECKING:
     from lumiblox.pilot.pilot_controller import PilotController
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 
@@ -75,6 +75,7 @@ class LightController:
         self.config = get_config()
         self.pilot_preset_manager = PilotPresetManager()
         self.pilot_controller: t.Optional["PilotController"] = None
+
         
         # External callbacks (for GUI)
         self.on_sequence_changed: t.Optional[t.Callable[[t.Optional[t.Tuple[int, int]]], None]] = None
@@ -216,6 +217,24 @@ class LightController:
         for note, is_active in changes.items():
             scene = self.light_software.get_scene_coordinates_for_note(note)
             if scene:
+                logger.debug(
+                    "midi_feedback scene=%s note=%s is_active=%s", scene, note, is_active
+                )
+                guarded = self.scene_ctrl.get_sequence_guard_scenes()
+                # For guarded scenes, controller is source of truth; only allow offs
+                if scene in guarded:
+                    if is_active:
+                        logger.debug(
+                            "feedback_ignored controlled scene=%s note=%s is_active=%s",
+                            scene,
+                            note,
+                            is_active,
+                        )
+                        continue
+                    self.scene_ctrl.mark_scene_active(scene, False)
+                    self.led_ctrl.update_scene_led(scene, False)
+                    continue
+
                 self.scene_ctrl.mark_scene_active(scene, is_active)
                 self.led_ctrl.update_scene_led(scene, is_active)
     
@@ -281,6 +300,7 @@ class LightController:
     
     def _handle_scene_activate(self, scene: t.Tuple[int, int]) -> None:
         """Handle scene activation."""
+        logger.debug("scene_activate scene=%s", scene)
         # Use the lighting software's native toggle command; this matches how the
         # hardware expects on/off to be driven.
         self.light_software.send_scene_command(scene)
@@ -288,8 +308,9 @@ class LightController:
     
     def _handle_scene_deactivate(self, scene: t.Tuple[int, int]) -> None:
         """Handle scene deactivation."""
-        # Use the same toggle path for off to mirror hardware semantics.
-        self.light_software.send_scene_command(scene)
+        logger.debug("scene_deactivate scene=%s", scene)
+        # Send explicit velocity 0 so offs are deterministic even if a toggle is missed.
+        self.light_software.set_scene_state(scene, False)
         self.led_ctrl.update_scene_led(scene, False)
     
     # ============================================================================
@@ -298,6 +319,9 @@ class LightController:
     
     def _handle_step_change(self, scenes: t.List[t.Tuple[int, int]]) -> None:
         """Handle sequence step change."""
+        logger.debug(
+            "step_change scenes=%s active_sequence=%s", scenes, self.sequence_ctrl.active_sequence
+        )
         current_sequence = self.sequence_ctrl.active_sequence
         if current_sequence != self.active_sequence:
             if self.active_sequence:
@@ -308,6 +332,7 @@ class LightController:
             if self.on_sequence_changed:
                 self.on_sequence_changed(self.active_sequence)
         self.scene_ctrl.activate_scenes(scenes, controlled=True)
+
     
     def _handle_sequence_complete(self) -> None:
         """Handle sequence completion."""

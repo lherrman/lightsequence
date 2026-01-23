@@ -1,1 +1,1 @@
-uv run run.py --mode gui
+uv run run.py --mode gui --log-level DEBUG
