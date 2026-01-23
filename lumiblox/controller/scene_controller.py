@@ -54,20 +54,6 @@ class SceneController:
 
             scenes_to_activate = target_scenes - self.active_scenes
 
-            logger.debug(
-                "activate_scenes target=%s controlled=%s deactivate=%s activate=%s active_before=%s",
-                target_scenes,
-                controlled,
-                scenes_to_deactivate,
-                scenes_to_activate,
-                self.active_scenes,
-            )
-
-            logger.debug(
-                f"Scene transition: -{len(scenes_to_deactivate)} +{len(scenes_to_activate)} "
-                f"={len(self.active_scenes & target_scenes)} unchanged"
-            )
-
             # Deactivate scenes
             for scene in scenes_to_deactivate:
                 self._deactivate_scene(scene)
@@ -84,12 +70,7 @@ class SceneController:
                 else:
                     self.controlled_scenes.clear()
                 self._recently_deactivated = scenes_to_deactivate.copy()
-
-            logger.debug(
-                "activate_scenes done active=%s controlled=%s",
-                self.active_scenes,
-                self.controlled_scenes,
-            )
+            
         if not controlled:
             # Clear any stale deactivation guards when changes are manual
             with self._lock:
@@ -112,12 +93,7 @@ class SceneController:
         
         self.active_scenes.discard(scene)
         self.controlled_scenes.discard(scene)
-        logger.debug(
-            "deactivate_scene scene=%s was_active=%s now_active=%s",
-            scene,
-            before_active,
-            scene in self.active_scenes,
-        )
+        # No debug logging to keep runtime logs quiet
     
     def toggle_scene(self, scene: t.Tuple[int, int]) -> bool:
         """

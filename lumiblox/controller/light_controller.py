@@ -217,19 +217,10 @@ class LightController:
         for note, is_active in changes.items():
             scene = self.light_software.get_scene_coordinates_for_note(note)
             if scene:
-                logger.debug(
-                    "midi_feedback scene=%s note=%s is_active=%s", scene, note, is_active
-                )
                 guarded = self.scene_ctrl.get_sequence_guard_scenes()
                 # For guarded scenes, controller is source of truth; only allow offs
                 if scene in guarded:
                     if is_active:
-                        logger.debug(
-                            "feedback_ignored controlled scene=%s note=%s is_active=%s",
-                            scene,
-                            note,
-                            is_active,
-                        )
                         continue
                     self.scene_ctrl.mark_scene_active(scene, False)
                     self.led_ctrl.update_scene_led(scene, False)
