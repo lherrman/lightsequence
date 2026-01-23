@@ -85,8 +85,18 @@
     "pilot": {
         "decks": {
             "A": {
-                "master_button_region": null,
-                "timeline_region": null
+                "master_button_region": {
+                    "height": 22,
+                    "width": 64,
+                    "x": 79,
+                    "y": 235
+                },
+                "timeline_region": {
+                    "height": 88,
+                    "width": 220,
+                    "x": 194,
+                    "y": 261
+                }
             },
             "B": {
                 "master_button_region": null,

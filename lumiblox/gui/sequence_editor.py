@@ -167,7 +167,6 @@ class SequenceStepWidget(QFrame):
         for y in range(5):
             for x in range(8):
                 btn = SceneButton(x, y)
-                btn.setMinimumSize(BUTTON_SIZE_TINY)
                 btn.scene_toggled.connect(self.on_scene_toggled)
                 self.scene_buttons[(x, y)] = btn
                 scenes_layout.addWidget(btn, y, x)
@@ -209,7 +208,7 @@ class SequenceStepWidget(QFrame):
 
         seconds_btn = QPushButton("Sec")
         seconds_btn.setCheckable(True)
-        seconds_btn.setFixedSize(BUTTON_SIZE_MEDIUM)
+        seconds_btn.setFixedSize(BUTTON_SIZE_MEDIUM.width(), BUTTON_SIZE_SMALL.height())
         seconds_btn.setStyleSheet(BUTTON_STYLE)
         seconds_btn.clicked.connect(
             lambda: self._set_duration_unit(SequenceDurationUnit.SECONDS)
@@ -219,7 +218,7 @@ class SequenceStepWidget(QFrame):
 
         bars_btn = QPushButton("Bars")
         bars_btn.setCheckable(True)
-        bars_btn.setFixedSize(BUTTON_SIZE_MEDIUM)
+        bars_btn.setFixedSize(BUTTON_SIZE_MEDIUM.width(), BUTTON_SIZE_SMALL.height())
         bars_btn.setStyleSheet(BUTTON_STYLE)
         bars_btn.clicked.connect(
             lambda: self._set_duration_unit(SequenceDurationUnit.BARS)
@@ -540,6 +539,16 @@ class PresetSequenceEditor(QWidget):
         add_active_btn.setEnabled(self.controller is not None)
         btn_layout.addWidget(add_active_btn)
 
+        set_active_btn = QPushButton()
+        set_active_btn.setIcon(qta.icon("fa5s.file-import", color="white"))
+        set_active_btn.setFixedSize(BUTTON_SIZE_SMALL)
+        set_active_btn.setIconSize(ICON_SIZE_SMALL)
+        set_active_btn.setToolTip("Set current step scenes from active")
+        set_active_btn.setStyleSheet(BUTTON_STYLE)
+        set_active_btn.clicked.connect(self.set_current_step_from_active_scenes)
+        set_active_btn.setEnabled(self.controller is not None)
+        btn_layout.addWidget(set_active_btn)
+
         btn_layout.addStretch()
 
         remove_btn = QPushButton()
@@ -713,6 +722,21 @@ class PresetSequenceEditor(QWidget):
             return self.sequence_steps[self.current_step_index].duration_unit
         return SequenceDurationUnit.SECONDS
 
+    def _get_active_scenes_or_warn(self) -> t.Optional[t.List[t.Tuple[int, int]]]:
+        if not self.controller:
+            return None
+
+        active_scenes = list(self.controller.scene_ctrl.get_active_scenes())
+        if active_scenes:
+            return active_scenes
+
+        QMessageBox.information(
+            self,
+            "No Active Scenes",
+            "No scenes are currently active. Activate some scenes on the launchpad first.",
+        )
+        return None
+
     def save_sequence(self):
         """Save sequence to sequence controller."""
         if not self.controller:
@@ -756,18 +780,8 @@ class PresetSequenceEditor(QWidget):
 
     def add_step_from_active_scenes(self):
         """Add a step with currently active scenes from the controller."""
-        if not self.controller:
-            return
-
-        # Get active scenes from scene controller (keep as tuples)
-        active_scenes = list(self.controller.scene_ctrl.get_active_scenes())
-
+        active_scenes = self._get_active_scenes_or_warn()
         if not active_scenes:
-            QMessageBox.information(
-                self,
-                "No Active Scenes",
-                "No scenes are currently active. Activate some scenes on the launchpad first.",
-            )
             return
 
         unit = self._current_duration_unit()
@@ -788,6 +802,25 @@ class PresetSequenceEditor(QWidget):
 
         # Select the new step
         self.step_list.setCurrentRow(len(self.sequence_steps) - 1)
+
+    def set_current_step_from_active_scenes(self):
+        """Replace the current step's scenes with the active controller scenes."""
+        if not (0 <= self.current_step_index < len(self.sequence_steps)):
+            return
+
+        active_scenes = self._get_active_scenes_or_warn()
+        if not active_scenes:
+            return
+
+        step = self.sequence_steps[self.current_step_index]
+        step.scenes = active_scenes
+
+        if self.current_step_widget:
+            self.current_step_widget.update_from_step()
+
+        self.rebuild_step_list()
+        self.auto_save_sequence()
+        self._preview_step(self.current_step_index)
 
     def remove_current_step(self):
         """Remove the currently selected step."""

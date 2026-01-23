@@ -19,10 +19,14 @@
               {
                 "weight": 1.0,
                 "sequence_index": "2.0"
+              },
+              {
+                "weight": 1.0,
+                "sequence_index": "1.0"
               }
             ]
           },
-          "cooldown_bars": 0
+          "cooldown_bars": 8
         },
         {
           "name": "On Drop",

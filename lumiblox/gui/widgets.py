@@ -34,12 +34,12 @@ class SceneButton(QPushButton):
     scene_toggled = Signal(int, int, bool)
 
     def __init__(self, x: int, y: int):
-        super().__init__(f"{x},{y}")
+        super().__init__("")
         self.coord_x = x
         self.coord_y = y
         self.is_active = False
         self.setCheckable(True)
-        self.setMinimumSize(26, 22)
+        self.setMinimumSize(8, 1)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.MinimumExpanding)
         self.clicked.connect(self._on_clicked)
         self.update_style()
@@ -60,9 +60,11 @@ class SceneButton(QPushButton):
                 QPushButton {
                     background-color: #4CAF50;
                     color: white;
-                    border: 2px solid #45a049;
+                    border: 1px solid #45a049;
                     border-radius: 5px;
-                    font-weight: bold;
+                    font-weight: normal;
+                    padding: 0px;
+                    margin: 0px;
                 }
                 QPushButton:hover {
                     background-color: #45a049;
@@ -75,6 +77,9 @@ class SceneButton(QPushButton):
                     color: #cccccc;
                     border: 1px solid #555555;
                     border-radius: 5px;
+                    font-weight: normal;
+                    padding: 0px;
+                    margin: 0px;
                 }
                 QPushButton:hover {
                     background-color: #4a4a4a;

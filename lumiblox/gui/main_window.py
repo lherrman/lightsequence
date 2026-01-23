@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QMessageBox,
     QGridLayout,
+    QSizePolicy,
 )
 from PySide6.QtCore import Signal
 import qtawesome as qta
@@ -80,15 +81,20 @@ class LightSequenceGUI(QMainWindow):
 
         # Main vertical layout - device status, pilot, sequence editor, preset grid
         main_layout = QVBoxLayout(central_widget)
+        main_layout.setSpacing(4)
 
         # === Device Status Bar (Top) ===
         self.device_status_bar = DeviceStatusBar()
+        self.device_status_bar.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )
         main_layout.addWidget(self.device_status_bar)
 
         # === Pilot Widget (Fixed height) ===
         self.pilot_widget = PilotWidget()
-        self.pilot_widget.setMinimumHeight(300)
-        self.pilot_widget.setMaximumHeight(300)
+        self.pilot_widget.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum
+        )
         # Connect pilot signals
         self.pilot_widget.pilot_enable_requested.connect(
             self._on_pilot_enable_requested
@@ -114,6 +120,9 @@ class LightSequenceGUI(QMainWindow):
                 border-radius: 3px;
             }
         """)
+        self.editor_stack.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
         self.editor_layout = QVBoxLayout(self.editor_stack)
         self.editor_layout.setContentsMargins(5, 5, 5, 5)
 
@@ -128,6 +137,9 @@ class LightSequenceGUI(QMainWindow):
                 border-radius: 3px;
             }
         """)
+        self.playback_controls.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )
         self.playback_controls.play_pause_clicked.connect(self.on_play_pause_clicked)
         self.playback_controls.next_step_clicked.connect(self.on_next_step_clicked)
         self.playback_controls.clear_clicked.connect(self.on_clear_clicked)
@@ -135,7 +147,8 @@ class LightSequenceGUI(QMainWindow):
 
         # Bottom area - Preset grid (3 rows x 8 columns) - more compact
         preset_panel = QWidget()  # Use plain widget instead of GroupBox
-        preset_panel.setMaximumHeight(125)  # Slightly more height for better spacing
+        preset_panel.setFixedHeight(125)  # Slightly more height for better spacing
+        preset_panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
         preset_layout = QVBoxLayout(preset_panel)
         preset_layout.setContentsMargins(3, 3, 3, 3)  # Very tight margins
@@ -184,7 +197,7 @@ class LightSequenceGUI(QMainWindow):
                 preset_grid_layout.setColumnStretch(x, 1)
 
         preset_layout.addWidget(self.preset_grid_widget)
-        main_layout.addWidget(preset_panel, 1)
+        main_layout.addWidget(preset_panel)
 
         # Status bar
         self.statusBar().showMessage("Starting controller...")
