@@ -92,6 +92,11 @@ class LaunchpadMK2:
         if not self.is_connected:
             return
 
+        max_x, max_y = self.pixel_buffer_output.shape[0], self.pixel_buffer_output.shape[1]
+        if not (0 <= x < max_x and 0 <= y < max_y):
+            logger.warning("LED coordinates out of bounds: (%s, %s)", x, y)
+            return
+
         # Scale to 0-63 (Launchpad MK2 range)
         color_scaled = [int(c * 63) for c in color]
 

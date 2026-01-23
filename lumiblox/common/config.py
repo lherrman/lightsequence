@@ -127,8 +127,8 @@ class ConfigManager:
             "save_shift_button": {"button_type": "TOP", "coordinates": [1, 0]},
             "background_button": {"button_type": "TOP", "coordinates": [7, 0]},
             "playback_toggle_button": {"button_type": "RIGHT", "coordinates": [0, 5]},
-            "next_step_button": {"button_type": "RIGHT", "coordinates": [0, 6]},
-            "clear_button": {"button_type": "RIGHT", "coordinates": [8, 7]},
+            "next_step_button": {"button_type": "RIGHT", "coordinates": [8, 6]},
+            "clear_button": {"button_type": "RIGHT", "coordinates": [8, 6]},
             "background_brightness_down": {"button_type": "TOP", "coordinates": [5, 0]},
             "background_brightness_up": {"button_type": "TOP", "coordinates": [6, 0]},
             "pilot_select_button": {"button_type": "TOP", "coordinates": [4, 0]},
@@ -202,6 +202,25 @@ class ConfigManager:
                         key_bindings["clear_button"] = key_bindings.pop(
                             "connection_status_button"
                         )
+
+                    clear_binding = key_bindings.get("clear_button")
+                    if clear_binding:
+                        coords = clear_binding.get("coordinates", [])
+                        btn_type = clear_binding.get("button_type", "").upper()
+                        if (
+                            btn_type == "RIGHT"
+                            and isinstance(coords, list)
+                            and len(coords) == 2
+                            and isinstance(coords[0], (int, float))
+                            and coords[0] >= 8
+                        ):
+                            clear_binding["coordinates"] = [
+                                int(coords[0] - 8),
+                                int(max(0, coords[1] - 1)) if isinstance(coords[1], (int, float)) else 6,
+                            ]
+                            logger.info(
+                                "Migrated clear_button coordinates to right-column relative space"
+                            )
 
                     # Save back to file if new keys were added
                     if merged_config != config_data:
