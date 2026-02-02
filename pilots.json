@@ -87,7 +87,17 @@
               0
             ],
             "loop": false,
-            "next_sequences": [],
+            "loop_count": 3,
+            "next_sequences": [
+              [
+                2,
+                0
+              ],
+              [
+                0,
+                0
+              ]
+            ],
             "steps": [
               {
                 "scenes": [
@@ -126,7 +136,8 @@
               0,
               0
             ],
-            "loop": false,
+            "loop": true,
+            "loop_count": 1,
             "next_sequences": [
               [
                 1,
@@ -184,6 +195,7 @@
               0
             ],
             "loop": true,
+            "loop_count": 1,
             "next_sequences": [],
             "steps": [
               {

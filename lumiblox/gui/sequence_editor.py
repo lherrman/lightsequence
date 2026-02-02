@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
     QCheckBox,
+    QSpinBox,
     QListWidget,
     QListWidgetItem,
 )
@@ -366,6 +367,7 @@ class PresetSequenceEditor(QWidget):
         self.auto_update_enabled = True  # Auto-update during playback
         self.next_sequence_candidates: t.List[t.Tuple[int, int]] = []
         self.next_sequence_jump_edit_mode = False
+        self.loop_count = 1
 
         self.setup_ui()
         self.load_sequence()
@@ -397,7 +399,7 @@ class PresetSequenceEditor(QWidget):
         header_layout = QHBoxLayout()
 
         # Loop checkbox
-        self.loop_checkbox = QCheckBox("Loop")
+        self.loop_checkbox = QCheckBox("Always Loop")
         self.loop_checkbox.setChecked(True)
         self.loop_checkbox.setStyleSheet(CHECKBOX_STYLE)
         self.loop_checkbox.stateChanged.connect(self._on_loop_changed)
@@ -437,6 +439,18 @@ class PresetSequenceEditor(QWidget):
         """)
         self.followup_toggle_btn.clicked.connect(self._on_followup_toggle_clicked)
         header_layout.addWidget(self.followup_toggle_btn)
+
+        self.loop_count_label = QLabel("Loops")
+        self.loop_count_label.setStyleSheet(HEADER_LABEL_STYLE)
+        header_layout.addWidget(self.loop_count_label)
+
+        self.loop_count_spinbox = QSpinBox()
+        self.loop_count_spinbox.setRange(1, 999)
+        self.loop_count_spinbox.setFixedWidth(55)
+        self.loop_count_spinbox.setValue(self.loop_count)
+        self.loop_count_spinbox.setStyleSheet(EDIT_FIELD_STYLE)
+        self.loop_count_spinbox.valueChanged.connect(self._on_loop_count_changed)
+        header_layout.addWidget(self.loop_count_spinbox)
 
         self.followup_display = QLabel("")
         self.followup_display.setStyleSheet(
@@ -609,6 +623,12 @@ class PresetSequenceEditor(QWidget):
         self.loop_checkbox.blockSignals(True)
         self.loop_checkbox.setChecked(loop_setting)
         self.loop_checkbox.blockSignals(False)
+        self.loop_count = self.controller.sequence_ctrl.get_loop_count(
+            self.preset_index
+        )
+        self.loop_count_spinbox.blockSignals(True)
+        self.loop_count_spinbox.setValue(self.loop_count)
+        self.loop_count_spinbox.blockSignals(False)
         self.next_sequence_candidates = self.controller.sequence_ctrl.get_followup_sequences(
             self.preset_index
         )
@@ -728,6 +748,7 @@ class PresetSequenceEditor(QWidget):
                 self.preset_index,
                 self.sequence_steps,
                 loop_enabled,
+                loop_count=self.loop_count,
                 next_sequences=self.next_sequence_candidates,
             )
             if getattr(self.controller, "on_sequence_saved", None):
@@ -743,9 +764,15 @@ class PresetSequenceEditor(QWidget):
         self._update_followup_toggle_enabled()
         self.auto_save_sequence()
 
+    def _on_loop_count_changed(self, value: int) -> None:
+        self.loop_count = max(1, int(value))
+        self.auto_save_sequence()
+
     def _update_followup_toggle_enabled(self) -> None:
         loop_enabled = self.loop_checkbox.isChecked()
         self.followup_toggle_btn.setEnabled(not loop_enabled)
+        self.loop_count_label.setEnabled(not loop_enabled)
+        self.loop_count_spinbox.setEnabled(not loop_enabled)
         if loop_enabled and self.next_sequence_jump_edit_mode:
             self._set_followup_edit_mode(False)
 

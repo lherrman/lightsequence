@@ -65,6 +65,7 @@ class SequenceController:
         self.repository = repository
         self.sequences: t.Dict[t.Tuple[int, int], t.List[SequenceStep]] = {}
         self.loop_settings: t.Dict[t.Tuple[int, int], bool] = {}
+        self.loop_counts: t.Dict[t.Tuple[int, int], int] = {}
         self.followup_sequences: t.Dict[
             t.Tuple[int, int], t.List[t.Tuple[int, int]]
         ] = {}
@@ -78,6 +79,7 @@ class SequenceController:
         self.stop_event = threading.Event()
         self._bar_condition = threading.Condition()
         self._beats_remaining: t.Optional[int] = None
+        self._active_loop_iteration: int = 0
 
         # Callbacks
         self.on_step_change: t.Optional[
@@ -105,12 +107,18 @@ class SequenceController:
             # Clear existing sequences
             self.sequences.clear()
             self.loop_settings.clear()
+            self.loop_counts.clear()
             self.followup_sequences.clear()
 
             # Parse sequences
             for seq_data in data.get("sequences", []):
                 index = tuple(seq_data["index"])
                 loop = seq_data.get("loop", True)
+                loop_count_raw = seq_data.get("loop_count", 1)
+                try:
+                    loop_count = max(1, int(loop_count_raw))
+                except (TypeError, ValueError):
+                    loop_count = 1
                 next_sequences = [
                     tuple(candidate)
                     for candidate in seq_data.get("next_sequences", [])
@@ -132,6 +140,7 @@ class SequenceController:
                 if steps:
                     self.sequences[index] = steps
                     self.loop_settings[index] = loop
+                    self.loop_counts[index] = loop_count
                     if next_sequences:
                         self.followup_sequences[index] = next_sequences
 
@@ -149,6 +158,7 @@ class SequenceController:
                 seq_data = {
                     "index": index_payload,
                     "loop": self.loop_settings.get(index, True),
+                    "loop_count": int(self.loop_counts.get(index, 1)),
                     "next_sequences": [
                         [int(candidate[0]), int(candidate[1])]
                         for candidate in self.followup_sequences.get(index, [])
@@ -184,6 +194,7 @@ class SequenceController:
         index: t.Tuple[int, int],
         steps: t.List[SequenceStep],
         loop: bool = True,
+        loop_count: t.Optional[int] = None,
         next_sequences: t.Optional[t.Sequence[t.Tuple[int, int]]] = None,
     ) -> None:
         """Save or update a sequence."""
@@ -193,6 +204,10 @@ class SequenceController:
 
         self.sequences[index] = steps
         self.loop_settings[index] = loop
+        if loop_count is not None:
+            self.loop_counts[index] = max(1, int(loop_count))
+        elif index not in self.loop_counts:
+            self.loop_counts[index] = 1
         if next_sequences is not None:
             normalized = self._normalize_followups(next_sequences)
             if normalized:
@@ -218,6 +233,7 @@ class SequenceController:
 
             del self.sequences[index]
             self.loop_settings.pop(index, None)
+            self.loop_counts.pop(index, None)
             self.followup_sequences.pop(index, None)
             self._prune_followup_references(index)
             self._save_to_repository()
@@ -238,6 +254,10 @@ class SequenceController:
         """Get loop setting for a sequence."""
         return self.loop_settings.get(index, True)
 
+    def get_loop_count(self, index: t.Tuple[int, int]) -> int:
+        """Get loop count for a sequence when not always looping."""
+        return max(1, int(self.loop_counts.get(index, 1)))
+
     def get_followup_sequences(
         self, index: t.Tuple[int, int]
     ) -> t.List[t.Tuple[int, int]]:
@@ -256,6 +276,7 @@ class SequenceController:
         self.playback_thread = None
         self.active_sequence = None
         self.current_step_index = 0
+        self._active_loop_iteration = 0
         self.playback_state = PlaybackState.PAUSED
         with self._bar_condition:
             self._beats_remaining = None
@@ -282,6 +303,7 @@ class SequenceController:
         # Switch to new sequence
         self.active_sequence = index
         self.current_step_index = 0
+        self._active_loop_iteration = 0
         self.stop_event.clear()
         with self._bar_condition:
             self._beats_remaining = None
@@ -341,6 +363,7 @@ class SequenceController:
 
         self.active_sequence = None
         self.current_step_index = 0
+        self._active_loop_iteration = 0
         with self._bar_condition:
             self._beats_remaining = None
             self._bar_condition.notify_all()
@@ -406,6 +429,7 @@ class SequenceController:
                     break
 
                 should_loop = self.loop_settings.get(active_index, True)
+                loop_limit = max(1, int(self.loop_counts.get(active_index, 1)))
 
                 if not (0 <= self.current_step_index < len(sequence)):
                     self.current_step_index = 0
@@ -430,6 +454,11 @@ class SequenceController:
 
                 if self.current_step_index >= len(sequence):
                     if should_loop:
+                        self.current_step_index = 0
+                        continue
+
+                    self._active_loop_iteration += 1
+                    if self._active_loop_iteration < loop_limit:
                         self.current_step_index = 0
                         continue
 
@@ -577,6 +606,7 @@ class SequenceController:
         logger.info("Automatically activating follow-up sequence %s", index)
         self.active_sequence = index
         self.current_step_index = 0
+        self._active_loop_iteration = 0
         self.stop_event.clear()
         with self._bar_condition:
             self._beats_remaining = None
