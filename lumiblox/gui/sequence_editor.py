@@ -70,8 +70,6 @@ class SequenceStepWidget(QFrame):
     """Widget for editing a single sequence step."""
 
     step_changed = Signal()
-    move_up = Signal(object)
-    move_down = Signal(object)
 
     def __init__(self, step: SequenceStep, step_index: int):
         super().__init__()
@@ -99,37 +97,11 @@ class SequenceStepWidget(QFrame):
         self.update_from_step()
 
     def setup_ui(self):
-        # Main horizontal layout - buttons on left, content on right
+        # Main horizontal layout - content only
         main_layout = QHBoxLayout(self)
         main_layout.setContentsMargins(8, 8, 8, 8)
         main_layout.setSpacing(10)
         main_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-
-        # Left side: Move buttons (vertical)
-        buttons_layout = QVBoxLayout()
-        buttons_layout.setSpacing(5)
-        buttons_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-
-        # Move up button with icon
-        self.move_up_btn = QPushButton()
-        self.move_up_btn.setIcon(qta.icon("fa5s.chevron-up", color="#cccccc"))
-        self.move_up_btn.setFixedSize(BUTTON_SIZE_TINY)
-        self.move_up_btn.setToolTip("Move step up")
-        self.move_up_btn.setStyleSheet(BUTTON_STYLE)
-        self.move_up_btn.clicked.connect(lambda: self.move_up.emit(self))
-        buttons_layout.addWidget(self.move_up_btn)
-
-        # Move down button with icon
-        self.move_down_btn = QPushButton()
-        self.move_down_btn.setIcon(qta.icon("fa5s.chevron-down", color="#cccccc"))
-        self.move_down_btn.setFixedSize(BUTTON_SIZE_TINY)
-        self.move_down_btn.setToolTip("Move step down")
-        self.move_down_btn.setStyleSheet(BUTTON_STYLE)
-        self.move_down_btn.clicked.connect(lambda: self.move_down.emit(self))
-        buttons_layout.addWidget(self.move_down_btn)
-
-        buttons_layout.addStretch()
-        main_layout.addLayout(buttons_layout)
 
         # Right side: Content (name, scenes, duration)
         content_layout = QVBoxLayout()
@@ -419,25 +391,6 @@ class PresetSequenceEditor(QWidget):
         # Header with compact controls
         header_layout = QHBoxLayout()
 
-        # Tiny reload button with icon
-        reload_btn = QPushButton()
-        reload_btn.setIcon(qta.icon("fa5s.sync-alt", color="#cccccc"))
-        reload_btn.setFixedSize(BUTTON_SIZE_TINY)
-        reload_btn.setToolTip("Reload sequence from file")
-        reload_btn.setStyleSheet(BUTTON_STYLE)
-        reload_btn.clicked.connect(self.load_sequence)
-        header_layout.addWidget(reload_btn)
-
-        # Auto-update checkbox
-        self.auto_update_cb = QCheckBox("Auto-update")
-        self.auto_update_cb.setChecked(True)
-        self.auto_update_cb.setStyleSheet(CHECKBOX_STYLE)
-        self.auto_update_cb.setToolTip(
-            "Automatically show current step during playback"
-        )
-        self.auto_update_cb.stateChanged.connect(self._on_auto_update_changed)
-        header_layout.addWidget(self.auto_update_cb)
-
         # Loop checkbox
         self.loop_checkbox = QCheckBox("Loop")
         self.loop_checkbox.setChecked(True)
@@ -479,7 +432,7 @@ class PresetSequenceEditor(QWidget):
             }
         """)
         left_layout = QVBoxLayout(left_panel)
-        left_layout.setContentsMargins(5, 5, 5, 5)
+        left_layout.setContentsMargins(5, 5, 5, 13)
         left_layout.setSpacing(3)
 
         # Step list header
@@ -499,6 +452,7 @@ class PresetSequenceEditor(QWidget):
                 border: none;
                 color: #cccccc;
                 font-size: 11px;
+                outline: none;
             }
             QListWidget::item {
                 padding: 5px;
@@ -507,12 +461,28 @@ class PresetSequenceEditor(QWidget):
             QListWidget::item:selected {
                 background-color: #3f94e9;
                 color: white;
+                border: none;
+                outline: none;
             }
             QListWidget::item:hover {
                 background-color: #4a4a4a;
             }
+            QListWidget::item:selected:hover {
+                background-color: #4aa3ff;
+                color: white;
+            }
+            QListWidget::item:focus {
+                outline: none;
+            }
         """)
+        self.step_list.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.step_list.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
+        self.step_list.setDragEnabled(True)
+        self.step_list.setAcceptDrops(True)
+        self.step_list.setDropIndicatorShown(True)
+        self.step_list.setDragDropMode(QListWidget.DragDropMode.InternalMove)
         self.step_list.currentRowChanged.connect(self._on_step_selected)
+        self.step_list.model().rowsMoved.connect(self._on_steps_reordered)
         left_layout.addWidget(self.step_list)
 
         # Step list buttons - aligned to top
@@ -624,19 +594,9 @@ class PresetSequenceEditor(QWidget):
         self.step_list.clear()
 
         for i, step in enumerate(self.sequence_steps):
-            display_text = (
-                f"{i + 1}. {step.name}" if step.name else f"{i + 1}. Step {i + 1}"
-            )
-            if step.duration_unit == SequenceDurationUnit.BARS:
-                duration_text = (
-                    f" ({format_bar_duration(step.duration)} bars)"
-                )
-            else:
-                duration_text = f" ({step.duration:.1f}s)"
-            scene_count = f" [{len(step.scenes)} scenes]" if step.scenes else " [empty]"
-
-            item_text = display_text + duration_text + scene_count
-            item = QListWidgetItem(item_text)
+            item = QListWidgetItem()
+            item.setData(Qt.ItemDataRole.UserRole, step)
+            self._update_step_list_item_text(item, step, i)
             self.step_list.addItem(item)
 
         # Restore selection or select first
@@ -675,16 +635,6 @@ class PresetSequenceEditor(QWidget):
         step = self.sequence_steps[step_index]
         self.current_step_widget = SequenceStepWidget(step, step_index)
         self.current_step_widget.step_changed.connect(self._on_step_changed)
-        self.current_step_widget.move_up.connect(lambda: self.move_step_up(step_index))
-        self.current_step_widget.move_down.connect(
-            lambda: self.move_step_down(step_index)
-        )
-
-        # Update move button states
-        self.current_step_widget.move_up_btn.setEnabled(step_index > 0)
-        self.current_step_widget.move_down_btn.setEnabled(
-            step_index < len(self.sequence_steps) - 1
-        )
 
         self.detail_layout.addWidget(self.current_step_widget)
 
@@ -693,10 +643,6 @@ class PresetSequenceEditor(QWidget):
         self.rebuild_step_list()
         self.auto_save_sequence()
         self._preview_step(self.current_step_index)
-
-    def _on_auto_update_changed(self, state):
-        """Handle auto-update checkbox change."""
-        self.auto_update_enabled = state == Qt.CheckState.Checked.value
 
     def _on_playback_step_change(self):
         """Called during playback when step changes."""
@@ -841,27 +787,48 @@ class PresetSequenceEditor(QWidget):
             self.rebuild_step_list()
             self.auto_save_sequence()
 
-    def move_step_up(self, step_index: int):
-        """Move step up."""
-        if step_index > 0:
-            self.sequence_steps[step_index], self.sequence_steps[step_index - 1] = (
-                self.sequence_steps[step_index - 1],
-                self.sequence_steps[step_index],
-            )
-            self.rebuild_step_list()
-            self.auto_save_sequence()
-            self.step_list.setCurrentRow(step_index - 1)
+    def _update_step_list_item_text(
+        self, item: QListWidgetItem, step: SequenceStep, index: int
+    ) -> None:
+        display_text = (
+            f"{index + 1}. {step.name}" if step.name else f"{index + 1}. Step {index + 1}"
+        )
+        if step.duration_unit == SequenceDurationUnit.BARS:
+            duration_text = f" ({format_bar_duration(step.duration)} bars)"
+        else:
+            duration_text = f" ({step.duration:.1f}s)"
+        scene_count = f" [{len(step.scenes)} scenes]" if step.scenes else " [empty]"
 
-    def move_step_down(self, step_index: int):
-        """Move step down."""
-        if step_index < len(self.sequence_steps) - 1:
-            self.sequence_steps[step_index], self.sequence_steps[step_index + 1] = (
-                self.sequence_steps[step_index + 1],
-                self.sequence_steps[step_index],
-            )
-            self.rebuild_step_list()
-            self.auto_save_sequence()
-            self.step_list.setCurrentRow(step_index + 1)
+        item_text = display_text + duration_text + scene_count
+        item.setText(item_text)
+
+    def _sync_steps_from_list(self) -> None:
+        steps: t.List[SequenceStep] = []
+        for i in range(self.step_list.count()):
+            item = self.step_list.item(i)
+            step = item.data(Qt.ItemDataRole.UserRole)
+            if isinstance(step, SequenceStep):
+                steps.append(step)
+        if steps:
+            self.sequence_steps = steps
+
+        for i in range(self.step_list.count()):
+            item = self.step_list.item(i)
+            step = item.data(Qt.ItemDataRole.UserRole)
+            if isinstance(step, SequenceStep):
+                self._update_step_list_item_text(item, step, i)
+
+    def _on_steps_reordered(self, parent, start: int, end: int, destination, row: int) -> None:
+        self._sync_steps_from_list()
+
+        if row > start:
+            new_row = row - (end - start + 1)
+        else:
+            new_row = row
+
+        new_row = max(0, min(new_row, self.step_list.count() - 1))
+        self.step_list.setCurrentRow(new_row)
+        self.auto_save_sequence()
 
     def _preview_step(self, step_index: int) -> None:
         """Trigger live preview for the specified step."""

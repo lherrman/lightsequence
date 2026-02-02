@@ -14,19 +14,17 @@ from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
     QHBoxLayout,
-    QPushButton,
     QLabel,
     QMessageBox,
     QGridLayout,
     QSizePolicy,
 )
 from PySide6.QtCore import Signal
-import qtawesome as qta
 
 
 from lumiblox.gui.controller_thread import ControllerThread
 from lumiblox.gui.device_status import DeviceStatusBar
-from lumiblox.gui.ui_constants import BUTTON_SIZE_TINY, BUTTON_STYLE, HEADER_LABEL_STYLE
+from lumiblox.gui.ui_constants import HEADER_LABEL_STYLE
 from lumiblox.gui.widgets import PresetButton
 from lumiblox.gui.sequence_editor import PresetSequenceEditor
 from lumiblox.gui.playback_controls import PlaybackControls
@@ -157,7 +155,7 @@ class LightSequenceGUI(QMainWindow):
         preset_layout.setContentsMargins(3, 3, 3, 3)  # Very tight margins
         preset_layout.setSpacing(2)
 
-        # Header with title and refresh button in one line
+        # Header with title
         header_layout = QHBoxLayout()
         header_layout.setContentsMargins(0, 0, 0, 0)
         header_layout.setSpacing(5)
@@ -167,16 +165,6 @@ class LightSequenceGUI(QMainWindow):
         title_label.setStyleSheet(HEADER_LABEL_STYLE)
         header_layout.addWidget(title_label)
 
-        header_layout.addStretch()  # Push refresh button to right
-
-        # Small refresh icon button in corner
-        refresh_btn = QPushButton()
-        refresh_btn.clicked.connect(self.refresh_presets)
-        refresh_btn.setIcon(qta.icon("fa5s.sync", color="white"))
-        refresh_btn.setIconSize(BUTTON_SIZE_TINY)
-        refresh_btn.setFixedSize(BUTTON_SIZE_TINY)
-        refresh_btn.setStyleSheet(BUTTON_STYLE)
-        header_layout.addWidget(refresh_btn)
         preset_layout.addLayout(header_layout)
 
         # Sequence grid area
