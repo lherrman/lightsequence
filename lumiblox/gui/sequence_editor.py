@@ -750,6 +750,8 @@ class PresetSequenceEditor(QWidget):
                 loop_enabled,
                 next_sequences=self.next_sequence_candidates,
             )
+            if getattr(self.controller, "on_sequence_saved", None):
+                self.controller.on_sequence_saved()
         except Exception as e:
             logger.error(f"Failed to save sequence: {e}")
 

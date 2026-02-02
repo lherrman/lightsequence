@@ -140,18 +140,24 @@ class PresetButton(QPushButton):
         """Update button appearance based on state."""
         if not self.has_preset:
             self.setText(f"{self.coord_x},{self.coord_y}")
-            self.setStyleSheet("""
-                QPushButton {
-                    background-color: #3c3c3c;
-                    color: #666666;
-                    border: 0px solid #555555;
+            base_color = COLOR_ACTIVE_DARK if self.is_active_preset else "#3c3c3c"
+            hover_color = COLOR_ACTIVE if self.is_active_preset else "#4a4a4a"
+            text_color = "#ffffff" if self.is_active_preset else "#666666"
+            border_color = "ffffff" if self.is_active_preset else "555555"
+            self.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {base_color};
+                    color: {text_color};
+                    border: 1px solid #{border_color};
                     border-radius: 3px;
                     font-size: 10px;
-                               
-                }
-                QPushButton:hover {
-                    background-color: #4a4a4a;
-                }
+                }}
+                QPushButton:hover {{
+                    background-color: {hover_color};
+                }}
+                QPushButton:checked {{
+                    border: 1px solid #ffffff;
+                }}
             """)
         else:
 
