@@ -307,9 +307,8 @@ class LightController:
     def _handle_scene_activate(self, scene: t.Tuple[int, int]) -> None:
         """Handle scene activation."""
         logger.debug("scene_activate scene=%s", scene)
-        # Use the lighting software's native toggle command; this matches how the
-        # hardware expects on/off to be driven.
-        self.light_software.send_scene_command(scene)
+        # Use explicit state setting for deterministic control
+        self.light_software.set_scene_state(scene, True)
         self.led_ctrl.update_scene_led(scene, True)
     
     def _handle_scene_deactivate(self, scene: t.Tuple[int, int]) -> None:

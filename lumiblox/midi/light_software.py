@@ -145,17 +145,6 @@ class LightSoftware:
                     DeviceType.LIGHT_SOFTWARE, f"Send error: {e}"
                 )
 
-    def send_scene_command(self, scene_index: t.Tuple[int, int]) -> None:
-        """
-        Backwards-compatible toggle helper. Prefer ``set_scene_state`` for deterministic
-        state transitions. Since we do not track remote state here, this simply sends an
-        "on" command which is idempotent for momentary bindings and a no-op for toggle
-        bindings that are already on.
-        """
-
-        # Delegate to explicit setter to avoid duplication
-        self.set_scene_state(scene_index, True)
-
     def get_scene_coordinates_for_note(
         self, note: int
     ) -> t.Optional[t.Tuple[int, int]]:

@@ -85,15 +85,15 @@ def test_multiple_scene_toggles(simulator):
     scene_coords = (3, 3)
     
     # Toggle on
-    simulator.send_scene_command(scene_coords)
+    simulator.set_scene_state(scene_coords, True)
     assert simulator.get_scene_state(scene_coords) is True
     
     # Toggle off
-    simulator.send_scene_command(scene_coords)
+    simulator.set_scene_state(scene_coords, False)
     assert simulator.get_scene_state(scene_coords) is False
     
     # Toggle on again
-    simulator.send_scene_command(scene_coords)
+    simulator.set_scene_state(scene_coords, True)
     assert simulator.get_scene_state(scene_coords) is True
 
 

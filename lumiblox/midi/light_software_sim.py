@@ -126,14 +126,6 @@ class LightSoftwareSim:
             velocity,
         )
 
-    def send_scene_command(self, scene_index: t.Tuple[int, int]) -> None:
-        """
-        Legacy toggle helper. Prefer ``set_scene_state`` for deterministic control.
-        """
-
-        current_state = self.scene_states.get(scene_index, False)
-        self.set_scene_state(scene_index, not current_state)
-
     def get_scene_coordinates_for_note(
         self, note: int
     ) -> t.Optional[t.Tuple[int, int]]:
@@ -187,10 +179,14 @@ class LightSoftwareSim:
                                 f"[SIM] Received command: note {note}, velocity {velocity}"
                             )
 
-                            # Handle scene command
+                            # Handle scene command - toggle based on velocity
                             scene_coords = self.get_scene_coordinates_for_note(note)
                             if scene_coords:
-                                self.send_scene_command(scene_coords)
+                                if velocity > 0:
+                                    current_state = self.scene_states.get(scene_coords, False)
+                                    self.set_scene_state(scene_coords, not current_state)
+                                else:
+                                    self.set_scene_state(scene_coords, False)
 
             except Exception as e:
                 logger.error(f"[SIM] MIDI command processing error: {e}")
