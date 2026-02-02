@@ -87,7 +87,7 @@
               0
             ],
             "loop": false,
-            "loop_count": 3,
+            "loop_count": 4,
             "next_sequences": [
               [
                 2,
@@ -125,7 +125,7 @@
                     0
                   ]
                 ],
-                "duration": 3.75,
+                "duration": 0.25,
                 "name": "Step 1",
                 "duration_unit": "bars"
               }
@@ -136,7 +136,7 @@
               0,
               0
             ],
-            "loop": true,
+            "loop": false,
             "loop_count": 1,
             "next_sequences": [
               [
@@ -172,7 +172,7 @@
                     3
                   ]
                 ],
-                "duration": 2.0,
+                "duration": 1.1,
                 "name": "Step 1",
                 "duration_unit": "seconds"
               },
@@ -194,9 +194,14 @@
               2,
               0
             ],
-            "loop": true,
-            "loop_count": 1,
-            "next_sequences": [],
+            "loop": false,
+            "loop_count": 2,
+            "next_sequences": [
+              [
+                1,
+                0
+              ]
+            ],
             "steps": [
               {
                 "scenes": [
@@ -209,7 +214,7 @@
                     1
                   ]
                 ],
-                "duration": 2.0,
+                "duration": 0.10000000000000009,
                 "name": "Step 3",
                 "duration_unit": "seconds"
               },
@@ -228,7 +233,7 @@
                     0
                   ]
                 ],
-                "duration": 1.0,
+                "duration": 0.1,
                 "name": "Step 1",
                 "duration_unit": "seconds"
               },
@@ -243,7 +248,7 @@
                     2
                   ]
                 ],
-                "duration": 2.0,
+                "duration": 0.1,
                 "name": "Step 2",
                 "duration_unit": "seconds"
               }

@@ -128,8 +128,9 @@ class LightSequenceGUI(QMainWindow):
 
         # === Sequence Editor (Takes remaining space) ===
         self.editor_stack = QWidget()
+        self.editor_stack.setObjectName("editor_stack")
         self.editor_stack.setStyleSheet("""
-            QWidget {
+            QWidget#editor_stack {
                 background-color: #2d2d2d;
                 border: 1px solid #555555;
                 border-radius: 3px;

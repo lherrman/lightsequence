@@ -79,6 +79,7 @@ class SequenceStepWidget(QFrame):
         self.step_index = step_index
         self.scene_buttons: t.Dict[t.Tuple[int, int], SceneButton] = {}
         self._unit_buttons: t.Dict[SequenceDurationUnit, QPushButton] = {}
+        self.sequence_controls_layout: t.Optional[QHBoxLayout] = None
 
         self.setFrameStyle(QFrame.Shape.NoFrame)
         self.setStyleSheet("""
@@ -86,7 +87,7 @@ class SequenceStepWidget(QFrame):
                 background-color: transparent;
                 border: none;
                 margin: 0px;
-                padding: 3px;
+                padding: 2px;
             }
         """)
 
@@ -101,7 +102,7 @@ class SequenceStepWidget(QFrame):
     def setup_ui(self):
         # Main horizontal layout - content only
         main_layout = QHBoxLayout(self)
-        main_layout.setContentsMargins(8, 8, 8, 8)
+        main_layout.setContentsMargins(8, 6, 8, 4)
         main_layout.setSpacing(10)
         main_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
@@ -130,6 +131,12 @@ class SequenceStepWidget(QFrame):
         self.name_edit.textChanged.connect(self.on_step_changed)
         content_layout.addWidget(self.name_edit)
 
+        controls_container = QWidget()
+        self.sequence_controls_layout = QHBoxLayout(controls_container)
+        self.sequence_controls_layout.setContentsMargins(0, 0, 0, 0)
+        self.sequence_controls_layout.setSpacing(6)
+        content_layout.addWidget(controls_container)
+
         # Scene grid section - aligned to top
         scenes_layout = QGridLayout()
         scenes_layout.setHorizontalSpacing(2)
@@ -150,7 +157,7 @@ class SequenceStepWidget(QFrame):
         # Duration section - compact design
         duration_layout = QHBoxLayout()
         duration_layout.setSpacing(6)
-        duration_layout.setContentsMargins(0, 5, 0, 0)
+        duration_layout.setContentsMargins(0, 3, 0, 0)
 
         # Minus button
         minus_btn = QPushButton()
@@ -204,6 +211,15 @@ class SequenceStepWidget(QFrame):
         content_layout.addLayout(duration_layout)
 
         main_layout.addLayout(content_layout)
+
+    def set_sequence_controls_widget(self, widget: QWidget) -> None:
+        if not self.sequence_controls_layout:
+            return
+        while self.sequence_controls_layout.count():
+            item = self.sequence_controls_layout.takeAt(0)
+            if item.widget():
+                item.widget().setParent(None)
+        self.sequence_controls_layout.addWidget(widget)
 
     def update_from_step(self):
         """Update widget from step data."""
@@ -398,20 +414,68 @@ class PresetSequenceEditor(QWidget):
         # Header with compact controls
         header_layout = QHBoxLayout()
 
-        # Loop checkbox
+        header_layout.addStretch()
+
+        layout.addLayout(header_layout)
+
+        self.sequence_controls_widget = QWidget()
+        self.sequence_controls_widget.setStyleSheet("border: none;")
+        sequence_controls_layout = QHBoxLayout(self.sequence_controls_widget)
+        sequence_controls_layout.setContentsMargins(0, 0, 0, 0)
+        sequence_controls_layout.setSpacing(6)
+
         self.loop_checkbox = QCheckBox("Always Loop")
         self.loop_checkbox.setChecked(True)
         self.loop_checkbox.setStyleSheet(CHECKBOX_STYLE)
         self.loop_checkbox.stateChanged.connect(self._on_loop_changed)
-        header_layout.addWidget(self.loop_checkbox)
+        sequence_controls_layout.addWidget(self.loop_checkbox)
 
-        followup_label = QLabel("Next sequences")
-        followup_label.setStyleSheet(HEADER_LABEL_STYLE)
-        header_layout.addWidget(followup_label)
+        self.loop_count_spinbox = QSpinBox()
+        self.loop_count_spinbox.setRange(1, 999)
+        self.loop_count_spinbox.setButtonSymbols(QSpinBox.ButtonSymbols.UpDownArrows)
+        self.loop_count_spinbox.setFixedWidth(60)
+        self.loop_count_spinbox.setFixedHeight(20)
+        self.loop_count_spinbox.setValue(self.loop_count)
+        self.loop_count_spinbox.setStyleSheet("""
+            QSpinBox {
+                background-color: #3c3c3c;
+                border: 1px solid #555555;
+                border-radius: 3px;
+                color: #ffffff;
+                padding-right: 14px;
+                padding-left: 4px;
+                padding-top: 0px;
+                padding-bottom: 0px;
+                font-size: 10px;
+            }
+            QSpinBox::up-button, QSpinBox::down-button {
+                subcontrol-origin: padding;
+                width: 12px;
+                border-left: 1px solid #555555;
+                background: #3c3c3c;
+            }
+            QSpinBox::up-button {
+                subcontrol-position: right top;
+                height: 9px;
+            }
+            QSpinBox::down-button {
+                subcontrol-position: right bottom;
+                height: 9px;
+            }
+            QSpinBox::up-button:hover, QSpinBox::down-button:hover {
+                background: #4a4a4a;
+            }
+        """)
+        self.loop_count_spinbox.valueChanged.connect(self._on_loop_count_changed)
+        sequence_controls_layout.addWidget(self.loop_count_spinbox)
+
+        loops_label = QLabel("loops")
+        loops_label.setStyleSheet(HEADER_LABEL_STYLE)
+        sequence_controls_layout.addWidget(loops_label)
 
         self.followup_toggle_btn = QPushButton("Select")
         self.followup_toggle_btn.setCheckable(True)
-        self.followup_toggle_btn.setFixedHeight(22)
+        self.followup_toggle_btn.setFixedHeight(20)
         self.followup_toggle_btn.setToolTip(
             "Toggle follow-up selection mode for the sequence grid below"
         )
@@ -422,7 +486,7 @@ class PresetSequenceEditor(QWidget):
                 border: 1px solid #555555;
                 border-radius: 3px;
                 font-size: 10px;
-                padding: 2px 8px;
+                padding: 1px 6px;
             }
             QPushButton:hover {
                 background-color: #4a4a4a;
@@ -438,29 +502,19 @@ class PresetSequenceEditor(QWidget):
             }
         """)
         self.followup_toggle_btn.clicked.connect(self._on_followup_toggle_clicked)
-        header_layout.addWidget(self.followup_toggle_btn)
+        sequence_controls_layout.addWidget(self.followup_toggle_btn)
 
-        self.loop_count_label = QLabel("Loops")
-        self.loop_count_label.setStyleSheet(HEADER_LABEL_STYLE)
-        header_layout.addWidget(self.loop_count_label)
-
-        self.loop_count_spinbox = QSpinBox()
-        self.loop_count_spinbox.setRange(1, 999)
-        self.loop_count_spinbox.setFixedWidth(55)
-        self.loop_count_spinbox.setValue(self.loop_count)
-        self.loop_count_spinbox.setStyleSheet(EDIT_FIELD_STYLE)
-        self.loop_count_spinbox.valueChanged.connect(self._on_loop_count_changed)
-        header_layout.addWidget(self.loop_count_spinbox)
+        followup_label = QLabel("Next")
+        followup_label.setStyleSheet(HEADER_LABEL_STYLE)
+        sequence_controls_layout.addWidget(followup_label)
 
         self.followup_display = QLabel("")
         self.followup_display.setStyleSheet(
             f"color: {COLOR_TEXT_DIM}; font-size: 10px;"
         )
-        header_layout.addWidget(self.followup_display)
+        sequence_controls_layout.addWidget(self.followup_display)
 
-        header_layout.addStretch()
-
-        layout.addLayout(header_layout)
+        sequence_controls_layout.addStretch()
 
         # Main horizontal split: Step list (left) | Step details (right)
         main_splitter = QHBoxLayout()
@@ -476,7 +530,7 @@ class PresetSequenceEditor(QWidget):
             }
         """)
         left_layout = QVBoxLayout(left_panel)
-        left_layout.setContentsMargins(5, 5, 5, 13)
+        left_layout.setContentsMargins(5, 5, 5, 5)
         left_layout.setSpacing(3)
 
         # Step list header
@@ -533,6 +587,7 @@ class PresetSequenceEditor(QWidget):
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(3)
         btn_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        btn_layout.setContentsMargins(0, 0, 0, 0)
 
         add_btn = QPushButton()
         add_btn.setIcon(qta.icon("fa5s.plus", color="white"))
@@ -586,7 +641,7 @@ class PresetSequenceEditor(QWidget):
             }
         """)
         self.detail_layout = QVBoxLayout(self.detail_panel)
-        self.detail_layout.setContentsMargins(5, 5, 5, 5)
+        self.detail_layout.setContentsMargins(5, 5, 5, 2)
         self.detail_layout.setAlignment(Qt.AlignmentFlag.AlignBottom)
 
         # Placeholder message - aligned to top
@@ -688,6 +743,9 @@ class PresetSequenceEditor(QWidget):
         # Create new step widget
         step = self.sequence_steps[step_index]
         self.current_step_widget = SequenceStepWidget(step, step_index)
+        self.current_step_widget.set_sequence_controls_widget(
+            self.sequence_controls_widget
+        )
         self.current_step_widget.step_changed.connect(self._on_step_changed)
 
         self.detail_layout.addWidget(self.current_step_widget)
@@ -771,7 +829,6 @@ class PresetSequenceEditor(QWidget):
     def _update_followup_toggle_enabled(self) -> None:
         loop_enabled = self.loop_checkbox.isChecked()
         self.followup_toggle_btn.setEnabled(not loop_enabled)
-        self.loop_count_label.setEnabled(not loop_enabled)
         self.loop_count_spinbox.setEnabled(not loop_enabled)
         if loop_enabled and self.next_sequence_jump_edit_mode:
             self._set_followup_edit_mode(False)
