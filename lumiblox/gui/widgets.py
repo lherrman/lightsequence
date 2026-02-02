@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Signal
 
-from lumiblox.gui.ui_constants import COLOR_ACTIVE, COLOR_ACTIVE_DARK
+from lumiblox.gui.ui_constants import COLOR_ACTIVE, COLOR_ACTIVE_DARK, COLOR_HIGHLIGHT_PINK
 
 
 class SelectAllLineEdit(QLineEdit):
@@ -100,6 +100,7 @@ class PresetButton(QPushButton):
         self.has_preset = False
         self.has_sequence = False
         self.is_active_preset = False
+        self.is_followup_target = False
 
         self.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
@@ -136,19 +137,30 @@ class PresetButton(QPushButton):
         self.setChecked(is_active)
         self.update_appearance()
 
+    def set_followup_target(self, is_followup: bool):
+        """Set whether this preset is a follow-up target."""
+        self.is_followup_target = is_followup
+        self.update_appearance()
+
     def update_appearance(self):
         """Update button appearance based on state."""
+        followup_border = (
+            f"2px solid {COLOR_HIGHLIGHT_PINK}" if self.is_followup_target else None
+        )
         if not self.has_preset:
             self.setText(f"{self.coord_x},{self.coord_y}")
             base_color = COLOR_ACTIVE_DARK if self.is_active_preset else "#3c3c3c"
             hover_color = COLOR_ACTIVE if self.is_active_preset else "#4a4a4a"
             text_color = "#ffffff" if self.is_active_preset else "#666666"
             border_color = "ffffff" if self.is_active_preset else "555555"
+            border_style = (
+                followup_border if followup_border else f"1px solid #{border_color}"
+            )
             self.setStyleSheet(f"""
                 QPushButton {{
                     background-color: {base_color};
                     color: {text_color};
-                    border: 1px solid #{border_color};
+                    border: {border_style};
                     border-radius: 3px;
                     font-size: 10px;
                 }}
@@ -166,12 +178,15 @@ class PresetButton(QPushButton):
 
             # Set border color based on active state
             border_color = "ffffff" if self.is_active_preset else "666666"
+            border_style = (
+                followup_border if followup_border else f"1px solid #{border_color}"
+            )
 
             self.setStyleSheet(f"""
                 QPushButton {{
                     background-color: {base_color};
                     color: #ffffff;
-                    border: 0px solid #{border_color};
+                    border: {border_style};
                     border-radius: 3px;
                     font-size: 10px;
                     font-weight: bold;

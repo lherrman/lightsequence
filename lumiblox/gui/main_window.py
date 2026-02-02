@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QSizePolicy,
 )
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Signal, QSettings
 
 
 from lumiblox.gui.controller_thread import ControllerThread
@@ -56,6 +56,9 @@ class LightSequenceGUI(QMainWindow):
         self.current_editor: t.Optional[PresetSequenceEditor] = None
         self._updating_from_launchpad = False  # Flag to prevent infinite loops
         self.simulation = simulation
+        self.next_sequence_jump_edit_mode = False
+        self._followup_highlight_candidates: t.Set[t.Tuple[int, int]] = set()
+        self._selected_preset_coords: t.Optional[t.Tuple[int, int]] = None
 
         # Connect the signals to the slots
         self.sequence_changed_signal.connect(self._update_sequence_from_launchpad)
@@ -67,11 +70,22 @@ class LightSequenceGUI(QMainWindow):
 
         self.setWindowTitle("Light Sequence Controller")
         self.setMinimumSize(470, 200)
-        self.resize(600, 800)
+        self.resize(600, 600)
         self.setup_ui()
+        self._restore_window_state()
         self.automation_rule_fired_signal.connect(self.pilot_widget.flash_rule)
         self.apply_dark_theme()
         self.start_controller()
+
+    def _restore_window_state(self) -> None:
+        settings = QSettings("lherrman", "LightSequence")
+        geometry = settings.value("main_window/geometry")
+        if geometry is not None:
+            self.restoreGeometry(geometry)
+
+    def _save_window_state(self) -> None:
+        settings = QSettings("lherrman", "LightSequence")
+        settings.setValue("main_window/geometry", self.saveGeometry())
 
     def setup_ui(self):
         central_widget = QWidget()
@@ -361,12 +375,56 @@ class LightSequenceGUI(QMainWindow):
             else:
                 btn.set_preset_info(False, False)
 
+        self._apply_followup_highlights()
+
+    def _on_followup_edit_mode_changed(self, enabled: bool) -> None:
+        self._set_followup_edit_mode(enabled)
+
+    def _on_followup_candidates_changed(self, candidates: t.List[t.Tuple[int, int]]) -> None:
+        self._followup_highlight_candidates = set(candidates)
+        self._apply_followup_highlights()
+
+    def _set_followup_edit_mode(self, enabled: bool) -> None:
+        self.next_sequence_jump_edit_mode = enabled
+        if not enabled:
+            self._clear_followup_highlights()
+        else:
+            self._apply_followup_highlights()
+
+    def _apply_followup_highlights(self) -> None:
+        if not hasattr(self, "preset_buttons"):
+            return
+        if not self.next_sequence_jump_edit_mode:
+            self._clear_followup_highlights()
+            return
+        for coords, btn in self.preset_buttons.items():
+            btn.set_followup_target(coords in self._followup_highlight_candidates)
+
+    def _clear_followup_highlights(self) -> None:
+        if not hasattr(self, "preset_buttons"):
+            return
+        for btn in self.preset_buttons.values():
+            btn.set_followup_target(False)
+
+    def _restore_selected_preset(self) -> None:
+        for btn in self.preset_buttons.values():
+            btn.set_active_preset(False)
+        if self._selected_preset_coords and self._selected_preset_coords in self.preset_buttons:
+            self.preset_buttons[self._selected_preset_coords].set_active_preset(True)
+
     def on_preset_button_selected(self, x: int, y: int):
         """Handle preset button selection."""
         if not self.controller:
             return
 
         sequence_tuple = (x, y)
+
+        if self.next_sequence_jump_edit_mode and self.current_editor:
+            btn = self.preset_buttons.get(sequence_tuple)
+            if btn and btn.has_preset:
+                self.current_editor.toggle_followup_candidate(sequence_tuple)
+                self._restore_selected_preset()
+            return
 
         # Show sequence editor for this sequence
         self.show_sequence_editor(sequence_tuple)
@@ -378,6 +436,7 @@ class LightSequenceGUI(QMainWindow):
         # Set selected button as active
         if (x, y) in self.preset_buttons:
             self.preset_buttons[(x, y)].set_active_preset(True)
+        self._selected_preset_coords = sequence_tuple
 
         # Also activate on the launchpad using new input system
         event = ButtonEvent(
@@ -392,12 +451,31 @@ class LightSequenceGUI(QMainWindow):
         """Show sequence editor for the selected preset."""
         # Clear current editor
         if self.current_editor:
+            try:
+                self.current_editor.followup_edit_mode_changed.disconnect(
+                    self._on_followup_edit_mode_changed
+                )
+                self.current_editor.followup_candidates_changed.disconnect(
+                    self._on_followup_candidates_changed
+                )
+            except Exception:
+                pass
             self.current_editor.deleteLater()
             self.current_editor = None
 
+        self._set_followup_edit_mode(False)
+
         # Create new editor
         self.current_editor = PresetSequenceEditor(preset_index, self.controller)
+        self.current_editor.followup_edit_mode_changed.connect(
+            self._on_followup_edit_mode_changed
+        )
+        self.current_editor.followup_candidates_changed.connect(
+            self._on_followup_candidates_changed
+        )
         self.editor_layout.addWidget(self.current_editor)
+        self._selected_preset_coords = preset_index
+        self._on_followup_candidates_changed(self.current_editor.next_sequence_candidates)
 
     def on_launchpad_sequence_changed(
         self, sequence_coords: t.Optional[t.Tuple[int, int]]
@@ -426,6 +504,7 @@ class LightSequenceGUI(QMainWindow):
             # Select the matching sequence button
             if sequence_coords in self.preset_buttons:
                 self.preset_buttons[sequence_coords].set_active_preset(True)
+                self._selected_preset_coords = sequence_coords
                 # Also show the editor for this sequence
                 self.show_sequence_editor(sequence_coords)
         finally:
@@ -722,6 +801,7 @@ class LightSequenceGUI(QMainWindow):
 
     def closeEvent(self, event):
         """Handle application close."""
+        self._save_window_state()
         if self.controller_thread:
             self.controller_thread.stop()
         event.accept()

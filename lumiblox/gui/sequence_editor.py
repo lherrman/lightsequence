@@ -33,6 +33,7 @@ from lumiblox.gui.ui_constants import (
     BUTTON_SIZE_SMALL,
     BUTTON_STYLE,
     CHECKBOX_STYLE,
+    COLOR_TEXT_DIM,
     EDIT_FIELD_STYLE,
     HEADER_LABEL_STYLE,
     INPUT_FIELD_HEIGHT_SMALL,
@@ -352,6 +353,9 @@ class SequenceStepWidget(QFrame):
 class PresetSequenceEditor(QWidget):
     """Widget for editing sequences - compact list + detail view."""
 
+    followup_edit_mode_changed = Signal(bool)
+    followup_candidates_changed = Signal(list)
+
     def __init__(self, preset_index: t.Tuple[int, int], controller=None):
         super().__init__()
         self.preset_index = preset_index
@@ -361,6 +365,7 @@ class PresetSequenceEditor(QWidget):
         self.current_step_widget: t.Optional[SequenceStepWidget] = None
         self.auto_update_enabled = True  # Auto-update during playback
         self.next_sequence_candidates: t.List[t.Tuple[int, int]] = []
+        self.next_sequence_jump_edit_mode = False
 
         self.setup_ui()
         self.load_sequence()
@@ -395,24 +400,49 @@ class PresetSequenceEditor(QWidget):
         self.loop_checkbox = QCheckBox("Loop")
         self.loop_checkbox.setChecked(True)
         self.loop_checkbox.setStyleSheet(CHECKBOX_STYLE)
-        self.loop_checkbox.stateChanged.connect(self.auto_save_sequence)
+        self.loop_checkbox.stateChanged.connect(self._on_loop_changed)
         header_layout.addWidget(self.loop_checkbox)
 
         followup_label = QLabel("Next sequences")
         followup_label.setStyleSheet(HEADER_LABEL_STYLE)
         header_layout.addWidget(followup_label)
 
-        self.followup_input = SelectAllLineEdit()
-        self.followup_input.setPlaceholderText("e.g. 0,0; 1,2")
-        self.followup_input.setFixedWidth(160)
-        self.followup_input.setStyleSheet(EDIT_FIELD_STYLE)
-        self.followup_input.setToolTip(
-            "List of sequences to trigger after completion (format: x,y; a,b)"
+        self.followup_toggle_btn = QPushButton("Select")
+        self.followup_toggle_btn.setCheckable(True)
+        self.followup_toggle_btn.setFixedHeight(22)
+        self.followup_toggle_btn.setToolTip(
+            "Toggle follow-up selection mode for the sequence grid below"
         )
-        self.followup_input.editingFinished.connect(
-            self._on_followup_editing_finished
+        self.followup_toggle_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #3c3c3c;
+                color: #ffffff;
+                border: 1px solid #555555;
+                border-radius: 3px;
+                font-size: 10px;
+                padding: 2px 8px;
+            }
+            QPushButton:hover {
+                background-color: #4a4a4a;
+            }
+            QPushButton:checked {
+                background-color: #0078d4;
+                border: 1px solid #005a9e;
+            }
+            QPushButton:disabled {
+                background-color: #2a2a2a;
+                color: #666666;
+                border: 1px solid #444444;
+            }
+        """)
+        self.followup_toggle_btn.clicked.connect(self._on_followup_toggle_clicked)
+        header_layout.addWidget(self.followup_toggle_btn)
+
+        self.followup_display = QLabel("")
+        self.followup_display.setStyleSheet(
+            f"color: {COLOR_TEXT_DIM}; font-size: 10px;"
         )
-        header_layout.addWidget(self.followup_input)
+        header_layout.addWidget(self.followup_display)
 
         header_layout.addStretch()
 
@@ -576,11 +606,15 @@ class PresetSequenceEditor(QWidget):
         loop_setting = self.controller.sequence_ctrl.loop_settings.get(
             self.preset_index, True
         )
+        self.loop_checkbox.blockSignals(True)
         self.loop_checkbox.setChecked(loop_setting)
+        self.loop_checkbox.blockSignals(False)
         self.next_sequence_candidates = self.controller.sequence_ctrl.get_followup_sequences(
             self.preset_index
         )
-        self._refresh_followup_input()
+        self._update_followup_toggle_enabled()
+        self._refresh_followup_display()
+        self._emit_followup_candidates()
 
         self.rebuild_step_list()
 
@@ -704,6 +738,44 @@ class PresetSequenceEditor(QWidget):
     def auto_save_sequence(self):
         """Auto-save sequence after changes."""
         self.save_sequence()
+
+    def _on_loop_changed(self) -> None:
+        self._update_followup_toggle_enabled()
+        self.auto_save_sequence()
+
+    def _update_followup_toggle_enabled(self) -> None:
+        loop_enabled = self.loop_checkbox.isChecked()
+        self.followup_toggle_btn.setEnabled(not loop_enabled)
+        if loop_enabled and self.next_sequence_jump_edit_mode:
+            self._set_followup_edit_mode(False)
+
+    def _on_followup_toggle_clicked(self) -> None:
+        self._set_followup_edit_mode(self.followup_toggle_btn.isChecked())
+
+    def _set_followup_edit_mode(self, enabled: bool) -> None:
+        if self.next_sequence_jump_edit_mode == enabled:
+            self.followup_toggle_btn.setChecked(enabled)
+            return
+        self.next_sequence_jump_edit_mode = enabled
+        self.followup_toggle_btn.setChecked(enabled)
+        self.followup_edit_mode_changed.emit(enabled)
+
+    def toggle_followup_candidate(self, coords: t.Tuple[int, int]) -> None:
+        if self.loop_checkbox.isChecked():
+            return
+        if coords == self.preset_index:
+            return
+        if coords in self.next_sequence_candidates:
+            self.next_sequence_candidates = [
+                candidate
+                for candidate in self.next_sequence_candidates
+                if candidate != coords
+            ]
+        else:
+            self.next_sequence_candidates.append(coords)
+        self._refresh_followup_display()
+        self._emit_followup_candidates()
+        self.auto_save_sequence()
 
     def add_empty_step(self):
         """Add an empty step."""
@@ -846,49 +918,11 @@ class PresetSequenceEditor(QWidget):
         except Exception as exc:
             logger.warning(f"Failed to preview step {step_index}: {exc}")
 
-    def _refresh_followup_input(self) -> None:
-        if not hasattr(self, "followup_input"):
-            return
+    def _refresh_followup_display(self) -> None:
         text = "; ".join(
             f"{coords[0]},{coords[1]}" for coords in self.next_sequence_candidates
         )
-        self.followup_input.setText(text)
+        self.followup_display.setText(text if text else "None")
 
-    def _on_followup_editing_finished(self) -> None:
-        text = self.followup_input.text().strip()
-        if not text:
-            self.next_sequence_candidates = []
-            self.auto_save_sequence()
-            return
-
-        entries = [
-            entry.strip()
-            for entry in text.replace("\n", ";").split(";")
-            if entry.strip()
-        ]
-        parsed: t.List[t.Tuple[int, int]] = []
-        invalid: t.List[str] = []
-        for entry in entries:
-            parts = [part.strip() for part in entry.split(",")]
-            if len(parts) != 2:
-                invalid.append(entry)
-                continue
-            try:
-                x = int(parts[0])
-                y = int(parts[1])
-                parsed.append((x, y))
-            except ValueError:
-                invalid.append(entry)
-
-        if invalid:
-            QMessageBox.warning(
-                self,
-                "Invalid Coordinates",
-                "Could not parse the following entries: "
-                + ", ".join(invalid),
-            )
-            self._refresh_followup_input()
-            return
-
-        self.next_sequence_candidates = parsed
-        self.auto_save_sequence()
+    def _emit_followup_candidates(self) -> None:
+        self.followup_candidates_changed.emit(list(self.next_sequence_candidates))

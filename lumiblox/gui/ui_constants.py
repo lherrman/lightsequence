@@ -55,6 +55,7 @@ COLOR_SUCCESS = "#00ff00"
 COLOR_WARNING = "#ff8800"
 COLOR_WARNING_DARK = "#cc6600"
 COLOR_ERROR = "#ff4444"
+COLOR_HIGHLIGHT_PINK = "#ff66cc"
 
 # Phrase type colors
 COLOR_BODY = "#ff8800"  # Orange
