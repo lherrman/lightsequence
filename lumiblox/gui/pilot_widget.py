@@ -1009,16 +1009,22 @@ class PilotWidget(QWidget):
         #     self.capture_indicator.setVisible(False)
 
     # Preset management methods
-    def _load_presets(self) -> None:
-        """Load presets from preset manager into combo box."""
+    def _load_presets(self, active_pilot_index: Optional[int] = None) -> None:
+        """Load presets from preset manager into combo box.
+        
+        Args:
+            active_pilot_index: Index of the active pilot to select. If None, defaults to first.
+        """
         self.preset_combo.blockSignals(True)
         self.preset_combo.clear()
 
         for i, preset in enumerate(self.preset_manager.presets):
             self.preset_combo.addItem(preset.name, i)
 
-        # Default to first preset if any exist
-        if self.preset_manager.presets:
+        # Select the specified pilot or default to first
+        if active_pilot_index is not None and 0 <= active_pilot_index < len(self.preset_manager.presets):
+            self.preset_combo.setCurrentIndex(active_pilot_index)
+        elif self.preset_manager.presets:
             self.preset_combo.setCurrentIndex(0)
 
         self.preset_combo.blockSignals(False)
@@ -1291,7 +1297,11 @@ class PilotWidget(QWidget):
         self.pilot_controller = pilot_controller
         self.reload_presets()
 
-    def reload_presets(self) -> None:
-        """Reload pilot presets from disk and refresh UI."""
+    def reload_presets(self, active_pilot_index: Optional[int] = None) -> None:
+        """Reload pilot presets from disk and refresh UI.
+        
+        Args:
+            active_pilot_index: Index of the active pilot to select. If None, defaults to first.
+        """
         self.preset_manager.load()
-        self._load_presets()
+        self._load_presets(active_pilot_index)

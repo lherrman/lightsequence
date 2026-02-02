@@ -325,6 +325,12 @@ class LightSequenceGUI(QMainWindow):
                     self._update_device_status_display()
 
             self.statusBar().showMessage("Controller connected successfully")
+            
+            # Load pilot widget with correct active pilot index
+            if self.controller and hasattr(self.controller, 'project_repo'):
+                active_pilot_index = self.controller.project_repo.get_active_pilot_index()
+                self.pilot_widget.reload_presets(active_pilot_index)
+            
             self.refresh_presets()
 
     def on_controller_error(self, error: str):
@@ -676,7 +682,7 @@ class LightSequenceGUI(QMainWindow):
 
     def _handle_pilot_selection_changed(self, pilot_index: int) -> None:
         """Refresh pilot widget and sequences when selection changes externally."""
-        self.pilot_widget.reload_presets()
+        self.pilot_widget.reload_presets(pilot_index)
         self.refresh_presets()  # Reload sequence buttons to show new pilot's sequences
 
     # ============================================================================
