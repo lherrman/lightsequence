@@ -109,6 +109,9 @@ class LightSequenceGUI(QMainWindow):
         self.pilot_widget.rule_trigger_requested.connect(
             self._on_rule_trigger_requested
         )
+        self.pilot_widget.pilot_preset_changed.connect(
+            self._on_pilot_preset_changed
+        )
         main_layout.addWidget(self.pilot_widget)  # No stretch, fixed height
 
         # === Sequence Editor (Takes remaining space) ===
@@ -625,6 +628,17 @@ class LightSequenceGUI(QMainWindow):
         cooldowns = pilot.get_rule_cooldowns()
         self.pilot_widget.update_rule_cooldowns(cooldowns)
 
+    def _on_pilot_preset_changed(self, pilot_index: int) -> None:
+        """Handle pilot preset change from dropdown."""
+        if not self.controller_thread or not self.controller:
+            return
+        
+        # Switch pilot in the controller (reloads sequences)
+        self.controller.switch_pilot(pilot_index)
+        
+        # Refresh the sequence grid to show new pilot's sequences
+        self.refresh_presets()
+
     def _update_pilot_display(self) -> None:
         """Update pilot widget display (called on main thread)."""
         if not self.controller_thread:
@@ -661,8 +675,9 @@ class LightSequenceGUI(QMainWindow):
         self.pilot_widget.update_rule_cooldowns(cooldowns)
 
     def _handle_pilot_selection_changed(self, pilot_index: int) -> None:
-        """Refresh pilot widget when selection changes externally."""
+        """Refresh pilot widget and sequences when selection changes externally."""
         self.pilot_widget.reload_presets()
+        self.refresh_presets()  # Reload sequence buttons to show new pilot's sequences
 
     # ============================================================================
     # AUTOMATION CALLBACKS

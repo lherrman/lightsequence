@@ -2,18 +2,20 @@
 Unified Sequence Controller
 
 Manages all sequences (including "presets" which are just 1-step sequences).
-Handles playback, storage, and state management.
+Handles playback and state management.
+Persists sequences through ProjectDataRepository.
 """
 
-import json
 import logging
 import random
 import threading
 import time
 import typing as t
-from pathlib import Path
 from dataclasses import dataclass
 from enum import Enum
+
+if t.TYPE_CHECKING:
+    from lumiblox.pilot.project_data_repository import ProjectDataRepository
 
 logger = logging.getLogger(__name__)
 
@@ -54,9 +56,13 @@ class SequenceController:
 
     _BEATS_PER_BAR = 4
 
-    def __init__(self, storage_file: Path):
-        """Initialize sequence controller."""
-        self.storage_file = storage_file
+    def __init__(self, repository: "ProjectDataRepository"):
+        """Initialize sequence controller.
+        
+        Args:
+            repository: ProjectDataRepository for loading/saving sequences
+        """
+        self.repository = repository
         self.sequences: t.Dict[t.Tuple[int, int], t.List[SequenceStep]] = {}
         self.loop_settings: t.Dict[t.Tuple[int, int], bool] = {}
         self.followup_sequences: t.Dict[
@@ -80,27 +86,26 @@ class SequenceController:
         self.on_sequence_complete: t.Optional[t.Callable[[], None]] = None
         self.on_playback_state_change: t.Optional[t.Callable[[bool], None]] = None
 
-        # Load sequences from storage
-        self._load_from_storage()
+        # Load sequences from repository
+        self.load_from_repository()
 
     # ============================================================================
-    # STORAGE METHODS
+    # REPOSITORY PERSISTENCE METHODS
     # ============================================================================
 
-    def _load_from_storage(self) -> None:
-        """Load all sequences from storage file."""
+    def load_from_repository(self) -> None:
+        """Load all sequences from repository."""
         try:
-            if not self.storage_file.exists():
-                self._create_empty_storage()
-                return
-
-            with open(self.storage_file, "r", encoding="utf-8") as f:
-                data = json.load(f)
+            data = self.repository.get_sequences()
 
             if not isinstance(data, dict) or "sequences" not in data:
-                logger.warning("Invalid storage format, creating new")
-                self._create_empty_storage()
+                logger.warning("Invalid sequences format in repository")
                 return
+
+            # Clear existing sequences
+            self.sequences.clear()
+            self.loop_settings.clear()
+            self.followup_sequences.clear()
 
             # Parse sequences
             for seq_data in data.get("sequences", []):
@@ -130,24 +135,13 @@ class SequenceController:
                     if next_sequences:
                         self.followup_sequences[index] = next_sequences
 
-            logger.info(f"Loaded {len(self.sequences)} sequences from storage")
+            logger.info(f"Loaded {len(self.sequences)} sequences from repository")
 
         except Exception as e:
-            logger.error(f"Error loading sequences: {e}")
-            self._create_empty_storage()
+            logger.error(f"Error loading sequences from repository: {e}")
 
-    def _create_empty_storage(self) -> None:
-        """Create empty storage file."""
-        try:
-            self.storage_file.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.storage_file, "w", encoding="utf-8") as f:
-                json.dump({"sequences": []}, f, indent=2)
-            logger.info("Created empty sequence storage")
-        except Exception as e:
-            logger.error(f"Error creating storage: {e}")
-
-    def _save_to_storage(self) -> None:
-        """Save all sequences to storage file."""
+    def _save_to_repository(self) -> None:
+        """Save all sequences to repository."""
         try:
             sequences_data = []
             for index, steps in self.sequences.items():
@@ -175,16 +169,11 @@ class SequenceController:
                 }
                 sequences_data.append(seq_data)
 
-            # Atomic write
-            temp_file = self.storage_file.with_suffix(".tmp")
-            with open(temp_file, "w", encoding="utf-8") as f:
-                json.dump({"sequences": sequences_data}, f, indent=2)
-            temp_file.replace(self.storage_file)
-
-            logger.debug(f"Saved {len(sequences_data)} sequences")
+            self.repository.save_sequences({"sequences": sequences_data})
+            logger.debug(f"Saved {len(sequences_data)} sequences to repository")
 
         except Exception as e:
-            logger.error(f"Error saving sequences: {e}")
+            logger.error(f"Error saving sequences to repository: {e}")
 
     # ============================================================================
     # SEQUENCE MANAGEMENT
@@ -210,7 +199,7 @@ class SequenceController:
                 self.followup_sequences[index] = normalized
             else:
                 self.followup_sequences.pop(index, None)
-        self._save_to_storage()
+        self._save_to_repository()
 
         logger.info(f"Saved sequence {index} with {len(steps)} steps (loop={loop})")
 
@@ -231,7 +220,7 @@ class SequenceController:
             self.loop_settings.pop(index, None)
             self.followup_sequences.pop(index, None)
             self._prune_followup_references(index)
-            self._save_to_storage()
+            self._save_to_repository()
             logger.info(f"Deleted sequence {index}")
             return True
         return False
@@ -609,3 +598,4 @@ class SequenceController:
             if filtered:
                 updated[owner] = filtered
         self.followup_sequences = updated
+        self._save_to_repository()

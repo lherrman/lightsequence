@@ -13,7 +13,6 @@ Coordinates all subsystems:
 import logging
 import time
 import typing as t
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from lumiblox.controller.sequence_controller import (
@@ -32,7 +31,7 @@ from lumiblox.midi.light_software_sim import LightSoftwareSim
 from lumiblox.common.device_state import DeviceManager, DeviceType
 from lumiblox.common.config import get_config
 from lumiblox.common.enums import AppState
-from lumiblox.pilot.pilot_preset import PilotPresetManager
+from lumiblox.pilot.project_data_repository import ProjectDataRepository
 
 if TYPE_CHECKING:
     from lumiblox.pilot.pilot_controller import PilotController
@@ -53,8 +52,11 @@ class LightController:
         self.device_manager = DeviceManager()
         self.device_monitor = DeviceMonitor(self.device_manager)
         
+        # Initialize project data repository
+        self.project_repo = ProjectDataRepository()
+        
         # Core controllers
-        self.sequence_ctrl = SequenceController(Path("sequences.json"))
+        self.sequence_ctrl = SequenceController(self.project_repo)
         self.scene_ctrl = SceneController()
         self.input_handler = InputHandler()
         
@@ -73,7 +75,6 @@ class LightController:
         self.app_state = AppState.NORMAL
         self.active_sequence: t.Optional[t.Tuple[int, int]] = None
         self.config = get_config()
-        self.pilot_preset_manager = PilotPresetManager()
         self.pilot_controller: t.Optional["PilotController"] = None
 
         # Apply background animation from config (set once at startup)
@@ -186,6 +187,27 @@ class LightController:
         if hasattr(self.light_software, 'close_midi'):
             self.light_software.close_midi()
         logger.info("Cleanup complete")
+    
+    def switch_pilot(self, pilot_index: int) -> bool:
+        """
+        Switch to a different pilot and reload its sequences.
+        
+        Args:
+            pilot_index: Index of the pilot to switch to
+            
+        Returns:
+            True if successful
+        """
+        if self.project_repo.set_active_pilot(pilot_index):
+            # Stop any active sequence playback
+            self.sequence_ctrl.stop_playback()
+            
+            # Reload sequences from the new active pilot
+            self.sequence_ctrl.load_from_repository()
+            
+            logger.info(f"Switched to pilot at index {pilot_index}")
+            return True
+        return False
     
     # ============================================================================
     # INPUT PROCESSING
@@ -496,8 +518,8 @@ class LightController:
 
     def _render_pilot_selection_leds(self) -> None:
         """Render pilot selection grid on sequence buttons."""
-        pilot_count = len(self.pilot_preset_manager.presets)
-        active_index = self._get_active_pilot_index()
+        pilot_count = len(self.project_repo.pilots)
+        active_index = self.project_repo.get_active_pilot_index()
         self.led_ctrl.display_pilot_selection(pilot_count, active_index)
 
     def _handle_pilot_selection_button(self, index: t.Tuple[int, int]) -> None:
@@ -507,7 +529,7 @@ class LightController:
         if pilot_slot is None:
             return
 
-        if pilot_slot >= len(self.pilot_preset_manager.presets):
+        if pilot_slot >= len(self.project_repo.pilots):
             return
 
         self._activate_pilot_by_index(pilot_slot)
@@ -515,30 +537,22 @@ class LightController:
 
     def _activate_pilot_by_index(self, pilot_index: int) -> None:
         """Activate pilot preset by index and notify listeners."""
-        changed = False
-        for i, preset in enumerate(self.pilot_preset_manager.presets):
-            new_state = i == pilot_index
-            if preset.enabled != new_state:
-                preset.enabled = new_state
-                changed = True
-
-        if changed:
-            self.pilot_preset_manager.save()
+        # Switch to the pilot using the repository (reloads sequences automatically)
+        if self.switch_pilot(pilot_index):
+            # Reload pilot controller if active
             if self.pilot_controller:
                 self.pilot_controller.preset_manager.load()
 
-        if self.on_pilot_selection_changed:
-            try:
-                self.on_pilot_selection_changed(pilot_index)
-            except Exception as exc:
-                logger.debug(f"Pilot selection callback failed: {exc}")
+            # Notify listeners
+            if self.on_pilot_selection_changed:
+                try:
+                    self.on_pilot_selection_changed(pilot_index)
+                except Exception as exc:
+                    logger.debug(f"Pilot selection callback failed: {exc}")
 
     def _get_active_pilot_index(self) -> t.Optional[int]:
         """Return the currently enabled pilot preset index."""
-        for i, preset in enumerate(self.pilot_preset_manager.presets):
-            if getattr(preset, "enabled", False):
-                return i
-        return None
+        return self.project_repo.get_active_pilot_index()
 
     def _sequence_index_to_linear(self, index: t.Tuple[int, int]) -> t.Optional[int]:
         """Convert (x, y) sequence coordinates to linear slot index."""
@@ -549,7 +563,7 @@ class LightController:
 
     def _refresh_pilot_presets(self) -> None:
         """Reload pilot presets from disk if possible."""
-        success = self.pilot_preset_manager.load()
+        success = self.project_repo.load()
         if not success:
             logger.warning("Unable to reload pilot presets; using last known state")
 

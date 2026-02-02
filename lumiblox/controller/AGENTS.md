@@ -2,12 +2,13 @@
 
 ## Scope
 This directory orchestrates the runtime stack:
-- `light_controller.py`: connects hardware (Launchpad, lighting software), handles input routing, and exposes callbacks to the GUI.
-- `sequence_controller.py`: owns sequence storage (`sequences.json`), playback threads, and beat/bar timing.
+- `light_controller.py`: connects hardware (Launchpad, lighting software), handles input routing, manages `ProjectDataRepository`, and exposes callbacks to the GUI.
+- `sequence_controller.py`: owns sequence playback, threading, and beat/bar timing. **Persists via `ProjectDataRepository`**.
 - `scene_controller.py`, `led_controller.py`, `device_monitor.py`, etc. provide subsystem responsibilities.
 
 ## Key Concepts
-- **Sequences**: Multi-step presets stored as JSON. Use `SequenceController.save_sequence()` / `.activate_sequence()`; never manipulate `sequences.json` directly.
+- **Sequences**: Multi-step presets stored in `pilots.json` under each pilot. Use `SequenceController.save_sequence()` / `.activate_sequence()`; sequences persist automatically through the repository.
+- **Pilots**: Each pilot contains its own sequences and automation rules. Switch pilots with `LightController.switch_pilot()`.
 - **Threading**: Playback runs in a single background thread created via `_start_playback_thread_if_needed()`. When adding long-running logic, reuse the existing stop-event/condition variables rather than spawning extra threads.
 - **Callbacks**: Controllers communicate via callback attributes (e.g., `SequenceController.on_step_change`). Guard user callbacks with try/except and keep them non-blocking.
 - **Hardware Abstraction**: Device-related modules must route through `DeviceManager` + `DeviceMonitor` so the GUI receives state updates. No direct hardware calls from GUI helpers.

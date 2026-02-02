@@ -229,17 +229,24 @@ class AutomationRule:
 
 @dataclass
 class PilotPreset:
-    """Pilot preset with automation rules."""
+    """Pilot preset with automation rules and sequences."""
 
     name: str
     enabled: bool
     rules: List[AutomationRule]
+    sequences: Dict[str, Any] = None  # Stores sequences data for this pilot
+
+    def __post_init__(self):
+        """Ensure sequences is initialized."""
+        if self.sequences is None:
+            self.sequences = {"sequences": []}
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "name": self.name,
             "enabled": self.enabled,
             "rules": [r.to_dict() for r in self.rules],
+            "sequences": self.sequences or {"sequences": []},
         }
 
     @classmethod
@@ -248,6 +255,7 @@ class PilotPreset:
             name=data["name"],
             enabled=data["enabled"],
             rules=[AutomationRule.from_dict(r) for r in data.get("rules", [])],
+            sequences=data.get("sequences", {"sequences": []}),
         )
 
 

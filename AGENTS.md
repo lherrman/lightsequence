@@ -3,6 +3,7 @@
 ## Repository Purpose
 - Hybrid hardware+software controller for light shows driven by MIDI, Launchpad MK2, and custom sequences.
 - Core runtime lives in `lumiblox/controller`, GUI/editor tooling in `lumiblox/gui`, pilot/clock sync helpers in `lumiblox/pilot`.
+- **Project data** (pilots with embedded sequences) stored in `pilots.json`, managed via `ProjectDataRepository`.
 
 ## Tooling & Environment
 - Python 3.12 environment is managed through `uv`. Prefer `uv run` to execute tooling (e.g., `uv run python run.py`, `uv run pytest …`).

@@ -439,10 +439,6 @@ class PresetEditorDialog(QDialog):
         self.name_edit.setPlaceholderText("Preset name")
         info_layout.addRow("Name:", self.name_edit)
 
-        self.enabled_check = QCheckBox("Enabled")
-        self.enabled_check.setChecked(True)
-        info_layout.addRow("", self.enabled_check)
-
         layout.addLayout(info_layout)
 
         # Rules list
@@ -484,7 +480,6 @@ class PresetEditorDialog(QDialog):
     def load_preset(self, preset: PilotPreset) -> None:
         """Load preset data into UI."""
         self.name_edit.setText(preset.name)
-        self.enabled_check.setChecked(preset.enabled)
 
         for rule in preset.rules:
             self._add_rule_to_list(rule)
@@ -533,8 +528,11 @@ class PresetEditorDialog(QDialog):
             rule = item.data(Qt.ItemDataRole.UserRole)
             rules.append(rule)
 
+        # Preserve existing enabled state, or default to False for new presets
+        enabled = self.preset.enabled if self.preset else False
+
         return PilotPreset(
             name=self.name_edit.text() or "Unnamed Preset",
-            enabled=self.enabled_check.isChecked(),
+            enabled=enabled,
             rules=rules,
         )

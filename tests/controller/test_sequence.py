@@ -11,18 +11,25 @@ from lumiblox.controller.sequence_controller import (
     SequenceDurationUnit,
     SequenceStep,
 )
+from lumiblox.pilot.project_data_repository import ProjectDataRepository
 
 
 @pytest.fixture()
 def sequence_file(tmp_path: Path) -> Path:
-    """Provide a temporary storage path for the controller."""
-    return tmp_path / "sequences.json"
+    """Provide a temporary storage path for the repository."""
+    return tmp_path / "pilots.json"
 
 
 @pytest.fixture()
-def controller(sequence_file: Path):
-    """Create a controller backed by a temp file and ensure cleanup."""
-    ctrl = SequenceController(sequence_file)
+def repository(sequence_file: Path):
+    """Create a test repository."""
+    return ProjectDataRepository(sequence_file)
+
+
+@pytest.fixture()
+def controller(repository: ProjectDataRepository):
+    """Create a controller backed by a test repository and ensure cleanup."""
+    ctrl = SequenceController(repository)
     yield ctrl
     ctrl.cleanup()
 
@@ -34,16 +41,18 @@ def _sample_steps() -> list[SequenceStep]:
     ]
 
 
-def test_save_and_reload_sequence(sequence_file: Path):
+def test_save_and_reload_sequence(sequence_file: Path, repository: ProjectDataRepository):
     """Sequences should persist to disk and reload correctly."""
     index = (1, 2)
     steps = _sample_steps()
 
-    controller = SequenceController(sequence_file)
+    controller = SequenceController(repository)
     controller.save_sequence(index, steps, loop=False)
     controller.cleanup()
 
-    reloaded = SequenceController(sequence_file)
+    # Create new repository instance and controller to test persistence
+    reloaded_repo = ProjectDataRepository(sequence_file)
+    reloaded = SequenceController(reloaded_repo)
     loaded_steps = reloaded.get_sequence(index)
     assert loaded_steps is not None
     assert len(loaded_steps) == len(steps)
@@ -140,18 +149,20 @@ def test_bar_duration_advances_with_beats(controller: SequenceController):
     controller.stop_playback()
 
 
-def test_followup_sequences_persist(sequence_file: Path):
+def test_followup_sequences_persist(sequence_file: Path, repository: ProjectDataRepository):
     """Follow-up sequence lists should save to disk and reload."""
     primary_index = (4, 4)
     next_index = (5, 5)
     steps = _sample_steps()
 
-    controller = SequenceController(sequence_file)
+    controller = SequenceController(repository)
     controller.save_sequence(primary_index, steps, loop=False, next_sequences=[next_index])
     controller.save_sequence(next_index, steps, loop=True)
     controller.cleanup()
 
-    reloaded = SequenceController(sequence_file)
+    # Create new repository instance and controller to test persistence
+    reloaded_repo = ProjectDataRepository(sequence_file)
+    reloaded = SequenceController(reloaded_repo)
     assert reloaded.get_followup_sequences(primary_index) == [next_index]
     reloaded.cleanup()
 

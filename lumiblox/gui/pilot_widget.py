@@ -655,6 +655,7 @@ class PilotWidget(QWidget):
     midi_action_added = Signal(object)  # Emits MidiActionConfig
     midi_action_removed = Signal(str)  # Emits action name
     rule_trigger_requested = Signal(str)
+    pilot_preset_changed = Signal(int)  # Emits new pilot index
 
     def __init__(
         self,
@@ -1014,14 +1015,11 @@ class PilotWidget(QWidget):
         self.preset_combo.clear()
 
         for i, preset in enumerate(self.preset_manager.presets):
-            status = "✓" if preset.enabled else "✗"
-            self.preset_combo.addItem(f"{status} {preset.name}", i)
+            self.preset_combo.addItem(preset.name, i)
 
-        # Select first enabled preset
-        for i, preset in enumerate(self.preset_manager.presets):
-            if preset.enabled:
-                self.preset_combo.setCurrentIndex(i)
-                break
+        # Default to first preset if any exist
+        if self.preset_manager.presets:
+            self.preset_combo.setCurrentIndex(0)
 
         self.preset_combo.blockSignals(False)
         self._update_rules_preview()
@@ -1234,12 +1232,13 @@ class PilotWidget(QWidget):
     def _on_preset_changed(self, index: int) -> None:
         """Handle preset selection change."""
         if 0 <= index < len(self.preset_manager.presets):
-            # Enable this preset, disable others
-            for i, preset in enumerate(self.preset_manager.presets):
-                preset.enabled = i == index
-            self.preset_manager.save()
+            # Just update the UI preview and emit signal
+            # The controller will handle persistence via repository
             self._update_rules_preview()
             logger.info(f"Switched to preset: {self.preset_combo.currentText()}")
+            
+            # Emit signal to notify controller
+            self.pilot_preset_changed.emit(index)
 
     def _on_add_preset(self) -> None:
         """Show dialog to create a new preset."""
