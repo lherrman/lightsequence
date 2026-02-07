@@ -118,13 +118,25 @@ class SceneController:
 
             self.active_scenes.clear()
             self.controlled_scenes.clear()
+            self._recently_deactivated = set(scenes_to_clear)
             logger.debug("Cleared all scenes")
     
     def clear_controlled(self) -> None:
         """Clear only controlled scenes (from sequences)."""
         with self._lock:
-            for scene in list(self.controlled_scenes):
+            scenes_to_clear = list(self.controlled_scenes)
+            for scene in scenes_to_clear:
                 self._deactivate_scene(scene)
+            self._recently_deactivated = set(scenes_to_clear)
+
+    def force_deactivate_scenes(self, scenes: t.Iterable[t.Tuple[int, int]]) -> None:
+        """Force deactivation for provided scenes (regardless of controlled state)."""
+        with self._lock:
+            scenes_to_clear = list(scenes)
+            for scene in scenes_to_clear:
+                self._deactivate_scene(scene)
+            if scenes_to_clear:
+                self._recently_deactivated.update(scenes_to_clear)
     
     def mark_scene_active(self, scene: t.Tuple[int, int], active: bool) -> None:
         """

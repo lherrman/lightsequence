@@ -273,7 +273,10 @@ class SequenceController:
         self.stop_event.set()
         if self.playback_thread and self.playback_thread.is_alive():
             self.playback_thread.join(timeout=1.0)
-        self.playback_thread = None
+        if self.playback_thread and self.playback_thread.is_alive():
+            logger.warning("Playback thread did not stop within timeout")
+        else:
+            self.playback_thread = None
         self.active_sequence = None
         self.current_step_index = 0
         self._active_loop_iteration = 0
@@ -281,7 +284,8 @@ class SequenceController:
         with self._bar_condition:
             self._beats_remaining = None
             self._bar_condition.notify_all()
-        self.stop_event.clear()
+        if not (self.playback_thread and self.playback_thread.is_alive()):
+            self.stop_event.clear()
 
     def activate_sequence(self, index: t.Tuple[int, int]) -> bool:
         """
@@ -358,8 +362,11 @@ class SequenceController:
         self.stop_event.set()
         if self.playback_thread and self.playback_thread.is_alive():
             self.playback_thread.join(timeout=1.0)
-        self.playback_thread = None
-        self.stop_event.clear()
+        if self.playback_thread and self.playback_thread.is_alive():
+            logger.warning("Playback thread did not stop within timeout")
+        else:
+            self.playback_thread = None
+            self.stop_event.clear()
 
         self.active_sequence = None
         self.current_step_index = 0
@@ -435,6 +442,9 @@ class SequenceController:
                     self.current_step_index = 0
 
                 step = sequence[self.current_step_index]
+
+                if self.stop_event.is_set() or self.active_sequence != active_index:
+                    break
 
                 if self.on_step_change:
                     try:

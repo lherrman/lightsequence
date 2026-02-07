@@ -74,6 +74,7 @@ class LightController:
         # App state
         self.app_state = AppState.NORMAL
         self.active_sequence: t.Optional[t.Tuple[int, int]] = None
+        self._last_sequence_scenes: t.Set[t.Tuple[int, int]] = set()
         self.config = get_config()
         self.pilot_controller: t.Optional["PilotController"] = None
 
@@ -350,6 +351,10 @@ class LightController:
             "step_change scenes=%s active_sequence=%s", scenes, self.sequence_ctrl.active_sequence
         )
         current_sequence = self.sequence_ctrl.active_sequence
+        if current_sequence is None:
+            logger.debug("Ignoring step change with no active sequence")
+            return
+        self._last_sequence_scenes = set(scenes)
         if current_sequence != self.active_sequence:
             if self.active_sequence:
                 self._set_sequence_led_state(self.active_sequence, False)
@@ -373,8 +378,12 @@ class LightController:
         """Activate or deactivate a sequence."""
         if self.active_sequence == index:
             # Deactivate
+            last_scenes = self._last_sequence_scenes.copy()
             self.sequence_ctrl.clear()
             self.scene_ctrl.clear_controlled()
+            if last_scenes:
+                self.scene_ctrl.force_deactivate_scenes(last_scenes)
+            self._last_sequence_scenes.clear()
             self.active_sequence = None
             self._set_sequence_led_state(index, False)
             if self.on_sequence_changed:
@@ -382,7 +391,12 @@ class LightController:
         else:
             # Deactivate old sequence first
             if self.active_sequence:
+                last_scenes = self._last_sequence_scenes.copy()
                 self._set_sequence_led_state(self.active_sequence, False)
+                self.scene_ctrl.clear_controlled()
+                if last_scenes:
+                    self.scene_ctrl.force_deactivate_scenes(last_scenes)
+                self._last_sequence_scenes.clear()
             
             # Activate new sequence
             self.active_sequence = index
@@ -597,6 +611,7 @@ class LightController:
             self.sequence_ctrl.stop_playback()
             self._set_sequence_led_state(self.active_sequence, False)
             self.active_sequence = None
+        self._last_sequence_scenes.clear()
         
         self.scene_ctrl.clear_all()
 
