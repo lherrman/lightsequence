@@ -19,6 +19,8 @@
         "connection_good": "#004d00",
         "next_step": "#0080ff",
         "off": "#000000",
+        "pilot_toggle_off": "#ff8000",
+        "pilot_toggle_on": "#00ff00",
         "playback_paused": "#ff8000",
         "playback_playing": "#00ff00",
         "preset_on": "#ff0080",
@@ -111,7 +113,7 @@
                 "timeline_region": null
             }
         },
-        "enabled": false,
+        "enabled": true,
         "midi_actions": [],
         "midiclock_device": "midiclock",
         "model_path": "pilot-tests/resources/traktor/classifier_traktor.pkl",

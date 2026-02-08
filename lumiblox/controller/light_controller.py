@@ -391,12 +391,15 @@ class LightController:
         else:
             # Deactivate old sequence first
             if self.active_sequence:
-                last_scenes = self._last_sequence_scenes.copy()
                 self._set_sequence_led_state(self.active_sequence, False)
-                self.scene_ctrl.clear_controlled()
-                if last_scenes:
-                    self.scene_ctrl.force_deactivate_scenes(last_scenes)
-                self._last_sequence_scenes.clear()
+                last_scenes = self._last_sequence_scenes.copy()
+                next_sequence = self.sequence_ctrl.get_sequence(index)
+                next_first_scenes = (
+                    set(next_sequence[0].scenes) if next_sequence else set()
+                )
+                scenes_to_force_off = last_scenes - next_first_scenes
+                if scenes_to_force_off:
+                    self.scene_ctrl.force_deactivate_scenes(scenes_to_force_off)
             
             # Activate new sequence
             self.active_sequence = index
@@ -688,6 +691,24 @@ class LightController:
             )
             next_color = "next_step" if can_advance else "off"
             self.led_ctrl.update_control_led(next_step_coords, next_color)
+
+            # Pilot toggle LED reflects pilot running state
+            pilot_coords = tuple(
+                self.config.data["key_bindings"]["pilot_toggle_button"][
+                    "coordinates"
+                ]
+            )
+            pilot_running = False
+            if self.pilot_controller:
+                try:
+                    pilot_running = self.pilot_controller.is_running()
+                except Exception as exc:
+                    logger.debug("Could not read pilot state: %s", exc)
+            else:
+                pilot_running = bool(self.config.data.get("pilot", {}).get("enabled", False))
+
+            pilot_color = "pilot_toggle_on" if pilot_running else "pilot_toggle_off"
+            self.led_ctrl.update_control_led(pilot_coords, pilot_color)
             
             # Update clear button
             coords = tuple(self.config.data["key_bindings"]["clear_button"]["coordinates"])

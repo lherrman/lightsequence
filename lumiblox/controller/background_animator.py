@@ -129,33 +129,7 @@ class BackgroundAnimator:
                     base_color * self.config.data["brightness_background_effect"]
                 )
 
-                # Apply column color to row 0
-                if y == 0 and app_state == AppState.NORMAL:
-                    column_color_hex = self.config.data["colors"]["column_colors"].get(
-                        str(x), "#ff0000"
-                    )
-                    column_color_rgb = hex_to_rgb(column_color_hex)
-                    combined_color = [
-                        min(
-                            1.0,
-                            column_color_rgb[0]
-                            * self.config.data["brightness_background_top_row"],
-                        ),
-                        min(
-                            1.0,
-                            column_color_rgb[1]
-                            * self.config.data["brightness_background_top_row"],
-                        ),
-                        min(
-                            1.0,
-                            column_color_rgb[2]
-                            * self.config.data["brightness_background_top_row"],
-                        ),
-                    ]
-                    self.pixel_buffer[x, y] = combined_color
-                    continue
-
-                elif self.BOUNDS_PRESETS[0][1] <= y <= self.BOUNDS_PRESETS[1][1]:
+                if self.BOUNDS_PRESETS[0][1] <= y <= self.BOUNDS_PRESETS[1][1]:
                     if app_state == AppState.SAVE_MODE:
                         # In save mode: show white background for buttons without presets
                         preset_coords = (

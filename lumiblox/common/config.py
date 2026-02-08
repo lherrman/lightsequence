@@ -46,6 +46,8 @@ class ColorConfig(TypedDict):
     playback_playing: str
     playback_paused: str
     next_step: str
+    pilot_toggle_on: str
+    pilot_toggle_off: str
     connection_good: str
     connection_bad: str
     off: str
@@ -117,6 +119,8 @@ class ConfigManager:
             "playback_playing": "#00ff00",
             "playback_paused": "#ff8000",
             "next_step": "#0080ff",
+            "pilot_toggle_on": "#00ff00",
+            "pilot_toggle_off": "#ff8000",
             "connection_good": "#004d00",
             "connection_bad": "#4d0000",
             "off": "#000000",
