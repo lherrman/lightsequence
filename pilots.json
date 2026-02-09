@@ -135,12 +135,7 @@
             ],
             "steps": [
               {
-                "scenes": [
-                  [
-                    6,
-                    2
-                  ]
-                ],
+                "scenes": [],
                 "duration": 1.0,
                 "name": "Step 1",
                 "duration_unit": "seconds"

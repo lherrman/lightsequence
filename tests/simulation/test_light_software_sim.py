@@ -16,7 +16,7 @@ def test_simulator_initialization(simulator):
     """Test simulator initialization"""
     assert simulator is not None
     assert simulator.scene_states is not None
-    assert len(simulator.scene_states) == 9 * 5  # 9 columns x 5 rows
+    assert len(simulator.scene_states) == 9 * 10  # 9 columns x 10 rows (2 pages)
 
 
 def test_scene_note_mapping(simulator):

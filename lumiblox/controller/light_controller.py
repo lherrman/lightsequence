@@ -29,7 +29,7 @@ from lumiblox.devices.launchpad import LaunchpadMK2
 from lumiblox.midi.light_software import LightSoftware
 from lumiblox.midi.light_software_sim import LightSoftwareSim
 from lumiblox.common.device_state import DeviceManager, DeviceType
-from lumiblox.common.config import get_config
+from lumiblox.common.config import get_config, ROWS_PER_PAGE, NUM_SCENE_PAGES, SCENE_COLUMNS
 from lumiblox.common.enums import AppState
 from lumiblox.pilot.project_data_repository import ProjectDataRepository
 
@@ -75,6 +75,7 @@ class LightController:
         self.app_state = AppState.NORMAL
         self.active_sequence: t.Optional[t.Tuple[int, int]] = None
         self._last_sequence_scenes: t.Set[t.Tuple[int, int]] = set()
+        self.active_page: int = 0
         self.config = get_config()
         self.pilot_controller: t.Optional["PilotController"] = None
 
@@ -132,6 +133,8 @@ class LightController:
             "clear_button",
             "pilot_select_button",
             "pilot_toggle_button",
+            "page_1_button",
+            "page_2_button",
         }
         for name, binding in bindings.items():
             if name not in allowed_controls:
@@ -155,6 +158,9 @@ class LightController:
         
         # Sync initial state from light software
         self._sync_initial_scenes()
+        
+        # Show scene LEDs for the initial page
+        self._refresh_scene_leds_for_page()
         
         logger.info("Light controller initialized")
         return True
@@ -237,6 +243,8 @@ class LightController:
         # Map launchpad button type to generic type
         if lp_type == LPButtonType.SCENE:
             btn_type = ButtonType.SCENE
+            # Apply page offset to get absolute scene coordinates
+            coords = (coords[0], coords[1] + self.active_page * ROWS_PER_PAGE)
         elif lp_type == LPButtonType.PRESET:
             btn_type = ButtonType.SEQUENCE
         elif lp_type == LPButtonType.CONTROL:
@@ -258,16 +266,19 @@ class LightController:
             scene = self.light_software.get_scene_coordinates_for_note(note)
             if scene:
                 guarded = self.scene_ctrl.get_sequence_guard_scenes()
+                lp_scene = self._scene_to_launchpad_scene(scene)
                 # For guarded scenes, controller is source of truth; only allow offs
                 if scene in guarded:
                     if is_active:
                         continue
                     self.scene_ctrl.mark_scene_active(scene, False)
-                    self.led_ctrl.update_scene_led(scene, False)
+                    if lp_scene is not None:
+                        self.led_ctrl.update_scene_led(lp_scene, False)
                     continue
 
                 self.scene_ctrl.mark_scene_active(scene, is_active)
-                self.led_ctrl.update_scene_led(scene, is_active)
+                if lp_scene is not None:
+                    self.led_ctrl.update_scene_led(lp_scene, is_active)
     
     def _sync_initial_scenes(self) -> None:
         """Sync initial active scenes from light software."""
@@ -314,6 +325,8 @@ class LightController:
             "clear_button": self._clear_all_scenes,
             "pilot_select_button": self._toggle_pilot_select_mode,
             "pilot_toggle_button": self._toggle_pilot_enabled,
+            "page_1_button": lambda: self._switch_page(0),
+            "page_2_button": lambda: self._switch_page(1),
         }
         
         handler = handlers.get(name)
@@ -332,14 +345,18 @@ class LightController:
         logger.debug("scene_activate scene=%s", scene)
         # Use explicit state setting for deterministic control
         self.light_software.set_scene_state(scene, True)
-        self.led_ctrl.update_scene_led(scene, True)
+        lp_scene = self._scene_to_launchpad_scene(scene)
+        if lp_scene is not None:
+            self.led_ctrl.update_scene_led(lp_scene, True)
     
     def _handle_scene_deactivate(self, scene: t.Tuple[int, int]) -> None:
         """Handle scene deactivation."""
         logger.debug("scene_deactivate scene=%s", scene)
         # Send explicit velocity 0 so offs are deterministic even if a toggle is missed.
         self.light_software.set_scene_state(scene, False)
-        self.led_ctrl.update_scene_led(scene, False)
+        lp_scene = self._scene_to_launchpad_scene(scene)
+        if lp_scene is not None:
+            self.led_ctrl.update_scene_led(lp_scene, False)
     
     # ============================================================================
     # SEQUENCE CALLBACKS
@@ -591,6 +608,40 @@ class LightController:
         self.led_ctrl.update_sequence_led(index, active)
     
     # ============================================================================
+    # PAGE MANAGEMENT
+    # ============================================================================
+    
+    def _scene_to_launchpad_scene(self, scene: t.Tuple[int, int]) -> t.Optional[t.Tuple[int, int]]:
+        """Convert absolute scene coords to Launchpad scene coords.
+        
+        Returns None if the scene is not on the currently active page.
+        """
+        x, y = scene
+        page_start = self.active_page * ROWS_PER_PAGE
+        page_end = page_start + ROWS_PER_PAGE
+        if page_start <= y < page_end:
+            return (x, y - page_start)
+        return None
+    
+    def _switch_page(self, page: int) -> None:
+        """Switch to a different scene page on the Launchpad."""
+        if page == self.active_page or page < 0 or page >= NUM_SCENE_PAGES:
+            return
+        
+        logger.info("Switching scene page %d -> %d", self.active_page + 1, page + 1)
+        self.active_page = page
+        self._refresh_scene_leds_for_page()
+    
+    def _refresh_scene_leds_for_page(self) -> None:
+        """Refresh all scene LEDs on the Launchpad for the current page."""
+        active_scenes = self.scene_ctrl.get_active_scenes()
+        for lp_y in range(ROWS_PER_PAGE):
+            for lp_x in range(SCENE_COLUMNS):
+                abs_scene = (lp_x, lp_y + self.active_page * ROWS_PER_PAGE)
+                is_active = abs_scene in active_scenes
+                self.led_ctrl.update_scene_led((lp_x, lp_y), is_active)
+    
+    # ============================================================================
     # OTHER CONTROLS
     # ============================================================================
     
@@ -714,6 +765,15 @@ class LightController:
             coords = tuple(self.config.data["key_bindings"]["clear_button"]["coordinates"])
             color_key = "success_flash" if self.scene_ctrl.has_active_scenes() else "off"
             self.led_ctrl.update_control_led(coords, color_key)
+
+            # Update page button LEDs
+            page_buttons = ["page_1_button", "page_2_button"]
+            bindings = self.config.data.get("key_bindings", {})
+            for page_idx, page_key in enumerate(page_buttons):
+                if page_key in bindings:
+                    page_coords = tuple(bindings[page_key]["coordinates"])
+                    page_color = "page_active" if page_idx == self.active_page else "off"
+                    self.led_ctrl.update_control_led(page_coords, page_color)
     
     def _on_device_state_changed(self, device_type, new_state) -> None:
         """Handle device state changes."""

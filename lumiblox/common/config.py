@@ -30,6 +30,14 @@ def get_button_type_enum(button_type_str: str):
     return button_type_map.get(button_type_str.upper(), ButtonType.UNKNOWN)
 
 
+# Scene page constants
+ROWS_PER_PAGE = 5
+NUM_SCENE_PAGES = 2
+SCENE_COLUMNS = 9  # Total columns on Launchpad (including right-side control column)
+GUI_SCENE_COLUMNS = 8  # Columns shown in the GUI (excluding right-side control column)
+TOTAL_SCENE_ROWS = ROWS_PER_PAGE * NUM_SCENE_PAGES
+
+
 class ColorConfig(TypedDict):
     """Type definition for color configuration."""
 
@@ -50,6 +58,7 @@ class ColorConfig(TypedDict):
     pilot_toggle_off: str
     connection_good: str
     connection_bad: str
+    page_active: str
     off: str
 
 
@@ -70,6 +79,8 @@ class KeyBindings(TypedDict):
     clear_button: KeyBinding
     pilot_select_button: KeyBinding
     pilot_toggle_button: KeyBinding
+    page_1_button: KeyBinding
+    page_2_button: KeyBinding
 
 
 class ConfigData(TypedDict):
@@ -123,6 +134,7 @@ class ConfigManager:
             "pilot_toggle_off": "#ff8000",
             "connection_good": "#004d00",
             "connection_bad": "#4d0000",
+            "page_active": "#00ff00",
             "off": "#000000",
         },
         "key_bindings": {
@@ -133,6 +145,8 @@ class ConfigManager:
             "clear_button": {"button_type": "CONTROL", "coordinates": [8, 8]},
             "pilot_select_button": {"button_type": "CONTROL", "coordinates": [4, 0]},
             "pilot_toggle_button": {"button_type": "CONTROL", "coordinates": [5, 0]},
+            "page_1_button": {"button_type": "CONTROL", "coordinates": [6, 0]},
+            "page_2_button": {"button_type": "CONTROL", "coordinates": [7, 0]},
         },
         "pilot": {
             "enabled": False,

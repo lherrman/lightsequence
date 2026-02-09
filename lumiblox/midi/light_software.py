@@ -39,15 +39,17 @@ class LightSoftware:
     def _build_scene_note_mapping(self) -> t.Dict[t.Tuple[int, int], int]:
         """
         Build mapping from scene button coordinates to MIDI notes.
-        Corresponds to the default notes from Launchpad MK2
+        Page 1 (y=0-4): Original Launchpad MK2 note layout.
+        Page 2 (y=5-9): Extended mapping using remaining MIDI note ranges.
         """
         scene_map = {}
-        base_notes = [81, 71, 61, 51, 41]  # y=0 to y=5
+        base_notes = [81, 71, 61, 51, 41, 31, 21, 11, 1, 91]
 
         for x in range(9):  # 9 columns
-            for y in range(5):  # 5 rows (y=0 to y=4 relative to scene area)
+            for y in range(len(base_notes)):
                 note = base_notes[y] + x
-                scene_map[(x, y)] = note
+                if 0 <= note <= 127:
+                    scene_map[(x, y)] = note
 
         return scene_map
 

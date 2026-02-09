@@ -19,6 +19,7 @@
         "connection_good": "#004d00",
         "next_step": "#0080ff",
         "off": "#000000",
+        "page_active": "#00ff00",
         "pilot_toggle_off": "#ff8000",
         "pilot_toggle_on": "#00ff00",
         "playback_paused": "#ff8000",
@@ -46,6 +47,20 @@
             "coordinates": [
                 8,
                 6
+            ]
+        },
+        "page_1_button": {
+            "button_type": "CONTROL",
+            "coordinates": [
+                6,
+                0
+            ]
+        },
+        "page_2_button": {
+            "button_type": "CONTROL",
+            "coordinates": [
+                7,
+                0
             ]
         },
         "pilot_select_button": {

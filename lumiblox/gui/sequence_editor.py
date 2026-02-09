@@ -144,13 +144,27 @@ class SequenceStepWidget(QFrame):
         scenes_layout.setContentsMargins(0, 0, 0, 0)
         scenes_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
-        # Create 8x5 grid of scene buttons
-        for y in range(5):
-            for x in range(8):
+        # Create scene buttons for all pages (e.g. 2 pages × 5 rows = 10 rows)
+        from lumiblox.common.config import ROWS_PER_PAGE, NUM_SCENE_PAGES, GUI_SCENE_COLUMNS
+        total_rows = ROWS_PER_PAGE * NUM_SCENE_PAGES
+        for y in range(total_rows):
+            # Calculate grid row with space for dividers between pages
+            page_idx = y // ROWS_PER_PAGE
+            grid_row = y + page_idx  # Offset by number of dividers above
+            for x in range(GUI_SCENE_COLUMNS):
                 btn = SceneButton(x, y)
                 btn.scene_toggled.connect(self.on_scene_toggled)
                 self.scene_buttons[(x, y)] = btn
-                scenes_layout.addWidget(btn, y, x)
+                scenes_layout.addWidget(btn, grid_row, x)
+
+        # Add visual dividers between pages
+        for page in range(1, NUM_SCENE_PAGES):
+            divider_row = page * ROWS_PER_PAGE + (page - 1)
+            divider = QLabel(f"Page {page + 1}")
+            divider.setFixedHeight(14)
+            divider.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            divider.setStyleSheet("color: #666666; font-size: 9px; background: transparent; border-top: 1px solid #555555; padding-top: 1px;")
+            scenes_layout.addWidget(divider, divider_row, 0, 1, GUI_SCENE_COLUMNS)
 
         content_layout.addLayout(scenes_layout)
 
