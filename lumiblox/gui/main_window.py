@@ -59,6 +59,8 @@ class LightSequenceGUI(QMainWindow):
         self.next_sequence_jump_edit_mode = False
         self._followup_highlight_candidates: t.Set[t.Tuple[int, int]] = set()
         self._selected_preset_coords: t.Optional[t.Tuple[int, int]] = None
+        self._pilot_jump_edit_mode = False
+        self._pilot_jump_highlight_candidates: t.Set[t.Tuple[int, int]] = set()
 
         # Connect the signals to the slots
         self.sequence_changed_signal.connect(self._update_sequence_from_launchpad)
@@ -123,6 +125,12 @@ class LightSequenceGUI(QMainWindow):
         )
         self.pilot_widget.pilot_preset_changed.connect(
             self._on_pilot_preset_changed
+        )
+        self.pilot_widget.pilot_jump_edit_mode_changed.connect(
+            self._on_pilot_jump_edit_mode_changed
+        )
+        self.pilot_widget.pilot_jump_candidates_changed.connect(
+            self._on_pilot_jump_candidates_changed
         )
         main_layout.addWidget(self.pilot_widget)  # No stretch, fixed height
 
@@ -376,21 +384,24 @@ class LightSequenceGUI(QMainWindow):
             else:
                 btn.set_preset_info(False, False)
 
-        self._apply_followup_highlights()
+        self._apply_all_highlights()
 
     def _on_followup_edit_mode_changed(self, enabled: bool) -> None:
         self._set_followup_edit_mode(enabled)
 
     def _on_followup_candidates_changed(self, candidates: t.List[t.Tuple[int, int]]) -> None:
         self._followup_highlight_candidates = set(candidates)
-        self._apply_followup_highlights()
+        self._apply_all_highlights()
 
     def _set_followup_edit_mode(self, enabled: bool) -> None:
         self.next_sequence_jump_edit_mode = enabled
-        if not enabled:
-            self._clear_followup_highlights()
-        else:
+        if enabled:
+            # Exit pilot jump mode when entering sequence followup mode
+            if self._pilot_jump_edit_mode:
+                self.pilot_widget.exit_pilot_jump_edit_mode()
             self._apply_followup_highlights()
+        else:
+            self._clear_followup_highlights()
 
     def _apply_followup_highlights(self) -> None:
         if not hasattr(self, "preset_buttons"):
@@ -407,6 +418,35 @@ class LightSequenceGUI(QMainWindow):
         for btn in self.preset_buttons.values():
             btn.set_followup_target(False)
 
+    # ---- Pilot jump-to edit mode (rule sequence targets) ----
+
+    def _on_pilot_jump_edit_mode_changed(self, enabled: bool) -> None:
+        self._pilot_jump_edit_mode = enabled
+        if not enabled:
+            self._pilot_jump_highlight_candidates.clear()
+            self._apply_all_highlights()
+        else:
+            # Entering pilot jump mode exits sequence followup mode
+            if self.next_sequence_jump_edit_mode and self.current_editor:
+                self.current_editor._set_followup_edit_mode(False)
+            self._apply_all_highlights()
+
+    def _on_pilot_jump_candidates_changed(self, candidates: t.List[t.Tuple[int, int]]) -> None:
+        self._pilot_jump_highlight_candidates = set(candidates)
+        self._apply_all_highlights()
+
+    def _apply_all_highlights(self) -> None:
+        """Apply the correct highlight set depending on active mode."""
+        if not hasattr(self, "preset_buttons"):
+            return
+        if self._pilot_jump_edit_mode:
+            for coords, btn in self.preset_buttons.items():
+                btn.set_followup_target(coords in self._pilot_jump_highlight_candidates)
+        elif self.next_sequence_jump_edit_mode:
+            self._apply_followup_highlights()
+        else:
+            self._clear_followup_highlights()
+
     def _restore_selected_preset(self) -> None:
         for btn in self.preset_buttons.values():
             btn.set_active_preset(False)
@@ -419,6 +459,14 @@ class LightSequenceGUI(QMainWindow):
             return
 
         sequence_tuple = (x, y)
+
+        # Pilot jump-to edit mode: toggle sequence for the active rule
+        if self._pilot_jump_edit_mode:
+            btn = self.preset_buttons.get(sequence_tuple)
+            if btn and btn.has_preset:
+                self.pilot_widget.toggle_pilot_jump_candidate(sequence_tuple)
+                self._restore_selected_preset()
+            return
 
         if self.next_sequence_jump_edit_mode and self.current_editor:
             btn = self.preset_buttons.get(sequence_tuple)

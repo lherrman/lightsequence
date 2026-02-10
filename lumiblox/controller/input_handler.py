@@ -77,17 +77,3 @@ class InputHandler:
                 return name
         return None
     
-    def create_event(
-        self,
-        button_type: ButtonType,
-        coordinates: t.Tuple[int, int],
-        pressed: bool,
-        source: str = "unknown"
-    ) -> ButtonEvent:
-        """Create a button event."""
-        return ButtonEvent(
-            button_type=button_type,
-            coordinates=coordinates,
-            pressed=pressed,
-            source=source
-        )

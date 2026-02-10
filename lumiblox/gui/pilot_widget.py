@@ -656,6 +656,8 @@ class PilotWidget(QWidget):
     midi_action_removed = Signal(str)  # Emits action name
     rule_trigger_requested = Signal(str)
     pilot_preset_changed = Signal(int)  # Emits new pilot index
+    pilot_jump_edit_mode_changed = Signal(bool)
+    pilot_jump_candidates_changed = Signal(list)
 
     def __init__(
         self,
@@ -668,6 +670,8 @@ class PilotWidget(QWidget):
         self.phrase_detection_enabled = False
         self.preset_manager = PilotPresetManager()
         self._cooldown_cache: dict[str, dict[str, int]] = {}
+        self._jump_edit_rule_name: Optional[str] = None
+        self._jump_edit_candidates: list[tuple[int, int]] = []
 
         self.setup_ui()
         self._load_presets()
@@ -1083,9 +1087,43 @@ class PilotWidget(QWidget):
             lambda _checked=False, rn=rule.name: self.rule_trigger_requested.emit(rn)
         )
 
+        settings_btn = QToolButton()
+        settings_btn.setIcon(qta.icon("fa5s.cog", color="white"))
+        settings_btn.setIconSize(ICON_SIZE_SMALL)
+        settings_btn.setFixedSize(BUTTON_SIZE_SMALL)
+        settings_btn.setToolTip("Edit rule settings")
+        settings_btn.setStyleSheet(
+            BUTTON_STYLE + "QToolButton { padding: 0px; border-radius: 3px; }"
+        )
+        settings_btn.clicked.connect(
+            lambda _checked=False, rn=rule.name: self._on_edit_rule(rn)
+        )
+
+        jump_edit_btn = QToolButton()
+        jump_edit_btn.setCheckable(True)
+        jump_edit_btn.setIcon(qta.icon("fa5s.th", color="white"))
+        jump_edit_btn.setIconSize(ICON_SIZE_SMALL)
+        jump_edit_btn.setFixedSize(BUTTON_SIZE_SMALL)
+        jump_edit_btn.setToolTip("Select which sequences this rule jumps to")
+        jump_edit_btn.setStyleSheet(
+            BUTTON_STYLE
+            + """
+            QToolButton { padding: 0px; border-radius: 3px; }
+            QToolButton:checked {
+                background-color: #0078d4;
+                border: 1px solid #005a9e;
+            }
+            """
+        )
+        jump_edit_btn.clicked.connect(
+            lambda checked, rn=rule.name: self._on_jump_edit_toggled(rn, checked)
+        )
+
         label = QLabel()
         label.setWordWrap(True)
         row_layout.addWidget(trigger_btn)
+        row_layout.addWidget(settings_btn)
+        row_layout.addWidget(jump_edit_btn)
         row_layout.addWidget(label, 1)
 
         cooldown_bar = QProgressBar()
@@ -1113,12 +1151,36 @@ class PilotWidget(QWidget):
         self.rule_widgets[rule.name] = {
             "label": label,
             "button": trigger_btn,
+            "jump_edit_btn": jump_edit_btn,
             "cooldown_bar": cooldown_bar,
             "cooldown_total": max(rule.cooldown_bars, 0),
             "rule": rule,
         }
 
         return row
+
+    def _on_edit_rule(self, rule_name: str) -> None:
+        """Open the rule editor dialog for a specific rule."""
+        current_index = self.preset_combo.currentIndex()
+        if not (0 <= current_index < len(self.preset_manager.presets)):
+            return
+        preset = self.preset_manager.presets[current_index]
+        rule_index = None
+        for i, rule in enumerate(preset.rules):
+            if rule.name == rule_name:
+                rule_index = i
+                break
+        if rule_index is None:
+            return
+
+        from lumiblox.gui.rule_editor import RuleEditorDialog
+
+        dialog = RuleEditorDialog(preset.rules[rule_index], parent=self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            updated_rule = dialog.get_rule()
+            preset.rules[rule_index] = updated_rule
+            self.preset_manager.save()
+            self._update_rules_preview()
 
     def update_rule_cooldowns(self, cooldowns: dict[str, dict[str, int]]) -> None:
         """Update cooldown indicators and button states for each rule."""
@@ -1235,8 +1297,107 @@ class PilotWidget(QWidget):
 
         QTimer.singleShot(500, _flash_off)
 
+    def _on_jump_edit_toggled(self, rule_name: str, checked: bool) -> None:
+        """Handle jump-to edit button toggle for a rule."""
+        if checked:
+            # Uncheck any other rule's jump-edit button
+            for rn, data in self.rule_widgets.items():
+                if rn != rule_name:
+                    btn: QToolButton = data["jump_edit_btn"]
+                    btn.blockSignals(True)
+                    btn.setChecked(False)
+                    btn.blockSignals(False)
+
+            self._jump_edit_rule_name = rule_name
+            # Load existing sequence choices for this rule
+            self._jump_edit_candidates = self._get_rule_sequence_coords(rule_name)
+            self.pilot_jump_candidates_changed.emit(list(self._jump_edit_candidates))
+            self.pilot_jump_edit_mode_changed.emit(True)
+        else:
+            self._jump_edit_rule_name = None
+            self._jump_edit_candidates = []
+            self.pilot_jump_edit_mode_changed.emit(False)
+
+    def _get_rule_sequence_coords(self, rule_name: str) -> list[tuple[int, int]]:
+        """Get the sequence coordinates for a rule's action."""
+        current_index = self.preset_combo.currentIndex()
+        if not (0 <= current_index < len(self.preset_manager.presets)):
+            return []
+        preset = self.preset_manager.presets[current_index]
+        for rule in preset.rules:
+            if rule.name == rule_name and rule.action.sequences:
+                coords = []
+                for choice in rule.action.sequences:
+                    if not choice.is_noop():
+                        try:
+                            coords.append(choice.get_index_tuple())
+                        except (ValueError, IndexError):
+                            pass
+                return coords
+        return []
+
+    def toggle_pilot_jump_candidate(self, coords: tuple[int, int]) -> None:
+        """Toggle a sequence as a jump target for the active rule."""
+        if not self._jump_edit_rule_name:
+            return
+
+        if coords in self._jump_edit_candidates:
+            self._jump_edit_candidates.remove(coords)
+        else:
+            self._jump_edit_candidates.append(coords)
+
+        # Update the rule in the preset
+        self._save_jump_candidates_to_rule()
+        self.pilot_jump_candidates_changed.emit(list(self._jump_edit_candidates))
+
+    def _save_jump_candidates_to_rule(self) -> None:
+        """Save current jump candidates back to the active rule's action."""
+        if not self._jump_edit_rule_name:
+            return
+        current_index = self.preset_combo.currentIndex()
+        if not (0 <= current_index < len(self.preset_manager.presets)):
+            return
+        preset = self.preset_manager.presets[current_index]
+        for rule in preset.rules:
+            if rule.name == self._jump_edit_rule_name:
+                from lumiblox.pilot.pilot_preset import SequenceChoice
+                if self._jump_edit_candidates:
+                    weight = round(1.0 / len(self._jump_edit_candidates), 4)
+                    rule.action.sequences = [
+                        SequenceChoice(
+                            sequence_index=f"{c[0]}.{c[1]}",
+                            weight=weight,
+                        )
+                        for c in self._jump_edit_candidates
+                    ]
+                else:
+                    rule.action.sequences = []
+                break
+        # Persist changes
+        self.preset_manager.save()
+        self._update_rules_preview()
+        # Re-check the jump edit button for the active rule (preview rebuild clears it)
+        if self._jump_edit_rule_name and self._jump_edit_rule_name in self.rule_widgets:
+            btn = self.rule_widgets[self._jump_edit_rule_name]["jump_edit_btn"]
+            btn.blockSignals(True)
+            btn.setChecked(True)
+            btn.blockSignals(False)
+
+    def exit_pilot_jump_edit_mode(self) -> None:
+        """Exit jump-to edit mode (e.g. when switching presets or rules)."""
+        if self._jump_edit_rule_name and self._jump_edit_rule_name in self.rule_widgets:
+            btn = self.rule_widgets[self._jump_edit_rule_name]["jump_edit_btn"]
+            btn.blockSignals(True)
+            btn.setChecked(False)
+            btn.blockSignals(False)
+        self._jump_edit_rule_name = None
+        self._jump_edit_candidates = []
+        self.pilot_jump_edit_mode_changed.emit(False)
+
     def _on_preset_changed(self, index: int) -> None:
         """Handle preset selection change."""
+        # Exit jump edit mode when switching presets
+        self.exit_pilot_jump_edit_mode()
         if 0 <= index < len(self.preset_manager.presets):
             # Just update the UI preview and emit signal
             # The controller will handle persistence via repository

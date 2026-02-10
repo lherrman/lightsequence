@@ -17,7 +17,7 @@ BUTTON_SIZE_MEDIUM = QSize(32, 32)  # Control buttons (play, settings, etc.)
 BUTTON_SIZE_LARGE = QSize(46, 46)  # Large indicator buttons (A, B, M, B)
 
 # Input field sizes
-INPUT_FIELD_WIDTH_SMALL = 30
+INPUT_FIELD_WIDTH_SMALL = 45
 INPUT_FIELD_HEIGHT_SMALL = 24
 
 

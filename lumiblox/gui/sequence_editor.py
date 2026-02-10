@@ -87,7 +87,7 @@ class SequenceStepWidget(QFrame):
                 background-color: transparent;
                 border: none;
                 margin: 0px;
-                padding: 2px;
+                padding: 0px;
             }
         """)
 
@@ -102,7 +102,7 @@ class SequenceStepWidget(QFrame):
     def setup_ui(self):
         # Main horizontal layout - content only
         main_layout = QHBoxLayout(self)
-        main_layout.setContentsMargins(8, 6, 8, 4)
+        main_layout.setContentsMargins(8, 6, 8, 0)
         main_layout.setSpacing(10)
         main_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
@@ -655,7 +655,7 @@ class PresetSequenceEditor(QWidget):
             }
         """)
         self.detail_layout = QVBoxLayout(self.detail_panel)
-        self.detail_layout.setContentsMargins(5, 5, 5, 2)
+        self.detail_layout.setContentsMargins(5, 5, 5, 5)
         self.detail_layout.setAlignment(Qt.AlignmentFlag.AlignBottom)
 
         # Placeholder message - aligned to top
