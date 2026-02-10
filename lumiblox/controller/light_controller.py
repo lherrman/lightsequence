@@ -32,6 +32,7 @@ from lumiblox.common.device_state import DeviceManager, DeviceType
 from lumiblox.common.config import get_config, ROWS_PER_PAGE, NUM_SCENE_PAGES, SCENE_COLUMNS
 from lumiblox.common.enums import AppState
 from lumiblox.pilot.project_data_repository import ProjectDataRepository
+from lumiblox.midi.midi_manager import midi_manager
 
 if TYPE_CHECKING:
     from lumiblox.pilot.pilot_controller import PilotController
@@ -76,6 +77,11 @@ class LightController:
         self.active_sequence: t.Optional[t.Tuple[int, int]] = None
         self._last_sequence_scenes: t.Set[t.Tuple[int, int]] = set()
         self.active_page: int = 0
+        self._blink_phase: bool = False
+        self._last_blink_toggle: float = 0.0
+        self._dual_active_positions: t.Set[t.Tuple[int, int]] = set()
+        self._other_page_only_positions: t.Set[t.Tuple[int, int]] = set()
+        self._BLINK_INTERVAL: float = 0.35  # seconds between color alternation
         self.config = get_config()
         self.pilot_controller: t.Optional["PilotController"] = None
 
@@ -193,6 +199,10 @@ class LightController:
         self.launchpad.close()
         if hasattr(self.light_software, 'close_midi'):
             self.light_software.close_midi()
+        elif hasattr(self.light_software, 'close_light_software_midi'):
+            self.light_software.close_light_software_midi()
+        # Final pygame.midi shutdown — only safe here at application exit
+        midi_manager.shutdown()
         logger.info("Cleanup complete")
     
     def switch_pilot(self, pilot_index: int) -> bool:
@@ -273,12 +283,12 @@ class LightController:
                         continue
                     self.scene_ctrl.mark_scene_active(scene, False)
                     if lp_scene is not None:
-                        self.led_ctrl.update_scene_led(lp_scene, False)
+                        self.led_ctrl.update_scene_led(lp_scene, False, page=self.active_page)
                     continue
 
                 self.scene_ctrl.mark_scene_active(scene, is_active)
                 if lp_scene is not None:
-                    self.led_ctrl.update_scene_led(lp_scene, is_active)
+                    self.led_ctrl.update_scene_led(lp_scene, is_active, page=self.active_page)
     
     def _sync_initial_scenes(self) -> None:
         """Sync initial active scenes from light software."""
@@ -347,7 +357,7 @@ class LightController:
         self.light_software.set_scene_state(scene, True)
         lp_scene = self._scene_to_launchpad_scene(scene)
         if lp_scene is not None:
-            self.led_ctrl.update_scene_led(lp_scene, True)
+            self.led_ctrl.update_scene_led(lp_scene, True, page=self.active_page)
     
     def _handle_scene_deactivate(self, scene: t.Tuple[int, int]) -> None:
         """Handle scene deactivation."""
@@ -356,7 +366,7 @@ class LightController:
         self.light_software.set_scene_state(scene, False)
         lp_scene = self._scene_to_launchpad_scene(scene)
         if lp_scene is not None:
-            self.led_ctrl.update_scene_led(lp_scene, False)
+            self.led_ctrl.update_scene_led(lp_scene, False, page=self.active_page)
     
     # ============================================================================
     # SEQUENCE CALLBACKS
@@ -635,12 +645,69 @@ class LightController:
     def _refresh_scene_leds_for_page(self) -> None:
         """Refresh all scene LEDs on the Launchpad for the current page."""
         active_scenes = self.scene_ctrl.get_active_scenes()
+        other_page = 1 - self.active_page
+        self._dual_active_positions = set()
+        self._other_page_only_positions = set()
         for lp_y in range(ROWS_PER_PAGE):
             for lp_x in range(SCENE_COLUMNS):
-                abs_scene = (lp_x, lp_y + self.active_page * ROWS_PER_PAGE)
-                is_active = abs_scene in active_scenes
-                self.led_ctrl.update_scene_led((lp_x, lp_y), is_active)
+                page0_scene = (lp_x, lp_y)
+                page1_scene = (lp_x, lp_y + ROWS_PER_PAGE)
+                p0_active = page0_scene in active_scenes
+                p1_active = page1_scene in active_scenes
+                current_active = (lp_x, lp_y + self.active_page * ROWS_PER_PAGE) in active_scenes
+                other_active = (lp_x, lp_y + other_page * ROWS_PER_PAGE) in active_scenes
+                if p0_active and p1_active:
+                    # Both pages active — register for blink
+                    self._dual_active_positions.add((lp_x, lp_y))
+                    self.led_ctrl.update_scene_led((lp_x, lp_y), True, page=self.active_page)
+                elif other_active and not current_active:
+                    # Only the other page is active — show dim hint
+                    self._other_page_only_positions.add((lp_x, lp_y))
+                    self.led_ctrl.update_scene_led_other_page((lp_x, lp_y), other_page)
+                else:
+                    self.led_ctrl.update_scene_led((lp_x, lp_y), current_active, page=self.active_page)
     
+    def _update_blinking_scene_leds(self) -> None:
+        """Alternate colors for Launchpad positions active on both pages.
+        
+        Also maintains dim hints for positions only active on the other page.
+        """
+        active_scenes = self.scene_ctrl.get_active_scenes()
+        other_page = 1 - self.active_page
+        new_dual_active: t.Set[t.Tuple[int, int]] = set()
+        new_other_only: t.Set[t.Tuple[int, int]] = set()
+
+        for lp_y in range(ROWS_PER_PAGE):
+            for lp_x in range(SCENE_COLUMNS):
+                page0_scene = (lp_x, lp_y)
+                page1_scene = (lp_x, lp_y + ROWS_PER_PAGE)
+                p0_active = page0_scene in active_scenes
+                p1_active = page1_scene in active_scenes
+                current_active = (lp_x, lp_y + self.active_page * ROWS_PER_PAGE) in active_scenes
+                other_active = (lp_x, lp_y + other_page * ROWS_PER_PAGE) in active_scenes
+
+                if p0_active and p1_active:
+                    new_dual_active.add((lp_x, lp_y))
+                    show_page = 0 if self._blink_phase else 1
+                    self.led_ctrl.update_scene_led((lp_x, lp_y), True, page=show_page)
+                elif other_active and not current_active:
+                    new_other_only.add((lp_x, lp_y))
+                    # Only push dim color when position was not already tracked
+                    if (lp_x, lp_y) not in self._other_page_only_positions:
+                        self.led_ctrl.update_scene_led_other_page((lp_x, lp_y), other_page)
+
+        # Positions that stopped being dual-active or other-only: restore
+        changed = (self._dual_active_positions | self._other_page_only_positions) - (new_dual_active | new_other_only)
+        for lp_x, lp_y in changed:
+            current_scene = (lp_x, lp_y + self.active_page * ROWS_PER_PAGE)
+            is_active = current_scene in active_scenes
+            self.led_ctrl.update_scene_led(
+                (lp_x, lp_y), is_active, page=self.active_page
+            )
+
+        self._dual_active_positions = new_dual_active
+        self._other_page_only_positions = new_other_only
+
     # ============================================================================
     # OTHER CONTROLS
     # ============================================================================
@@ -709,6 +776,13 @@ class LightController:
         if self.launchpad.is_connected:
             bg_type = self.background_mgr.get_current_background()
             self.led_ctrl.update_background(bg_type, self.app_state)
+
+            # Blink dual-active scene LEDs (active on both pages)
+            now = time.time()
+            if now - self._last_blink_toggle >= self._BLINK_INTERVAL:
+                self._blink_phase = not self._blink_phase
+                self._last_blink_toggle = now
+                self._update_blinking_scene_leds()
 
             # Playback toggle LED reflects play/pause state
             playback_coords = tuple(

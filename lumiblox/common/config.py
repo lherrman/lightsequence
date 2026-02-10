@@ -42,6 +42,7 @@ class ColorConfig(TypedDict):
     """Type definition for color configuration."""
 
     column_colors: Dict[str, str]
+    column_colors_page_2: Dict[str, str]
     preset_on: str
     preset_save_mode: str
     preset_save_shift_mode: str
@@ -117,6 +118,16 @@ class ConfigManager:
                 "5": "#00ffff",
                 "6": "#ffffff",
                 "7": "#ff4800",
+            },
+            "column_colors_page_2": {
+                "0": "#ff8800",
+                "1": "#ff00ff",
+                "2": "#00ff88",
+                "3": "#ff0088",
+                "4": "#88ff00",
+                "5": "#ff4400",
+                "6": "#8800ff",
+                "7": "#00ffff",
             },
             "preset_on": "#ff0080",
             "preset_save_mode": "#ff0000",

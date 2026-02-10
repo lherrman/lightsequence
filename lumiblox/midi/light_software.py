@@ -14,6 +14,7 @@ os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"
 import pygame.midi
 
 from lumiblox.common.device_state import DeviceManager, DeviceType
+from lumiblox.midi.midi_manager import midi_manager
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,13 @@ class LightSoftware:
 
         return scene_map
 
+    def _close_ports(self) -> None:
+        """Close existing MIDI port objects without touching the global subsystem."""
+        midi_manager.close_port(self.midi_out)
+        midi_manager.close_port(self.midi_in)
+        self.midi_out = None
+        self.midi_in = None
+
     def connect_midi(self) -> bool:
         """
         Connect to LightSoftware via loopMIDI ports.
@@ -63,26 +71,27 @@ class LightSoftware:
         try:
             if self.device_manager:
                 self.device_manager.set_connecting(DeviceType.LIGHT_SOFTWARE)
-            
-            pygame.midi.init()
 
-            self.midi_out = None
-            self.midi_in = None
+            # Close any stale port handles before opening new ones
+            self._close_ports()
 
-            for i in range(pygame.midi.get_count()):
-                info = pygame.midi.get_device_info(i)
-                interface, name, is_input, is_output, opened = info
-                name = name.decode() if name else ""
+            midi_manager.acquire()
 
-                # Connect input (from LightSoftware via LightSoftware_out)
-                if "lightsoftware_out" in name.lower() and is_input:
-                    self.midi_in = pygame.midi.Input(i)
-                    logger.info(f"✅ LightSoftware IN: {name}")
+            with midi_manager.lock:
+                for i in range(pygame.midi.get_count()):
+                    info = pygame.midi.get_device_info(i)
+                    interface, name, is_input, is_output, opened = info
+                    name = name.decode() if name else ""
 
-                # Connect output (to LightSoftware via LightSoftware_in)
-                elif "lightsoftware_in" in name.lower() and is_output:
-                    self.midi_out = pygame.midi.Output(i)
-                    logger.info(f"✅ LightSoftware OUT: {name}")
+                    # Connect input (from LightSoftware via LightSoftware_out)
+                    if "lightsoftware_out" in name.lower() and is_input:
+                        self.midi_in = pygame.midi.Input(i)
+                        logger.info(f"✅ LightSoftware IN: {name}")
+
+                    # Connect output (to LightSoftware via LightSoftware_in)
+                    elif "lightsoftware_in" in name.lower() and is_output:
+                        self.midi_out = pygame.midi.Output(i)
+                        logger.info(f"✅ LightSoftware OUT: {name}")
 
             if not self.midi_out:
                 logger.error("❌ No LightSoftware_in MIDI output found")
@@ -132,7 +141,8 @@ class LightSoftware:
         velocity = 127 if active else 0
 
         try:
-            self.midi_out.write([[[0x90, scene_note, velocity], pygame.midi.time()]])
+            with midi_manager.lock:
+                self.midi_out.write([[[0x90, scene_note, velocity], pygame.midi.time()]])
             logger.debug(
                 "Sent to LightSoftware: Scene %s -> note %s, velocity %s",
                 scene_index,
@@ -170,11 +180,13 @@ class LightSoftware:
         """
         changes = {}
 
-        if not self.midi_in or not self.midi_in.poll():
-            return changes
-
         try:
-            midi_events = self.midi_in.read(100)
+            if not self.midi_in:
+                return changes
+            with midi_manager.lock:
+                if not self.midi_in.poll():
+                    return changes
+                midi_events = self.midi_in.read(100)
             for event in midi_events:
                 msg_data = event[0]
                 if isinstance(msg_data, list) and len(msg_data) >= 3:
@@ -196,22 +208,19 @@ class LightSoftware:
     def close_midi(self) -> None:
         """
         Clean shutdown of LightSoftware MIDI connections.
+
+        Only closes this component's ports.  The shared pygame.midi
+        subsystem is shut down via ``midi_manager.shutdown()`` at
+        application exit.
         """
         try:
-            if self.midi_out:
-                self.midi_out.close()
-                logger.info("✅  MIDI output closed")
-            if self.midi_in:
-                self.midi_in.close()
-                logger.info("✅  MIDI input closed")
-            pygame.midi.quit()
+            self._close_ports()
+            midi_manager.release()
+            logger.info("✅  LightSoftware MIDI ports closed")
             
             self.connection_good = False
             if self.device_manager:
                 self.device_manager.set_disconnected(DeviceType.LIGHT_SOFTWARE)
                 
         except Exception as e:
-            logger.error(f"Error closing  MIDI: {e}")
-            
-        self.midi_out = None
-        self.midi_in = None
+            logger.error(f"Error closing LightSoftware MIDI: {e}")

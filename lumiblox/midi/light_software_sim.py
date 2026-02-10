@@ -12,6 +12,8 @@ import os
 os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"
 import pygame.midi
 
+from lumiblox.midi.midi_manager import midi_manager
+
 logger = logging.getLogger(__name__)
 
 
@@ -61,6 +63,13 @@ class LightSoftwareSim:
 
         return scene_map
 
+    def _close_ports(self) -> None:
+        """Close existing MIDI port objects without touching the global subsystem."""
+        midi_manager.close_port(self.midi_out)
+        midi_manager.close_port(self.midi_in)
+        self.midi_out = None
+        self.midi_in = None
+
     def connect_midi(self) -> bool:
         """
         Connect to loopMIDI ports for simulation.
@@ -69,24 +78,25 @@ class LightSoftwareSim:
             True if connection successful, False otherwise
         """
         try:
-            pygame.midi.init()
+            # Close any stale port handles before opening new ones
+            self._close_ports()
 
-            self.midi_out = None
-            self.midi_in = None
+            midi_manager.acquire()
 
-            for i in range(pygame.midi.get_count()):
-                info = pygame.midi.get_device_info(i)
-                name = info[1].decode() if info[1] else ""
+            with midi_manager.lock:
+                for i in range(pygame.midi.get_count()):
+                    info = pygame.midi.get_device_info(i)
+                    name = info[1].decode() if info[1] else ""
 
-                # Connect output (to send feedback via LightSoftware_out)
-                if "lightsoftware_out" in name.lower() and info[3]:  # output device
-                    self.midi_out = pygame.midi.Output(i)
-                    logger.info(f"✅ [SIM] LightSoftware OUT: {name}")
+                    # Connect output (to send feedback via LightSoftware_out)
+                    if "lightsoftware_out" in name.lower() and info[3]:  # output device
+                        self.midi_out = pygame.midi.Output(i)
+                        logger.info(f"✅ [SIM] LightSoftware OUT: {name}")
 
-                # Connect input (to receive commands via LightSoftware_in)
-                elif "lightsoftware_in" in name.lower() and info[2]:  # input device
-                    self.midi_in = pygame.midi.Input(i)
-                    logger.info(f"✅ [SIM] LightSoftware IN: {name}")
+                    # Connect input (to receive commands via LightSoftware_in)
+                    elif "lightsoftware_in" in name.lower() and info[2]:  # input device
+                        self.midi_in = pygame.midi.Input(i)
+                        logger.info(f"✅ [SIM] LightSoftware IN: {name}")
 
             if not self.midi_out:
                 logger.error("❌ [SIM] No LightSoftware_out MIDI output found")
@@ -155,41 +165,45 @@ class LightSoftwareSim:
         # First, send any queued feedback
         if self.midi_out and self.feedback_queue:
             try:
-                for note, velocity in self.feedback_queue:
-                    self.midi_out.write([[[0x90, note, velocity], pygame.midi.time()]])
-                    logger.debug(
-                        f"[SIM] Sent feedback: note {note}, velocity {velocity}"
-                    )
+                with midi_manager.lock:
+                    for note, velocity in self.feedback_queue:
+                        self.midi_out.write([[[0x90, note, velocity], pygame.midi.time()]])
+                        logger.debug(
+                            f"[SIM] Sent feedback: note {note}, velocity {velocity}"
+                        )
 
-                    changes[note] = velocity > 0
+                        changes[note] = velocity > 0
 
                 self.feedback_queue.clear()
             except Exception as e:
                 logger.error(f"[SIM] MIDI feedback send error: {e}")
 
         # Process incoming commands from controller
-        if self.midi_in and self.midi_in.poll():
+        if self.midi_in:
             try:
-                midi_events = self.midi_in.read(100)
-                for event in midi_events:
-                    msg_data = event[0]
-                    if isinstance(msg_data, list) and len(msg_data) >= 3:
-                        status, note, velocity = msg_data[0], msg_data[1], msg_data[2]
+                with midi_manager.lock:
+                    has_data = self.midi_in.poll()
+                if has_data:
+                    with midi_manager.lock:
+                        midi_events = self.midi_in.read(100)
+                    for event in midi_events:
+                        msg_data = event[0]
+                        if isinstance(msg_data, list) and len(msg_data) >= 3:
+                            status, note, velocity = msg_data[0], msg_data[1], msg_data[2]
 
-                        if status == 0x90:  # Note on message
-                            logger.debug(
-                                f"[SIM] Received command: note {note}, velocity {velocity}"
-                            )
+                            if status == 0x90:  # Note on message
+                                logger.debug(
+                                    f"[SIM] Received command: note {note}, velocity {velocity}"
+                                )
 
-                            # Handle scene command - toggle based on velocity
-                            scene_coords = self.get_scene_coordinates_for_note(note)
-                            if scene_coords:
-                                if velocity > 0:
-                                    current_state = self.scene_states.get(scene_coords, False)
-                                    self.set_scene_state(scene_coords, not current_state)
-                                else:
-                                    self.set_scene_state(scene_coords, False)
-
+                                # Handle scene command - toggle based on velocity
+                                scene_coords = self.get_scene_coordinates_for_note(note)
+                                if scene_coords:
+                                    if velocity > 0:
+                                        current_state = self.scene_states.get(scene_coords, False)
+                                        self.set_scene_state(scene_coords, not current_state)
+                                    else:
+                                        self.set_scene_state(scene_coords, False)
             except Exception as e:
                 logger.error(f"[SIM] MIDI command processing error: {e}")
 
@@ -198,19 +212,17 @@ class LightSoftwareSim:
     def close_light_software_midi(self) -> None:
         """
         Clean shutdown of MIDI connections.
+
+        Only closes this component's ports.  The shared pygame.midi
+        subsystem is shut down via ``midi_manager.shutdown()`` at
+        application exit.
         """
         try:
-            if self.midi_out:
-                self.midi_out.close()
-                logger.info("✅ [SIM] MIDI output closed")
-            if self.midi_in:
-                self.midi_in.close()
-                logger.info("✅ [SIM] MIDI input closed")
-            pygame.midi.quit()
+            self._close_ports()
+            midi_manager.release()
+            logger.info("✅ [SIM] MIDI ports closed")
         except Exception as e:
             logger.error(f"[SIM] Error closing MIDI: {e}")
-        self.midi_out = None
-        self.midi_in = None
 
     def get_scene_state(self, scene_index: t.Tuple[int, int]) -> bool:
         """

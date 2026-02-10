@@ -15,6 +15,16 @@
             "6": "#ffffff",
             "7": "#ff4800"
         },
+        "column_colors_page_2": {
+            "0": "#ff8800",
+            "1": "#ff00ff",
+            "2": "#00ff88",
+            "3": "#ff0088",
+            "4": "#88ff00",
+            "5": "#ff4400",
+            "6": "#8800ff",
+            "7": "#00ffff"
+        },
         "connection_bad": "#4d0000",
         "connection_good": "#004d00",
         "next_step": "#0080ff",
@@ -128,7 +138,7 @@
                 "timeline_region": null
             }
         },
-        "enabled": true,
+        "enabled": false,
         "midi_actions": [],
         "midiclock_device": "midiclock",
         "model_path": "pilot-tests/resources/traktor/classifier_traktor.pkl",

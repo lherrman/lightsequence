@@ -29,16 +29,32 @@ class LEDController:
         self.launchpad = launchpad
         self.config = get_config()
     
-    def update_scene_led(self, scene: t.Tuple[int, int], active: bool) -> None:
+    def update_scene_led(self, scene: t.Tuple[int, int], active: bool, page: int = 0) -> None:
         """Update LED for a scene button."""
         if not self.launchpad.is_connected:
             return
         
-        color = self._get_scene_color(scene, active)
+        color = self._get_scene_color(scene, active, page)
         self.launchpad.set_button_led(
             LaunchpadButtonType.SCENE,
             [scene[0], scene[1]],
             color
+        )
+    
+    def update_scene_led_other_page(self, scene: t.Tuple[int, int], other_page: int, dim_factor: float = 0.25) -> None:
+        """Show a dimmed other-page color to hint a scene is active on another page."""
+        if not self.launchpad.is_connected:
+            return
+        
+        color = self._get_scene_color(scene, True, other_page)
+        if isinstance(color, str):
+            from lumiblox.common.utils import hex_to_rgb
+            color = hex_to_rgb(color)
+        dimmed = [c * dim_factor for c in color]
+        self.launchpad.set_button_led(
+            LaunchpadButtonType.SCENE,
+            [scene[0], scene[1]],
+            dimmed
         )
     
     def update_sequence_led(self, index: t.Tuple[int, int], active: bool, is_multi_step: bool = False) -> None:
@@ -162,14 +178,15 @@ class LEDController:
         )
         time.sleep(0.2)
     
-    def _get_scene_color(self, scene: t.Tuple[int, int], active: bool) -> t.List[float]:
-        """Get color for a scene LED."""
+    def _get_scene_color(self, scene: t.Tuple[int, int], active: bool, page: int = 0) -> t.List[float]:
+        """Get color for a scene LED based on the page it belongs to."""
         if not active:
             return self.config.data["colors"]["off"]
         
-        # Use column color if configured
+        # Use column color if configured, selecting the page-specific palette
         if self.config.data.get("scene_on_color_from_column", False):
-            column_color = self.config.data["colors"]["column_colors"].get(
+            colors_key = "column_colors" if page == 0 else "column_colors_page_2"
+            column_color = self.config.data["colors"].get(colors_key, {}).get(
                 str(scene[0])
             )
             if column_color:

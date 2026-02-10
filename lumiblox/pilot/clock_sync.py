@@ -17,6 +17,7 @@ os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
 
 import pygame.midi
 
+from lumiblox.midi.midi_manager import midi_manager
 from lumiblox.pilot.midi_actions import MidiActionHandler
 
 logger = logging.getLogger(__name__)
@@ -113,15 +114,15 @@ class ClockSync:
                 logger.info("MIDI clock resumed")
                 return True
 
-            # Only init if not already initialized (shared subsystem)
-            if not pygame.midi.get_init():
-                pygame.midi.init()
+            midi_manager.acquire()
 
-            self.device_id, self.device_name = self._find_device()
-            if self.device_id is None:
-                logger.error(f"No MIDI input matching '{self.device_keyword}' found")
-                return False
-            self.midi_in = pygame.midi.Input(self.device_id)
+            with midi_manager.lock:
+                self.device_id, self.device_name = self._find_device()
+                if self.device_id is None:
+                    logger.error(f"No MIDI input matching '{self.device_keyword}' found")
+                    return False
+                self.midi_in = pygame.midi.Input(self.device_id)
+
             self.is_open = True
             self.is_active = True
             logger.info(
@@ -141,17 +142,9 @@ class ClockSync:
     def close(self) -> None:
         """Close the MIDI device connection (only called on shutdown)."""
         self.is_active = False
-        if self.midi_in:
-            try:
-                self.midi_in.close()
-            except AttributeError as e:
-                # Handle pygame threading issues during shutdown
-                logger.debug(
-                    f"AttributeError closing MIDI input (likely threading): {e}"
-                )
-            except Exception as e:
-                logger.error(f"Error closing MIDI input: {e}")
-            self.midi_in = None
+        midi_manager.close_port(self.midi_in)
+        self.midi_in = None
+        midi_manager.release()
 
         self.is_open = False
         self.device_id = None
@@ -199,25 +192,31 @@ class ClockSync:
         if not self.midi_in or not self.is_open or not self.is_active:
             return
 
-        while self.midi_in.poll():
-            for data, _timestamp in self.midi_in.read(128):
-                if not data or isinstance(data, int):
-                    continue
-                status = data[0]
-                if status == MIDI_CLOCK:
-                    self._on_clock()
-                elif status in {MIDI_START, MIDI_CONTINUE, MIDI_STOP}:
-                    self._reset_alignment()
-                    if self.on_midi_message:
-                        self.on_midi_message(data)
-                else:
-                    if self.on_midi_message:
-                        self.on_midi_message(data)
-                    # Check for MIDI actions (including legacy zero signal)
-                    if self._is_zero_signal(data):
-                        self.align_to_tap()
-                    # Process through action handler
-                    self.midi_action_handler.process_midi_message(data)
+        try:
+            while self.midi_in.poll():
+                for data, _timestamp in self.midi_in.read(128):
+                    if not data or isinstance(data, int):
+                        continue
+                    status = data[0]
+                    if status == MIDI_CLOCK:
+                        self._on_clock()
+                    elif status in {MIDI_START, MIDI_CONTINUE, MIDI_STOP}:
+                        self._reset_alignment()
+                        if self.on_midi_message:
+                            self.on_midi_message(data)
+                    else:
+                        if self.on_midi_message:
+                            self.on_midi_message(data)
+                        # Check for MIDI actions (including legacy zero signal)
+                        if self._is_zero_signal(data):
+                            self.align_to_tap()
+                        # Process through action handler
+                        self.midi_action_handler.process_midi_message(data)
+        except Exception as exc:
+            logger.error("MIDI clock poll error (port may be stale): %s", exc)
+            # Mark as no longer open so DeviceMonitor can attempt reconnection
+            self.is_open = False
+            self.is_active = False
 
     def _is_zero_signal(self, data: list) -> bool:
         """Check if MIDI message matches configured zero signal."""
