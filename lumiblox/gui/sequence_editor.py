@@ -145,7 +145,7 @@ class SequenceStepWidget(QFrame):
         scenes_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         # Create scene buttons for all pages (e.g. 2 pages × 5 rows = 10 rows)
-        from lumiblox.common.config import ROWS_PER_PAGE, NUM_SCENE_PAGES, GUI_SCENE_COLUMNS
+        from lumiblox.common.constants import ROWS_PER_PAGE, NUM_SCENE_PAGES, GUI_SCENE_COLUMNS
         total_rows = ROWS_PER_PAGE * NUM_SCENE_PAGES
         for y in range(total_rows):
             # Calculate grid row with space for dividers between pages
@@ -677,7 +677,7 @@ class PresetSequenceEditor(QWidget):
         if not self.controller:
             return
 
-        steps = self.controller.sequence_ctrl.get_sequence(self.preset_index)
+        steps = self.controller.get_sequence(self.preset_index)
         if steps:
             self.sequence_steps = steps
         else:
@@ -686,20 +686,18 @@ class PresetSequenceEditor(QWidget):
                 SequenceStep(scenes=[], duration=DEFAULT_STEP_DURATION, name="Step 1")
             ]
 
-        # Load loop setting from loop_settings dict
-        loop_setting = self.controller.sequence_ctrl.loop_settings.get(
-            self.preset_index, True
-        )
+        # Load loop setting
+        loop_setting = self.controller.get_loop_setting(self.preset_index)
         self.loop_checkbox.blockSignals(True)
         self.loop_checkbox.setChecked(loop_setting)
         self.loop_checkbox.blockSignals(False)
-        self.loop_count = self.controller.sequence_ctrl.get_loop_count(
+        self.loop_count = self.controller.get_loop_count(
             self.preset_index
         )
         self.loop_count_spinbox.blockSignals(True)
         self.loop_count_spinbox.setValue(self.loop_count)
         self.loop_count_spinbox.blockSignals(False)
-        self.next_sequence_candidates = self.controller.sequence_ctrl.get_followup_sequences(
+        self.next_sequence_candidates = self.controller.get_followup_sequences(
             self.preset_index
         )
         self._update_followup_toggle_enabled()
@@ -773,15 +771,15 @@ class PresetSequenceEditor(QWidget):
 
     def _on_playback_step_change(self):
         """Called during playback when step changes."""
-        if not self.controller or not hasattr(self.controller, "sequence_ctrl"):
+        if not self.controller:
             return
 
         # Check if this sequence is currently playing
-        if self.controller.active_sequence != self.preset_index:
+        if self.controller.get_active_sequence() != self.preset_index:
             return
 
         # Get current step index from controller
-        current_step = self.controller.sequence_ctrl.current_step_index
+        current_step = self.controller.get_current_step_index()
         if 0 <= current_step < len(self.sequence_steps):
             # Update selection in list (will trigger detail update)
             try:
@@ -799,7 +797,7 @@ class PresetSequenceEditor(QWidget):
         if not self.controller:
             return None
 
-        active_scenes = list(self.controller.scene_ctrl.get_active_scenes())
+        active_scenes = list(self.controller.get_active_scenes())
         if active_scenes:
             return active_scenes
 
@@ -817,7 +815,7 @@ class PresetSequenceEditor(QWidget):
 
         try:
             loop_enabled = self.loop_checkbox.isChecked()
-            self.controller.sequence_ctrl.save_sequence(
+            self.controller.post_save_sequence(
                 self.preset_index,
                 self.sequence_steps,
                 loop_enabled,
@@ -1005,7 +1003,6 @@ class PresetSequenceEditor(QWidget):
         """Trigger live preview for the specified step."""
         if (
             not self.controller
-            or not hasattr(self.controller, "scene_ctrl")
             or step_index < 0
             or step_index >= len(self.sequence_steps)
         ):
@@ -1013,7 +1010,7 @@ class PresetSequenceEditor(QWidget):
 
         step = self.sequence_steps[step_index]
         try:
-            self.controller.scene_ctrl.activate_scenes(step.scenes, controlled=True)
+            self.controller.post_activate_scenes(step.scenes, controlled=True)
         except Exception as exc:
             logger.warning(f"Failed to preview step {step_index}: {exc}")
 

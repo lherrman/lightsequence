@@ -14,7 +14,7 @@ from enum import Enum
 
 from lumiblox.pilot.clock_sync import ClockSync
 from lumiblox.pilot.phrase_detector import PhraseDetector, CaptureRegion
-from lumiblox.pilot.pilot_preset import PilotPresetManager
+from lumiblox.common.project_data_repository import ProjectDataRepository
 from lumiblox.pilot.rule_engine import RuleEngine
 from lumiblox.pilot.midi_actions import MidiActionConfig
 
@@ -44,6 +44,7 @@ class PilotController:
         on_phrase_type_change: Optional[Callable[[str], None]] = None,
         on_bpm_change: Optional[Callable[[float], None]] = None,
         on_capturing: Optional[Callable[[bool], None]] = None,
+        project_repo: Optional[ProjectDataRepository] = None,
     ):
         """
         Initialize pilot controller.
@@ -96,7 +97,7 @@ class PilotController:
         self.phrase_bars_elapsed: int = 0  # Bars in current phrase
 
         # Automation system
-        self.preset_manager = PilotPresetManager()
+        self.project_repo = project_repo
         self.rule_engine: Optional[RuleEngine] = (
             None  # Created when automation is enabled
         )
@@ -315,7 +316,7 @@ class PilotController:
             )
             return False
 
-        preset = self.preset_manager.get_active_preset()
+        preset = self.project_repo.get_active_pilot() if self.project_repo else None
         if not preset:
             logger.warning("No active preset selected; cannot trigger rule")
             return False
@@ -334,7 +335,7 @@ class PilotController:
         if not self.rule_engine:
             return {}
 
-        preset = self.preset_manager.get_active_preset()
+        preset = self.project_repo.get_active_pilot() if self.project_repo else None
         if not preset:
             return {}
 
@@ -387,7 +388,7 @@ class PilotController:
             )
 
             # Evaluate rules
-            active_preset = self.preset_manager.get_active_preset()
+            active_preset = self.project_repo.get_active_pilot() if self.project_repo else None
             if active_preset:
                 self.rule_engine.evaluate_preset(active_preset)
 
@@ -452,7 +453,7 @@ class PilotController:
                         previous_phrase_bars=previous_phrase_bars,
                         change_bar=current_bar,
                     )
-                    active_preset = self.preset_manager.get_active_preset()
+                    active_preset = self.project_repo.get_active_pilot() if self.project_repo else None
                     if active_preset:
                         self.rule_engine.evaluate_preset(active_preset)
 

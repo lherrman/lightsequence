@@ -7,7 +7,10 @@ Centralizes LED logic and prevents duplication.
 
 import logging
 import typing as t
-from lumiblox.devices.launchpad import LaunchpadMK2, ButtonType as LaunchpadButtonType
+from lumiblox.common.enums import AppState, ButtonType
+from lumiblox.devices.launchpad import LaunchpadMK2
+from lumiblox.controller.background_animator import BackgroundAnimator
+from lumiblox.controller.sequence_controller import PlaybackState
 from lumiblox.common.config import get_config
 
 logger = logging.getLogger(__name__)
@@ -24,9 +27,10 @@ class LEDController:
     - Background animations
     """
     
-    def __init__(self, launchpad: LaunchpadMK2):
+    def __init__(self, launchpad: LaunchpadMK2, animator: BackgroundAnimator):
         """Initialize LED controller."""
         self.launchpad = launchpad
+        self.animator = animator
         self.config = get_config()
     
     def update_scene_led(self, scene: t.Tuple[int, int], active: bool, page: int = 0) -> None:
@@ -36,7 +40,7 @@ class LEDController:
         
         color = self._get_scene_color(scene, active, page)
         self.launchpad.set_button_led(
-            LaunchpadButtonType.SCENE,
+            ButtonType.SCENE,
             [scene[0], scene[1]],
             color
         )
@@ -52,7 +56,7 @@ class LEDController:
             color = hex_to_rgb(color)
         dimmed = [c * dim_factor for c in color]
         self.launchpad.set_button_led(
-            LaunchpadButtonType.SCENE,
+            ButtonType.SCENE,
             [scene[0], scene[1]],
             dimmed
         )
@@ -68,7 +72,7 @@ class LEDController:
             color = self.config.data["colors"]["off"]
         
         self.launchpad.set_button_led(
-            LaunchpadButtonType.PRESET,
+            ButtonType.SEQUENCE,
             [index[0], index[1]],
             color
         )
@@ -81,15 +85,29 @@ class LEDController:
         color = self.config.data["colors"].get(color_key, [0, 0, 0])
         
         self.launchpad.set_button_led(
-            LaunchpadButtonType.CONTROL,
+            ButtonType.CONTROL,
             [coordinates[0], coordinates[1]],
             color
         )
     
-    def update_background(self, animation_type: str, app_state) -> None:
-        """Update background animation."""
-        if self.launchpad.is_connected:
-            self.launchpad.draw_background(animation_type, app_state=app_state)
+    def update_background(self, animation_type: str, app_state) -> bool:
+        """Update background animation on inactive LEDs."""
+        if not self.launchpad.is_connected:
+            return False
+
+        # Get complete background buffer with animation, zone colors, and brightness
+        background_buffer = self.animator.get_background(
+            animation_type=animation_type, app_state=app_state
+        )
+
+        # Apply background to inactive LEDs (those with no foreground color set)
+        for x in range(9):
+            for y in range(9):
+                if not self.launchpad.pixel_buffer_output[x, y, :].any():
+                    color = background_buffer[x, y, :].tolist()
+                    self.launchpad.set_led(x, y, color)
+
+        return True
     
     def clear_sequence_leds(self) -> None:
         """Clear all sequence button LEDs."""
@@ -99,7 +117,7 @@ class LEDController:
         for x in range(8):
             for y in range(3):
                 self.launchpad.set_button_led(
-                    LaunchpadButtonType.PRESET,
+                    ButtonType.SEQUENCE,
                     [x, y],
                     self.config.data["colors"]["off"]
                 )
@@ -132,7 +150,7 @@ class LEDController:
                         color = self.config.data["colors"]["off"]
                 
                 self.launchpad.set_button_led(
-                    LaunchpadButtonType.PRESET,
+                    ButtonType.SEQUENCE,
                     [x, y],
                     color
                 )
@@ -160,7 +178,7 @@ class LEDController:
                 color = off_color
 
             self.launchpad.set_button_led(
-                LaunchpadButtonType.PRESET,
+                ButtonType.SEQUENCE,
                 [x, y],
                 color,
             )
@@ -172,12 +190,64 @@ class LEDController:
         
         import time
         self.launchpad.set_button_led(
-            LaunchpadButtonType.PRESET,
+            ButtonType.SEQUENCE,
             [index[0], index[1]],
             self.config.data["colors"]["success_flash"]
         )
         time.sleep(0.2)
     
+    def render_status_frame(
+        self,
+        background_type: str,
+        app_state: "AppState",
+        playback_state: "PlaybackState",
+        active_sequence_index: t.Optional[t.Tuple[int, int]],
+        sequence_steps: t.Optional[list],
+        has_active_scenes: bool,
+        pilot_running: bool,
+        active_page: int,
+        key_bindings: dict,
+    ) -> None:
+        """Render one frame of status LEDs (background, playback, controls)."""
+        if not self.launchpad.is_connected:
+            return
+
+        # Background
+        self.update_background(background_type, app_state)
+
+        # Playback toggle LED
+        playback_coords = tuple(key_bindings["playback_toggle_button"]["coordinates"])
+        playback_color = "playback_playing" if playback_state == PlaybackState.PLAYING else "playback_paused"
+        self.update_control_led(playback_coords, playback_color)
+
+        # Next-step LED
+        next_step_coords = tuple(key_bindings["next_step_button"]["coordinates"])
+        can_advance = (
+            playback_state == PlaybackState.PAUSED
+            and sequence_steps is not None
+            and len(sequence_steps) > 1
+        )
+        next_color = "next_step" if can_advance else "off"
+        self.update_control_led(next_step_coords, next_color)
+
+        # Pilot toggle LED
+        pilot_coords = tuple(key_bindings["pilot_toggle_button"]["coordinates"])
+        pilot_color = "pilot_toggle_on" if pilot_running else "pilot_toggle_off"
+        self.update_control_led(pilot_coords, pilot_color)
+
+        # Clear button
+        clear_coords = tuple(key_bindings["clear_button"]["coordinates"])
+        clear_color = "success_flash" if has_active_scenes else "off"
+        self.update_control_led(clear_coords, clear_color)
+
+        # Page buttons
+        page_buttons = ["page_1_button", "page_2_button"]
+        for page_idx, page_key in enumerate(page_buttons):
+            if page_key in key_bindings:
+                page_coords = tuple(key_bindings[page_key]["coordinates"])
+                page_color = "page_active" if page_idx == active_page else "off"
+                self.update_control_led(page_coords, page_color)
+
     def _get_scene_color(self, scene: t.Tuple[int, int], active: bool, page: int = 0) -> t.List[float]:
         """Get color for a scene LED based on the page it belongs to."""
         if not active:

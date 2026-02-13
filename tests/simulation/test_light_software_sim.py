@@ -1,6 +1,7 @@
 """Test light software simulator"""
 import pytest
 from lumiblox.midi.light_software_sim import LightSoftwareSim
+from lumiblox.midi.light_software_protocol import LightSoftwareProtocol
 
 
 @pytest.fixture
@@ -9,7 +10,12 @@ def simulator():
     sim = LightSoftwareSim()
     yield sim
     if sim.midi_out or sim.midi_in:
-        sim.close_light_software_midi()
+        sim.close()
+
+
+def test_sim_implements_protocol(simulator):
+    """Test that the simulator satisfies the LightSoftwareProtocol"""
+    assert isinstance(simulator, LightSoftwareProtocol)
 
 
 def test_simulator_initialization(simulator):

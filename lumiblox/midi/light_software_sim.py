@@ -210,7 +210,7 @@ class LightSoftwareSim:
 
         return changes
 
-    def close_light_software_midi(self) -> None:
+    def close(self) -> None:
         """
         Clean shutdown of MIDI connections.
 

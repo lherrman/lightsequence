@@ -101,14 +101,14 @@ def test_reload_config(config_manager, temp_config_file):
 
 def test_get_button_type_enum():
     """Test button type enum conversion"""
-    from lumiblox.common.config import get_button_type_enum
-    from lumiblox.devices.launchpad import ButtonType
+    from lumiblox.common.enums import get_button_type_enum, ButtonType
     
     assert get_button_type_enum("CONTROL") == ButtonType.CONTROL
     assert get_button_type_enum("TOP") == ButtonType.CONTROL
     assert get_button_type_enum("RIGHT") == ButtonType.CONTROL
     assert get_button_type_enum("SCENE") == ButtonType.SCENE
-    assert get_button_type_enum("PRESET") == ButtonType.PRESET
+    assert get_button_type_enum("PRESET") == ButtonType.SEQUENCE
+    assert get_button_type_enum("SEQUENCE") == ButtonType.SEQUENCE
     assert get_button_type_enum("invalid") == ButtonType.UNKNOWN
 
 

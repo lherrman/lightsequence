@@ -16,19 +16,22 @@ def test_import_common_modules():
 
 def test_import_device_modules():
     """Test importing device modules"""
-    from lumiblox.devices.launchpad import LaunchpadMK2, ButtonType
+    from lumiblox.devices.launchpad import LaunchpadMK2
+    from lumiblox.common.enums import ButtonType
     
     assert ButtonType.SCENE is not None
-    assert ButtonType.PRESET is not None
+    assert ButtonType.SEQUENCE is not None
 
 
 def test_import_midi_modules():
     """Test importing MIDI modules"""
     from lumiblox.midi.light_software import LightSoftware
     from lumiblox.midi.light_software_sim import LightSoftwareSim
+    from lumiblox.midi.light_software_protocol import LightSoftwareProtocol
     
     assert LightSoftware is not None
     assert LightSoftwareSim is not None
+    assert LightSoftwareProtocol is not None
 
 
 def test_import_controller_modules():
@@ -41,6 +44,7 @@ def test_import_controller_modules():
         PlaybackState,
     )
     from lumiblox.controller.background_animator import BackgroundManager, BackgroundAnimator
+    from lumiblox.controller.app_state_manager import AppStateManager
     
     assert LightController is not None
     assert SequenceStep is not None
@@ -48,6 +52,7 @@ def test_import_controller_modules():
     assert SequenceDurationUnit is not None
     assert PlaybackState is not None
     assert BackgroundManager is not None
+    assert AppStateManager is not None
 
 
 def test_import_gui_module():

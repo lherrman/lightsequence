@@ -1,27 +1,18 @@
 import logging
 import typing as t
-from enum import Enum
 
 import launchpad_py as lp
 import numpy as np
-from lumiblox.controller.background_animator import BackgroundAnimator as Animator
 from lumiblox.common.config import get_config
-from lumiblox.common.enums import AppState
+from lumiblox.common.enums import ButtonType
 from lumiblox.common.utils import hex_to_rgb
 from lumiblox.common.device_state import DeviceManager, DeviceType
 
 logger = logging.getLogger(__name__)
 
 
-class ButtonType(str, Enum):
-    SCENE = "scene"
-    PRESET = "preset"
-    CONTROL = "control"
-    UNKNOWN = "unknown"
-
-
 class LaunchpadMK2:
-    def __init__(self, preset_manager=None, device_manager: t.Optional[DeviceManager] = None):
+    def __init__(self, device_manager: t.Optional[DeviceManager] = None):
         self.BOUNDS_SCENES = np.array([[0, 1], [8, 5]])
         self.BOUNDS_PRESETS = np.array([[0, 6], [7, 8]])
         self.BOUNDS_TOP = np.array([[0, 0], [7, 0]])
@@ -34,7 +25,6 @@ class LaunchpadMK2:
         # Track hardware LED state (0-63 range) to avoid unnecessary updates
         self.hardware_led_state = np.zeros((9, 9, 3), dtype=int)
 
-        self.animator = Animator(preset_manager)
         self.config = get_config()
         
         # Device state management
@@ -143,7 +133,7 @@ class LaunchpadMK2:
             abs_y = self.BOUNDS_SCENES[0][1] + rel_y
             return abs_x, abs_y
 
-        if button_type == ButtonType.PRESET:
+        if button_type == ButtonType.SEQUENCE:
             abs_x = self.BOUNDS_PRESETS[0][0] + rel_x
             abs_y = self.BOUNDS_PRESETS[0][1] + rel_y
             return abs_x, abs_y
@@ -212,7 +202,7 @@ class LaunchpadMK2:
                     self.BOUNDS_PRESETS[0][0] <= x <= self.BOUNDS_PRESETS[1][0]
                     and self.BOUNDS_PRESETS[0][1] <= y <= self.BOUNDS_PRESETS[1][1]
                 ):
-                    button_type = ButtonType.PRESET
+                    button_type = ButtonType.SEQUENCE
                     relative_coords = [
                         x - self.BOUNDS_PRESETS[0][0],
                         y - self.BOUNDS_PRESETS[0][1],
@@ -246,28 +236,4 @@ class LaunchpadMK2:
 
         return None
 
-    def draw_background(
-        self,
-        animation_type: str = "ocean_waves",
-        app_state: AppState = AppState.NORMAL,
-    ) -> bool:
-        """Update background animation.
 
-        Returns True if background was updated, False if skipped.
-        """
-        if not self.is_connected:
-            return False
-
-        # Get complete background buffer with animation, zone colors, and brightness already applied
-        background_buffer = self.animator.get_background(
-            animation_type=animation_type, app_state=app_state
-        )
-
-        # Apply background to inactive LEDs
-        for x in range(9):
-            for y in range(9):
-                if not self.pixel_buffer_output[x, y, :].any():
-                    color = background_buffer[x, y, :].tolist()
-                    self.set_led(x, y, color)
-
-        return True  # Background was updated

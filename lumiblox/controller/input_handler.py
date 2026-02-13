@@ -7,18 +7,11 @@ Works with any input source (Launchpad, GUI, future controllers).
 
 import logging
 import typing as t
-from enum import Enum
 from dataclasses import dataclass
 
+from lumiblox.common.enums import ButtonType
+
 logger = logging.getLogger(__name__)
-
-
-class ButtonType(str, Enum):
-    """Types of buttons in the system."""
-    SCENE = "scene"
-    SEQUENCE = "sequence"  # Was "preset"
-    CONTROL = "control"  # Top row and right column controls
-    UNKNOWN = "unknown"
 
 
 @dataclass

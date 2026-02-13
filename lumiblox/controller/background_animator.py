@@ -11,13 +11,12 @@ logger = logging.getLogger(__name__)
 class BackgroundAnimator:
     """Generates animated backgrounds with zone colors."""
 
-    def __init__(self, preset_manager=None):
+    def __init__(self):
         self.pixel_buffer = np.zeros((9, 9, 3), dtype=float)
         self.frame = 0
         self.time = 0.0
         self.speed = 1.0
         self.config = get_config()
-        self.preset_manager = preset_manager
         self.start_time = time.time()
         self.last_real_time = self.start_time
 
@@ -119,8 +118,6 @@ class BackgroundAnimator:
 
         # Get preset indices that have actual presets programmed
         preset_indices = set()
-        if self.preset_manager:
-            preset_indices = set(self.preset_manager.get_all_preset_indices().keys())
 
         for x in range(8):
             for y in range(9):
@@ -189,8 +186,8 @@ class BackgroundAnimator:
 class BackgroundManager:
     """Manages background animation cycling."""
 
-    def __init__(self, preset_manager=None):
-        self.animator = BackgroundAnimator(preset_manager)
+    def __init__(self):
+        self.animator = BackgroundAnimator()
         self.background_animations = [
             "default",
             "none",

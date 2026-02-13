@@ -21,17 +21,22 @@ from lumiblox.controller.sequence_controller import (
     PlaybackState,
 )
 from lumiblox.controller.scene_controller import SceneController
-from lumiblox.controller.input_handler import InputHandler, ButtonEvent, ButtonType
+from lumiblox.common.enums import ButtonType
+from lumiblox.controller.input_handler import InputHandler, ButtonEvent
 from lumiblox.controller.led_controller import LEDController
 from lumiblox.controller.device_monitor import DeviceMonitor
-from lumiblox.controller.background_animator import BackgroundManager
+from lumiblox.controller.background_animator import BackgroundAnimator, BackgroundManager
+from lumiblox.controller.command_queue import CommandQueue, CommandType, ControllerCommand
+from lumiblox.controller.app_state_manager import AppStateManager
 from lumiblox.devices.launchpad import LaunchpadMK2
 from lumiblox.midi.light_software import LightSoftware
 from lumiblox.midi.light_software_sim import LightSoftwareSim
+from lumiblox.midi.light_software_protocol import LightSoftwareProtocol
 from lumiblox.common.device_state import DeviceManager, DeviceType
-from lumiblox.common.config import get_config, ROWS_PER_PAGE, NUM_SCENE_PAGES, SCENE_COLUMNS
+from lumiblox.common.config import get_config
+from lumiblox.common.constants import ROWS_PER_PAGE, NUM_SCENE_PAGES, SCENE_COLUMNS
 from lumiblox.common.enums import AppState
-from lumiblox.pilot.project_data_repository import ProjectDataRepository
+from lumiblox.common.project_data_repository import ProjectDataRepository
 from lumiblox.midi.midi_manager import midi_manager
 
 if TYPE_CHECKING:
@@ -62,18 +67,22 @@ class LightController:
         self.input_handler = InputHandler()
         
         # Hardware
+        self.light_software: LightSoftwareProtocol
         if simulation:
             logger.info("Using simulated lighting software")
             self.light_software = LightSoftwareSim()
         else:
             self.light_software = LightSoftware(device_manager=self.device_manager)
         
-        self.launchpad = LaunchpadMK2(None, device_manager=self.device_manager)
-        self.led_ctrl = LEDController(self.launchpad)
-        self.background_mgr = BackgroundManager(None)  # Will update presets access
+        self.launchpad = LaunchpadMK2(device_manager=self.device_manager)
+        self._animator = BackgroundAnimator()
+        self.led_ctrl = LEDController(self.launchpad, self._animator)
+        self.background_mgr = BackgroundManager()
         
+        # Command queue for thread-safe GUI -> controller communication
+        self.command_queue = CommandQueue()
+
         # App state
-        self.app_state = AppState.NORMAL
         self.active_sequence: t.Optional[t.Tuple[int, int]] = None
         self._last_sequence_scenes: t.Set[t.Tuple[int, int]] = set()
         self.active_page: int = 0
@@ -85,6 +94,15 @@ class LightController:
         self.config = get_config()
         self.pilot_controller: t.Optional["PilotController"] = None
 
+        # App state manager (save modes, pilot select)
+        self.app_state_mgr = AppStateManager(
+            led_ctrl=self.led_ctrl,
+            sequence_ctrl=self.sequence_ctrl,
+            project_repo=self.project_repo,
+            switch_pilot_fn=self.switch_pilot,
+            set_sequence_led_fn=self._set_sequence_led_state,
+        )
+
         # Apply background animation from config (set once at startup)
         self.background_mgr.set_background(
             self.config.data.get("background_animation", "default")
@@ -94,7 +112,6 @@ class LightController:
         # External callbacks (for GUI)
         self.on_sequence_changed: t.Optional[t.Callable[[t.Optional[t.Tuple[int, int]]], None]] = None
         self.on_sequence_saved: t.Optional[t.Callable[[], None]] = None
-        self.on_pilot_selection_changed: t.Optional[t.Callable[[int], None]] = None
         
         # Wire up callbacks
         self._setup_callbacks()
@@ -156,8 +173,7 @@ class LightController:
     def initialize(self) -> bool:
         """Initialize hardware connections (non-blocking)."""
         # Try to connect light software
-        if hasattr(self.light_software, 'connect_midi'):
-            self.light_software.connect_midi()
+        self.light_software.connect_midi()
         
         # Start device monitor
         self.device_monitor.start()
@@ -179,6 +195,9 @@ class LightController:
         
         try:
             while True:
+                # Process queued commands from GUI
+                self._process_commands()
+
                 # Process inputs
                 self._process_launchpad_input()
                 self._process_midi_feedback()
@@ -197,10 +216,7 @@ class LightController:
         self.device_monitor.stop()
         self.sequence_ctrl.cleanup()
         self.launchpad.close()
-        if hasattr(self.light_software, 'close_midi'):
-            self.light_software.close_midi()
-        elif hasattr(self.light_software, 'close_light_software_midi'):
-            self.light_software.close_light_software_midi()
+        self.light_software.close()
         # Final MIDI shutdown — close all tracked ports at application exit
         midi_manager.shutdown()
         logger.info("Cleanup complete")
@@ -244,20 +260,18 @@ class LightController:
     
     def _convert_launchpad_event(self, data: t.Dict) -> t.Optional[ButtonEvent]:
         """Convert launchpad event to generic ButtonEvent."""
-        from lumiblox.devices.launchpad import ButtonType as LPButtonType
-        
         lp_type = data["type"]
         coords = tuple(data["index"])
         pressed = data["active"]
         
         # Map launchpad button type to generic type
-        if lp_type == LPButtonType.SCENE:
+        if lp_type == ButtonType.SCENE:
             btn_type = ButtonType.SCENE
             # Apply page offset to get absolute scene coordinates
             coords = (coords[0], coords[1] + self.active_page * ROWS_PER_PAGE)
-        elif lp_type == LPButtonType.PRESET:
+        elif lp_type == ButtonType.SEQUENCE:
             btn_type = ButtonType.SEQUENCE
-        elif lp_type == LPButtonType.CONTROL:
+        elif lp_type == ButtonType.CONTROL:
             btn_type = ButtonType.CONTROL
         else:
             btn_type = ButtonType.UNKNOWN
@@ -266,9 +280,7 @@ class LightController:
     
     def _process_midi_feedback(self) -> None:
         """Process MIDI feedback from light software."""
-        if not hasattr(self.light_software, 'process_feedback'):
-            return
-        if not getattr(self.light_software, 'connection_good', False):
+        if not self.light_software.connection_good:
             return
         
         changes = self.light_software.process_feedback()
@@ -312,13 +324,14 @@ class LightController:
     
     def _handle_sequence_button(self, index: t.Tuple[int, int], pressed: bool) -> None:
         """Handle sequence button press (based on app state)."""
-        if self.app_state == AppState.SAVE_MODE:
+        state = self.app_state_mgr.state
+        if state == AppState.SAVE_MODE:
             self._save_sequence(index)
-        elif self.app_state == AppState.SAVE_SHIFT_MODE:
+        elif state == AppState.SAVE_SHIFT_MODE:
             self._add_step_to_sequence(index)
-        elif self.app_state == AppState.PILOT_SELECT_MODE:
+        elif state == AppState.PILOT_SELECT_MODE:
             if pressed:
-                self._handle_pilot_selection_button(index)
+                self.app_state_mgr.handle_pilot_selection_button(index)
         else:
             self._activate_deactivate_sequence(index)
     
@@ -328,12 +341,12 @@ class LightController:
             return
         
         handlers = {
-            "save_button": self._toggle_save_mode,
-            "save_shift_button": self._toggle_save_shift_mode,
+            "save_button": self.app_state_mgr.toggle_save_mode,
+            "save_shift_button": self.app_state_mgr.toggle_save_shift_mode,
             "playback_toggle_button": self._toggle_playback,
             "next_step_button": self._next_step,
             "clear_button": self._clear_all_scenes,
-            "pilot_select_button": self._toggle_pilot_select_mode,
+            "pilot_select_button": self.app_state_mgr.toggle_pilot_select_mode,
             "pilot_toggle_button": self._toggle_pilot_enabled,
             "page_1_button": lambda: self._switch_page(0),
             "page_2_button": lambda: self._switch_page(1),
@@ -342,9 +355,6 @@ class LightController:
         handler = handlers.get(name)
         if handler:
             handler()
-        else:
-            # Unknown control - might be a scene button
-            logger.debug(f"Unhandled control: {name}")
     
     # ============================================================================
     # SCENE CALLBACKS
@@ -445,7 +455,7 @@ class LightController:
         if self.on_sequence_saved:
             self.on_sequence_saved()
         
-        self._exit_save_mode()
+        self.app_state_mgr.exit_save_mode()
         self._activate_deactivate_sequence(index)
     
     def _add_step_to_sequence(self, index: t.Tuple[int, int]) -> None:
@@ -465,155 +475,12 @@ class LightController:
         if self.on_sequence_saved:
             self.on_sequence_saved()
         
-        self._exit_save_mode()
+        self.app_state_mgr.exit_save_mode()
         self._activate_deactivate_sequence(index)
     
-    # ============================================================================
-    # APP STATE MANAGEMENT
-    # ============================================================================
-    
-    def _toggle_save_mode(self) -> None:
-        """Toggle save mode."""
-        if self.app_state == AppState.SAVE_MODE:
-            self._exit_save_mode()
-        else:
-            self._enter_save_mode()
-    
-    def _toggle_save_shift_mode(self) -> None:
-        """Toggle save shift mode."""
-        if self.app_state == AppState.SAVE_SHIFT_MODE:
-            self._exit_save_mode()
-        else:
-            self._enter_save_shift_mode()
-    
-    def _enter_save_mode(self) -> None:
-        """Enter save mode."""
-        if self.app_state == AppState.PILOT_SELECT_MODE:
-            self._exit_pilot_select_mode()
-        self.app_state = AppState.SAVE_MODE
-        self.sequence_ctrl.stop_playback()
-        
-        coords = tuple(self.config.data["key_bindings"]["save_button"]["coordinates"])
-        self.led_ctrl.update_control_led(coords, "save_mode_on")
-        
-        indices = self.sequence_ctrl.get_all_indices()
-        self.led_ctrl.update_sequence_leds_for_save_mode("normal", indices)
-    
-    def _enter_save_shift_mode(self) -> None:
-        """Enter save shift mode."""
-        if self.app_state == AppState.PILOT_SELECT_MODE:
-            self._exit_pilot_select_mode()
-        self.app_state = AppState.SAVE_SHIFT_MODE
-        self.sequence_ctrl.stop_playback()
-        
-        coords = tuple(self.config.data["key_bindings"]["save_shift_button"]["coordinates"])
-        self.led_ctrl.update_control_led(coords, "save_mode_on")
-        
-        indices = self.sequence_ctrl.get_all_indices()
-        self.led_ctrl.update_sequence_leds_for_save_mode("shift", indices)
-    
-    def _exit_save_mode(self) -> None:
-        """Exit all save modes."""
-        self.app_state = AppState.NORMAL
-        
-        for key in ["save_button", "save_shift_button"]:
-            coords = tuple(self.config.data["key_bindings"][key]["coordinates"])
-            self.led_ctrl.update_control_led(coords, "off")
-        
-        self.led_ctrl.clear_sequence_leds()
-        if self.active_sequence:
-            self._set_sequence_led_state(self.active_sequence, True)
-
-    def _toggle_pilot_select_mode(self) -> None:
-        """Toggle pilot selection mode."""
-        if self.app_state == AppState.PILOT_SELECT_MODE:
-            self._exit_pilot_select_mode()
-            return
-
-        if self.app_state in (AppState.SAVE_MODE, AppState.SAVE_SHIFT_MODE):
-            self._exit_save_mode()
-        self._enter_pilot_select_mode()
-
-    def _enter_pilot_select_mode(self) -> None:
-        """Enter pilot selection mode and update LEDs."""
-        self._refresh_pilot_presets()
-        self.app_state = AppState.PILOT_SELECT_MODE
-
-        coords = tuple(
-            self.config.data["key_bindings"]["pilot_select_button"]["coordinates"]
-        )
-        self.led_ctrl.update_control_led(coords, "save_mode_on")
-        self._render_pilot_selection_leds()
-
-    def _exit_pilot_select_mode(self) -> None:
-        """Exit pilot selection mode and restore sequence LEDs."""
-        if self.app_state != AppState.PILOT_SELECT_MODE:
-            return
-
-        self.app_state = AppState.NORMAL
-        coords = tuple(
-            self.config.data["key_bindings"]["pilot_select_button"]["coordinates"]
-        )
-        self.led_ctrl.update_control_led(coords, "off")
-
-        self.led_ctrl.clear_sequence_leds()
-        if self.active_sequence:
-            self._set_sequence_led_state(self.active_sequence, True)
-
-    def _render_pilot_selection_leds(self) -> None:
-        """Render pilot selection grid on sequence buttons."""
-        pilot_count = len(self.project_repo.pilots)
-        active_index = self.project_repo.get_active_pilot_index()
-        self.led_ctrl.display_pilot_selection(pilot_count, active_index)
-
-    def _handle_pilot_selection_button(self, index: t.Tuple[int, int]) -> None:
-        """Handle pilot selection via sequence pads."""
-        self._refresh_pilot_presets()
-        pilot_slot = self._sequence_index_to_linear(index)
-        if pilot_slot is None:
-            return
-
-        if pilot_slot >= len(self.project_repo.pilots):
-            return
-
-        self._activate_pilot_by_index(pilot_slot)
-        self._exit_pilot_select_mode()
-
-    def _activate_pilot_by_index(self, pilot_index: int) -> None:
-        """Activate pilot preset by index and notify listeners."""
-        # Switch to the pilot using the repository (reloads sequences automatically)
-        if self.switch_pilot(pilot_index):
-            # Reload pilot controller if active
-            if self.pilot_controller:
-                self.pilot_controller.preset_manager.load()
-
-            # Notify listeners
-            if self.on_pilot_selection_changed:
-                try:
-                    self.on_pilot_selection_changed(pilot_index)
-                except Exception as exc:
-                    logger.debug(f"Pilot selection callback failed: {exc}")
-
-    def _get_active_pilot_index(self) -> t.Optional[int]:
-        """Return the currently enabled pilot preset index."""
-        return self.project_repo.get_active_pilot_index()
-
-    def _sequence_index_to_linear(self, index: t.Tuple[int, int]) -> t.Optional[int]:
-        """Convert (x, y) sequence coordinates to linear slot index."""
-        x, y = index
-        if not (0 <= x <= 7 and 0 <= y <= 2):
-            return None
-        return y * 8 + x
-
-    def _refresh_pilot_presets(self) -> None:
-        """Reload pilot presets from disk if possible."""
-        success = self.project_repo.load()
-        if not success:
-            logger.warning("Unable to reload pilot presets; using last known state")
-
     def _set_sequence_led_state(self, index: t.Tuple[int, int], active: bool) -> None:
         """Update a sequence LED unless overridden by pilot mode."""
-        if self.app_state == AppState.PILOT_SELECT_MODE:
+        if self.app_state_mgr.state == AppState.PILOT_SELECT_MODE:
             return
         self.led_ctrl.update_sequence_led(index, active)
     
@@ -773,81 +640,38 @@ class LightController:
     
     def _update_leds(self) -> None:
         """Update all LED displays."""
-        if self.launchpad.is_connected:
-            bg_type = self.background_mgr.get_current_background()
-            self.led_ctrl.update_background(bg_type, self.app_state)
+        # Gather read-only state for LED rendering
+        pilot_running = False
+        if self.pilot_controller:
+            try:
+                pilot_running = self.pilot_controller.is_running()
+            except Exception:
+                pass
+        else:
+            pilot_running = bool(self.config.data.get("pilot", {}).get("enabled", False))
 
-            # Blink dual-active scene LEDs (active on both pages)
+        active_index = self.sequence_ctrl.active_sequence
+        active_steps = self.sequence_ctrl.get_sequence(active_index) if active_index else None
+
+        self.led_ctrl.render_status_frame(
+            background_type=self.background_mgr.get_current_background(),
+            app_state=self.app_state_mgr.state,
+            playback_state=self.sequence_ctrl.playback_state,
+            active_sequence_index=active_index,
+            sequence_steps=active_steps,
+            has_active_scenes=self.scene_ctrl.has_active_scenes(),
+            pilot_running=pilot_running,
+            active_page=self.active_page,
+            key_bindings=self.config.data.get("key_bindings", {}),
+        )
+
+        # Blink dual-active scene LEDs (active on both pages)
+        if self.launchpad.is_connected:
             now = time.time()
             if now - self._last_blink_toggle >= self._BLINK_INTERVAL:
                 self._blink_phase = not self._blink_phase
                 self._last_blink_toggle = now
                 self._update_blinking_scene_leds()
-
-            # Playback toggle LED reflects play/pause state
-            playback_coords = tuple(
-                self.config.data["key_bindings"]["playback_toggle_button"][
-                    "coordinates"
-                ]
-            )
-            playback_color = (
-                "playback_playing"
-                if self.sequence_ctrl.playback_state == PlaybackState.PLAYING
-                else "playback_paused"
-            )
-            self.led_ctrl.update_control_led(playback_coords, playback_color)
-
-            # Next-step LED is shown when paused on a multi-step sequence
-            next_step_coords = tuple(
-                self.config.data["key_bindings"]["next_step_button"][
-                    "coordinates"
-                ]
-            )
-            active_index = self.sequence_ctrl.active_sequence
-            active_sequence = (
-                self.sequence_ctrl.get_sequence(active_index)
-                if active_index
-                else None
-            )
-            can_advance = (
-                self.sequence_ctrl.playback_state == PlaybackState.PAUSED
-                and active_sequence is not None
-                and len(active_sequence) > 1
-            )
-            next_color = "next_step" if can_advance else "off"
-            self.led_ctrl.update_control_led(next_step_coords, next_color)
-
-            # Pilot toggle LED reflects pilot running state
-            pilot_coords = tuple(
-                self.config.data["key_bindings"]["pilot_toggle_button"][
-                    "coordinates"
-                ]
-            )
-            pilot_running = False
-            if self.pilot_controller:
-                try:
-                    pilot_running = self.pilot_controller.is_running()
-                except Exception as exc:
-                    logger.debug("Could not read pilot state: %s", exc)
-            else:
-                pilot_running = bool(self.config.data.get("pilot", {}).get("enabled", False))
-
-            pilot_color = "pilot_toggle_on" if pilot_running else "pilot_toggle_off"
-            self.led_ctrl.update_control_led(pilot_coords, pilot_color)
-            
-            # Update clear button
-            coords = tuple(self.config.data["key_bindings"]["clear_button"]["coordinates"])
-            color_key = "success_flash" if self.scene_ctrl.has_active_scenes() else "off"
-            self.led_ctrl.update_control_led(coords, color_key)
-
-            # Update page button LEDs
-            page_buttons = ["page_1_button", "page_2_button"]
-            bindings = self.config.data.get("key_bindings", {})
-            for page_idx, page_key in enumerate(page_buttons):
-                if page_key in bindings:
-                    page_coords = tuple(bindings[page_key]["coordinates"])
-                    page_color = "page_active" if page_idx == self.active_page else "off"
-                    self.led_ctrl.update_control_led(page_coords, page_color)
     
     def _on_device_state_changed(self, device_type, new_state) -> None:
         """Handle device state changes."""
@@ -876,6 +700,134 @@ class LightController:
     def set_pilot_controller(self, pilot_controller: "PilotController") -> None:
         """Attach a pilot controller for preset synchronization."""
         self.pilot_controller = pilot_controller
+        self.app_state_mgr.pilot_controller = pilot_controller
+
+    # ============================================================================
+    # COMMAND QUEUE (thread-safe GUI -> controller communication)
+    # ============================================================================
+
+    def _process_commands(self) -> None:
+        """Drain and handle all pending commands from the queue."""
+        self.command_queue.process_all(self._handle_command)
+
+    def _handle_command(self, cmd: ControllerCommand) -> None:
+        """Dispatch a single controller command."""
+        try:
+            if cmd.command_type == CommandType.TOGGLE_PLAYBACK:
+                self._toggle_playback()
+            elif cmd.command_type == CommandType.NEXT_STEP:
+                self._next_step()
+            elif cmd.command_type == CommandType.CLEAR:
+                self._clear_all_scenes()
+            elif cmd.command_type == CommandType.ACTIVATE_SEQUENCE:
+                self._activate_deactivate_sequence(cmd.data["index"])
+            elif cmd.command_type == CommandType.SAVE_SEQUENCE:
+                self.sequence_ctrl.save_sequence(
+                    cmd.data["index"],
+                    cmd.data["steps"],
+                    cmd.data.get("loop", True),
+                    loop_count=cmd.data.get("loop_count", 1),
+                    next_sequences=cmd.data.get("next_sequences"),
+                )
+            elif cmd.command_type == CommandType.DELETE_SEQUENCE:
+                self.sequence_ctrl.delete_sequence(cmd.data["index"])
+            elif cmd.command_type == CommandType.SWITCH_PILOT:
+                self.switch_pilot(cmd.data["pilot_index"])
+            elif cmd.command_type == CommandType.ACTIVATE_SCENES:
+                self.scene_ctrl.activate_scenes(
+                    cmd.data["scenes"],
+                    controlled=cmd.data.get("controlled", True),
+                )
+            elif cmd.command_type == CommandType.BUTTON_EVENT:
+                event = ButtonEvent(
+                    button_type=ButtonType(cmd.data["type"]),
+                    coordinates=tuple(cmd.data["coordinates"]),
+                    pressed=cmd.data["pressed"],
+                    source="gui",
+                )
+                self.input_handler.handle_button_event(event)
+            else:
+                logger.warning("Unknown command type: %s", cmd.command_type)
+        except Exception as exc:
+            logger.error("Error handling command %s: %s", cmd.command_type, exc)
+
+    # --- Public post helpers (call from any thread) ---
+
+    def post_toggle_playback(self) -> None:
+        self.command_queue.post(ControllerCommand(CommandType.TOGGLE_PLAYBACK))
+
+    def post_next_step(self) -> None:
+        self.command_queue.post(ControllerCommand(CommandType.NEXT_STEP))
+
+    def post_clear(self) -> None:
+        self.command_queue.post(ControllerCommand(CommandType.CLEAR))
+
+    def post_activate_sequence(self, index: t.Tuple[int, int]) -> None:
+        self.command_queue.post(ControllerCommand(CommandType.ACTIVATE_SEQUENCE, {"index": index}))
+
+    def post_save_sequence(
+        self,
+        index: t.Tuple[int, int],
+        steps: list,
+        loop: bool = True,
+        loop_count: int = 1,
+        next_sequences: t.Optional[list] = None,
+    ) -> None:
+        self.command_queue.post(ControllerCommand(CommandType.SAVE_SEQUENCE, {
+            "index": index,
+            "steps": steps,
+            "loop": loop,
+            "loop_count": loop_count,
+            "next_sequences": next_sequences,
+        }))
+
+    def post_delete_sequence(self, index: t.Tuple[int, int]) -> None:
+        self.command_queue.post(ControllerCommand(CommandType.DELETE_SEQUENCE, {"index": index}))
+
+    def post_switch_pilot(self, pilot_index: int) -> None:
+        self.command_queue.post(ControllerCommand(CommandType.SWITCH_PILOT, {"pilot_index": pilot_index}))
+
+    def post_activate_scenes(self, scenes: list, controlled: bool = True) -> None:
+        self.command_queue.post(ControllerCommand(CommandType.ACTIVATE_SCENES, {
+            "scenes": scenes,
+            "controlled": controlled,
+        }))
+
+    def post_button_event(self, button_type: str, coordinates: t.Tuple[int, int], pressed: bool) -> None:
+        self.command_queue.post(ControllerCommand(CommandType.BUTTON_EVENT, {
+            "type": button_type,
+            "coordinates": coordinates,
+            "pressed": pressed,
+        }))
+
+    # --- Read-only snapshot helpers (safe from GUI thread) ---
+
+    def get_sequence_indices(self) -> t.Set[t.Tuple[int, int]]:
+        return self.sequence_ctrl.get_all_indices()
+
+    def get_sequence(self, index: t.Tuple[int, int]):
+        return self.sequence_ctrl.get_sequence(index)
+
+    def get_playback_state(self):
+        return self.sequence_ctrl.playback_state
+
+    def get_current_step_index(self) -> int:
+        return self.sequence_ctrl.current_step_index
+
+    def get_active_sequence(self):
+        return self.active_sequence
+
+    def get_active_scenes(self):
+        return self.scene_ctrl.get_active_scenes()
+
+    def get_loop_setting(self, index):
+        return self.sequence_ctrl.get_loop_setting(index)
+
+    def get_loop_count(self, index):
+        return self.sequence_ctrl.get_loop_count(index)
+
+    def get_followup_sequences(self, index):
+        return self.sequence_ctrl.get_followup_sequences(index)
 
 
 # ============================================================================

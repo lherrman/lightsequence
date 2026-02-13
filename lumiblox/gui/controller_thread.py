@@ -49,7 +49,7 @@ class ControllerThread(QThread):
             if self.controller:
                 if hasattr(self.controller, "set_pilot_controller"):
                     self.controller.set_pilot_controller(self.pilot_controller)
-                self.controller.on_pilot_selection_changed = (
+                self.controller.app_state_mgr.on_pilot_selection_changed = (
                     self._handle_pilot_selection_changed
                 )
 
@@ -61,6 +61,9 @@ class ControllerThread(QThread):
 
             while not self.should_stop:
                 try:
+                    # Process queued commands from GUI
+                    self.controller._process_commands()
+
                     # Process inputs
                     self.controller._process_launchpad_input()
                     self.controller._process_midi_feedback()
@@ -137,6 +140,7 @@ class ControllerThread(QThread):
                     f"Phrase type: {phrase_type}"
                 ),
                 on_capturing=self._handle_capturing,
+                project_repo=self.controller.project_repo if self.controller else None,
             )
 
             # Configure zero signal if enabled
@@ -211,7 +215,8 @@ class ControllerThread(QThread):
             # Create a minimal pilot controller so GUI doesn't break
             # User can still configure it via GUI
             try:
-                self.pilot_controller = PilotController(midiclock_device="midiclock")
+                self.pilot_controller = PilotController(midiclock_device="midiclock",
+                    project_repo=self.controller.project_repo if self.controller else None)
             except Exception as fallback_error:
                 logger.error(
                     f"Failed to create fallback pilot controller: {fallback_error}"

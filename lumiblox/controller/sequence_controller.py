@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 if t.TYPE_CHECKING:
-    from lumiblox.pilot.project_data_repository import ProjectDataRepository
+    from lumiblox.common.project_data_repository import ProjectDataRepository
 
 logger = logging.getLogger(__name__)
 

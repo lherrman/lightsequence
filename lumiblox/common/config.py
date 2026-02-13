@@ -7,37 +7,6 @@ from typing_extensions import TypedDict
 logger = logging.getLogger(__name__)
 
 
-def get_button_type_enum(button_type_str: str):
-    """Convert button type string to ButtonType enum.
-
-    Args:
-        button_type_str: String representation of button type ("TOP", "RIGHT", etc.)
-
-    Returns:
-        ButtonType enum value
-    """
-    # Import here to avoid circular imports
-    from lumiblox.devices.launchpad import ButtonType
-
-    button_type_map = {
-        "CONTROL": ButtonType.CONTROL,
-        "TOP": ButtonType.CONTROL,  # legacy alias
-        "RIGHT": ButtonType.CONTROL,  # legacy alias
-        "SCENE": ButtonType.SCENE,
-        "PRESET": ButtonType.PRESET,
-    }
-
-    return button_type_map.get(button_type_str.upper(), ButtonType.UNKNOWN)
-
-
-# Scene page constants
-ROWS_PER_PAGE = 5
-NUM_SCENE_PAGES = 2
-SCENE_COLUMNS = 9  # Total columns on Launchpad (including right-side control column)
-GUI_SCENE_COLUMNS = 8  # Columns shown in the GUI (excluding right-side control column)
-TOTAL_SCENE_ROWS = ROWS_PER_PAGE * NUM_SCENE_PAGES
-
-
 class ColorConfig(TypedDict):
     """Type definition for color configuration."""
 

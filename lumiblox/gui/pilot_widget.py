@@ -26,7 +26,8 @@ from PySide6.QtWidgets import (
 )
 
 from lumiblox.pilot.phrase_detector import CaptureRegion
-from lumiblox.pilot.pilot_preset import PilotPresetManager, AutomationRule
+from lumiblox.pilot.pilot_preset import AutomationRule
+from lumiblox.common.project_data_repository import ProjectDataRepository
 from lumiblox.pilot.midi_actions import MidiActionConfig, MidiActionType
 from lumiblox.gui.rule_editor import PresetEditorDialog
 from lumiblox.common.config import get_config
@@ -668,7 +669,7 @@ class PilotWidget(QWidget):
         self.refresh_callback = refresh_callback
         self.pilot_controller = pilot_controller
         self.phrase_detection_enabled = False
-        self.preset_manager = PilotPresetManager()
+        self.project_repo: Optional[ProjectDataRepository] = None
         self._cooldown_cache: dict[str, dict[str, int]] = {}
         self._jump_edit_rule_name: Optional[str] = None
         self._jump_edit_candidates: list[tuple[int, int]] = []
@@ -1014,7 +1015,7 @@ class PilotWidget(QWidget):
 
     # Preset management methods
     def _load_presets(self, active_pilot_index: Optional[int] = None) -> None:
-        """Load presets from preset manager into combo box.
+        """Load presets from project repository into combo box.
         
         Args:
             active_pilot_index: Index of the active pilot to select. If None, defaults to first.
@@ -1022,13 +1023,14 @@ class PilotWidget(QWidget):
         self.preset_combo.blockSignals(True)
         self.preset_combo.clear()
 
-        for i, preset in enumerate(self.preset_manager.presets):
+        pilots = self.project_repo.pilots if self.project_repo else []
+        for i, preset in enumerate(pilots):
             self.preset_combo.addItem(preset.name, i)
 
         # Select the specified pilot or default to first
-        if active_pilot_index is not None and 0 <= active_pilot_index < len(self.preset_manager.presets):
+        if active_pilot_index is not None and 0 <= active_pilot_index < len(pilots):
             self.preset_combo.setCurrentIndex(active_pilot_index)
-        elif self.preset_manager.presets:
+        elif pilots:
             self.preset_combo.setCurrentIndex(0)
 
         self.preset_combo.blockSignals(False)
@@ -1046,8 +1048,9 @@ class PilotWidget(QWidget):
         self.rule_widgets.clear()
 
         current_index = self.preset_combo.currentIndex()
-        if 0 <= current_index < len(self.preset_manager.presets):
-            preset = self.preset_manager.presets[current_index]
+        pilots = self.project_repo.pilots if self.project_repo else []
+        if 0 <= current_index < len(pilots):
+            preset = pilots[current_index]
             if preset.rules:
                 for rule in preset.rules:
                     row_widget = self._create_rule_row(rule)
@@ -1162,9 +1165,10 @@ class PilotWidget(QWidget):
     def _on_edit_rule(self, rule_name: str) -> None:
         """Open the rule editor dialog for a specific rule."""
         current_index = self.preset_combo.currentIndex()
-        if not (0 <= current_index < len(self.preset_manager.presets)):
+        pilots = self.project_repo.pilots if self.project_repo else []
+        if not (0 <= current_index < len(pilots)):
             return
-        preset = self.preset_manager.presets[current_index]
+        preset = pilots[current_index]
         rule_index = None
         for i, rule in enumerate(preset.rules):
             if rule.name == rule_name:
@@ -1179,7 +1183,8 @@ class PilotWidget(QWidget):
         if dialog.exec() == QDialog.DialogCode.Accepted:
             updated_rule = dialog.get_rule()
             preset.rules[rule_index] = updated_rule
-            self.preset_manager.save()
+            if self.project_repo:
+                self.project_repo.save()
             self._update_rules_preview()
 
     def update_rule_cooldowns(self, cooldowns: dict[str, dict[str, int]]) -> None:
@@ -1271,10 +1276,11 @@ class PilotWidget(QWidget):
             return
 
         current_index = self.preset_combo.currentIndex()
-        if not (0 <= current_index < len(self.preset_manager.presets)):
+        pilots = self.project_repo.pilots if self.project_repo else []
+        if not (0 <= current_index < len(pilots)):
             return
 
-        preset = self.preset_manager.presets[current_index]
+        preset = pilots[current_index]
         # Find the matching rule object
         matched_rule = None
         for rule in preset.rules:
@@ -1321,9 +1327,10 @@ class PilotWidget(QWidget):
     def _get_rule_sequence_coords(self, rule_name: str) -> list[tuple[int, int]]:
         """Get the sequence coordinates for a rule's action."""
         current_index = self.preset_combo.currentIndex()
-        if not (0 <= current_index < len(self.preset_manager.presets)):
+        pilots = self.project_repo.pilots if self.project_repo else []
+        if not (0 <= current_index < len(pilots)):
             return []
-        preset = self.preset_manager.presets[current_index]
+        preset = pilots[current_index]
         for rule in preset.rules:
             if rule.name == rule_name and rule.action.sequences:
                 coords = []
@@ -1355,9 +1362,10 @@ class PilotWidget(QWidget):
         if not self._jump_edit_rule_name:
             return
         current_index = self.preset_combo.currentIndex()
-        if not (0 <= current_index < len(self.preset_manager.presets)):
+        pilots = self.project_repo.pilots if self.project_repo else []
+        if not (0 <= current_index < len(pilots)):
             return
-        preset = self.preset_manager.presets[current_index]
+        preset = pilots[current_index]
         for rule in preset.rules:
             if rule.name == self._jump_edit_rule_name:
                 from lumiblox.pilot.pilot_preset import SequenceChoice
@@ -1374,7 +1382,8 @@ class PilotWidget(QWidget):
                     rule.action.sequences = []
                 break
         # Persist changes
-        self.preset_manager.save()
+        if self.project_repo:
+            self.project_repo.save()
         self._update_rules_preview()
         # Re-check the jump edit button for the active rule (preview rebuild clears it)
         if self._jump_edit_rule_name and self._jump_edit_rule_name in self.rule_widgets:
@@ -1398,7 +1407,8 @@ class PilotWidget(QWidget):
         """Handle preset selection change."""
         # Exit jump edit mode when switching presets
         self.exit_pilot_jump_edit_mode()
-        if 0 <= index < len(self.preset_manager.presets):
+        pilots = self.project_repo.pilots if self.project_repo else []
+        if 0 <= index < len(pilots):
             # Just update the UI preview and emit signal
             # The controller will handle persistence via repository
             self._update_rules_preview()
@@ -1413,8 +1423,8 @@ class PilotWidget(QWidget):
         if dialog.exec():
             # Get the new preset from dialog
             new_preset = dialog.get_preset()
-            if new_preset:
-                self.preset_manager.add_preset(new_preset)
+            if new_preset and self.project_repo:
+                self.project_repo.add_pilot(new_preset)
                 self._load_presets()
                 # Select the newly added preset (last one)
                 self.preset_combo.setCurrentIndex(self.preset_combo.count() - 1)
@@ -1422,14 +1432,15 @@ class PilotWidget(QWidget):
     def _on_edit_preset(self) -> None:
         """Show dialog to edit the current preset."""
         current_index = self.preset_combo.currentIndex()
-        if 0 <= current_index < len(self.preset_manager.presets):
-            current_preset = self.preset_manager.presets[current_index]
+        pilots = self.project_repo.pilots if self.project_repo else []
+        if 0 <= current_index < len(pilots):
+            current_preset = pilots[current_index]
             dialog = PresetEditorDialog(preset=current_preset, parent=self)
             if dialog.exec():
                 # Update the preset
                 updated_preset = dialog.get_preset()
-                if updated_preset:
-                    self.preset_manager.update_preset(current_index, updated_preset)
+                if updated_preset and self.project_repo:
+                    self.project_repo.update_pilot(current_index, updated_preset)
                     self._load_presets()
                     # Restore selection
                     self.preset_combo.setCurrentIndex(current_index)
@@ -1437,8 +1448,9 @@ class PilotWidget(QWidget):
     def _on_delete_preset(self) -> None:
         """Delete the current preset."""
         current_index = self.preset_combo.currentIndex()
-        if 0 <= current_index < len(self.preset_manager.presets):
-            preset = self.preset_manager.presets[current_index]
+        pilots = self.project_repo.pilots if self.project_repo else []
+        if 0 <= current_index < len(pilots):
+            preset = pilots[current_index]
             # Confirm deletion
             from PySide6.QtWidgets import QMessageBox
 
@@ -1450,12 +1462,18 @@ class PilotWidget(QWidget):
                 QMessageBox.StandardButton.No,
             )
             if reply == QMessageBox.StandardButton.Yes:
-                self.preset_manager.remove_preset(current_index)
+                if self.project_repo:
+                    self.project_repo.remove_pilot(current_index)
                 self._load_presets()
 
     def set_pilot_controller(self, pilot_controller) -> None:
         """Set the pilot controller reference (called after initialization)."""
         self.pilot_controller = pilot_controller
+        self.reload_presets()
+
+    def set_project_repo(self, repo: ProjectDataRepository) -> None:
+        """Set the project data repository and reload presets."""
+        self.project_repo = repo
         self.reload_presets()
 
     def reload_presets(self, active_pilot_index: Optional[int] = None) -> None:
@@ -1464,5 +1482,6 @@ class PilotWidget(QWidget):
         Args:
             active_pilot_index: Index of the active pilot to select. If None, defaults to first.
         """
-        self.preset_manager.load()
+        if self.project_repo:
+            self.project_repo.load()
         self._load_presets(active_pilot_index)

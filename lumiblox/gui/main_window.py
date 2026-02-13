@@ -29,7 +29,6 @@ from lumiblox.gui.widgets import PresetButton
 from lumiblox.gui.sequence_editor import PresetSequenceEditor
 from lumiblox.gui.playback_controls import PlaybackControls
 from lumiblox.gui.pilot_widget import PilotWidget
-from lumiblox.controller.input_handler import ButtonEvent, ButtonType
 from lumiblox.common.device_state import DeviceType
 from lumiblox.pilot.phrase_detector import CaptureRegion
 
@@ -298,6 +297,10 @@ class LightSequenceGUI(QMainWindow):
                     self.controller_thread.pilot_controller
                 )
 
+            # Set project repo on pilot widget
+            if self.controller and hasattr(self.controller, 'project_repo'):
+                self.pilot_widget.set_project_repo(self.controller.project_repo)
+
             # Set up pilot update callback
             if self.controller_thread.pilot_controller:
                 self.controller_thread.pilot_update_callback = (
@@ -322,7 +325,7 @@ class LightSequenceGUI(QMainWindow):
                     from lumiblox.controller.sequence_controller import PlaybackState
 
                     is_playing = (
-                        self.controller.sequence_ctrl.playback_state
+                        self.controller.get_playback_state()
                         == PlaybackState.PLAYING
                     )
                     self.playback_controls.set_playing(is_playing)
@@ -371,14 +374,14 @@ class LightSequenceGUI(QMainWindow):
             return
 
         # Get all sequence indices
-        sequence_indices = self.controller.sequence_ctrl.get_all_indices()
+        sequence_indices = self.controller.get_sequence_indices()
 
         # Update all preset buttons
         for (x, y), btn in self.preset_buttons.items():
             sequence_tuple = (x, y)
             if sequence_tuple in sequence_indices:
                 # Check if it's a single-step sequence (preset) or multi-step
-                seq_steps = self.controller.sequence_ctrl.get_sequence(sequence_tuple)
+                seq_steps = self.controller.get_sequence(sequence_tuple)
                 has_sequence = len(seq_steps) > 1 if seq_steps else False
                 btn.set_preset_info(True, has_sequence)
             else:
@@ -488,13 +491,7 @@ class LightSequenceGUI(QMainWindow):
         self._selected_preset_coords = sequence_tuple
 
         # Also activate on the launchpad using new input system
-        event = ButtonEvent(
-            button_type=ButtonType.SEQUENCE,
-            coordinates=sequence_tuple,
-            pressed=True,
-            source="gui",
-        )
-        self.controller.input_handler.handle_button_event(event)
+        self.controller.post_button_event("sequence", sequence_tuple, True)
 
     def show_sequence_editor(self, preset_index: t.Tuple[int, int]):
         """Show sequence editor for the selected preset."""
@@ -600,30 +597,19 @@ class LightSequenceGUI(QMainWindow):
         """Handle play/pause button click."""
         if not self.controller:
             return
-        self.controller.sequence_ctrl.toggle_play_pause()
+        self.controller.post_toggle_playback()
 
     def on_next_step_clicked(self):
         """Handle next step button click."""
         if not self.controller:
             return
-        self.controller.sequence_ctrl.next_step()
+        self.controller.post_next_step()
 
     def on_clear_clicked(self):
         """Handle clear button click."""
         if not self.controller:
             return
-
-        # Clear sequence
-        self.controller.sequence_ctrl.clear()
-
-        # Update controller state
-        if self.controller.active_sequence:
-            old_seq = self.controller.active_sequence
-            self.controller.active_sequence = None
-            self.controller.scene_ctrl.clear_controlled()
-            self.controller.led_ctrl.update_sequence_led(old_seq, False)
-            if self.controller.on_sequence_changed:
-                self.controller.on_sequence_changed(None)
+        self.controller.post_clear()
 
     # ============================================================================
     # PILOT CONTROL
@@ -756,7 +742,7 @@ class LightSequenceGUI(QMainWindow):
             return
         
         # Switch pilot in the controller (reloads sequences)
-        self.controller.switch_pilot(pilot_index)
+        self.controller.post_switch_pilot(pilot_index)
         
         # Refresh the sequence grid to show new pilot's sequences
         self.refresh_presets()
@@ -822,23 +808,12 @@ class LightSequenceGUI(QMainWindow):
         logger.info(f"Automation activating sequence {index} (from {sequence_index})")
 
         # Validate that sequence exists
-        if index not in self.controller.sequence_ctrl.sequences:
+        if index not in self.controller.get_sequence_indices():
             logger.warning(f"Sequence {index} not found, cannot activate")
             return
 
-        # Activate sequence using existing logic
-        old_sequence = self.controller.active_sequence
-        if old_sequence:
-            self.controller.led_ctrl.update_sequence_led(old_sequence, False)
-
-        self.controller.active_sequence = index
-        self.controller.sequence_ctrl.activate_sequence(index)
-        self.controller.led_ctrl.update_sequence_led(index, True)
-
-        if self.controller.on_sequence_changed:
-            self.controller.on_sequence_changed(index)
-
-        logger.info(f"Activated sequence {index} (was {old_sequence})")
+        # Activate sequence via command queue
+        self.controller.post_activate_sequence(index)
 
     def _on_automation_rule_fired(self, rule_name: str) -> None:
         """Handle rule firing notification - flash UI indicator."""

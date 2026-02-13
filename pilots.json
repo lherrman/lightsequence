@@ -17,12 +17,16 @@
             "action_type": "activate_sequence",
             "sequences": [
               {
-                "weight": 1.0,
+                "weight": 0.3333,
                 "sequence_index": "2.0"
               },
               {
-                "weight": 1.0,
+                "weight": 0.3333,
                 "sequence_index": "1.0"
+              },
+              {
+                "weight": 0.3333,
+                "sequence_index": "0.0"
               }
             ]
           },

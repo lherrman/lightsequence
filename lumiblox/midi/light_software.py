@@ -204,7 +204,7 @@ class LightSoftware:
         if self.device_manager:
             self.device_manager.set_error(DeviceType.LIGHT_SOFTWARE, reason)
 
-    def close_midi(self) -> None:
+    def close(self) -> None:
         """
         Clean shutdown of LightSoftware MIDI connections.
 
