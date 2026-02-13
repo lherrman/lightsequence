@@ -1,5 +1,5 @@
 """
-LightSoftware Simulator for Testing
+LightSoftware Simulator for Testing  (mido + python-rtmidi)
 
 Simulates LightSoftware behavior without needing the actual software running.
 Maintains a 9x5 grid of scene states and provides MIDI feedback.
@@ -7,10 +7,8 @@ Maintains a 9x5 grid of scene states and provides MIDI feedback.
 
 import logging
 import typing as t
-import os
 
-os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"
-import pygame.midi
+import mido
 
 from lumiblox.midi.midi_manager import midi_manager
 
@@ -36,9 +34,9 @@ class LightSoftwareSim:
             for y in range(10):
                 self.scene_states[(x, y)] = False
 
-        # MIDI connection variables
-        self.midi_out = None
-        self.midi_in = None
+        # MIDI connection variables (mido port objects)
+        self.midi_out = None  # type: t.Any
+        self.midi_in = None   # type: t.Any
 
         # Connection state flag
         self.connection_good = False
@@ -64,7 +62,7 @@ class LightSoftwareSim:
         return scene_map
 
     def _close_ports(self) -> None:
-        """Close existing MIDI port objects without touching the global subsystem."""
+        """Close existing MIDI port objects."""
         midi_manager.close_port(self.midi_out)
         midi_manager.close_port(self.midi_in)
         self.midi_out = None
@@ -81,29 +79,21 @@ class LightSoftwareSim:
             # Close any stale port handles before opening new ones
             self._close_ports()
 
-            midi_manager.acquire()
-
-            with midi_manager.lock:
-                for i in range(pygame.midi.get_count()):
-                    info = pygame.midi.get_device_info(i)
-                    name = info[1].decode() if info[1] else ""
-
-                    # Connect output (to send feedback via LightSoftware_out)
-                    if "lightsoftware_out" in name.lower() and info[3]:  # output device
-                        self.midi_out = pygame.midi.Output(i)
-                        logger.info(f"✅ [SIM] LightSoftware OUT: {name}")
-
-                    # Connect input (to receive commands via LightSoftware_in)
-                    elif "lightsoftware_in" in name.lower() and info[2]:  # input device
-                        self.midi_in = pygame.midi.Input(i)
-                        logger.info(f"✅ [SIM] LightSoftware IN: {name}")
-
-            if not self.midi_out:
+            # Open output (to send feedback via loopMIDI "lightsoftware_out")
+            self.midi_out = midi_manager.open_output_by_keyword("lightsoftware_out")
+            if self.midi_out:
+                logger.info("✅ [SIM] LightSoftware OUT: %s", self.midi_out.name)
+            else:
                 logger.error("❌ [SIM] No LightSoftware_out MIDI output found")
-            if not self.midi_in:
+
+            # Open input (to receive commands via loopMIDI "lightsoftware_in")
+            self.midi_in = midi_manager.open_input_by_keyword("lightsoftware_in")
+            if self.midi_in:
+                logger.info("✅ [SIM] LightSoftware IN: %s", self.midi_in.name)
+            else:
                 logger.error("❌ [SIM] No LightSoftware_in MIDI input found")
 
-            # Update connection state if successful
+            # Update connection state
             if self.midi_out and self.midi_in:
                 self.connection_good = True
                 logger.info("✅ [SIM] Successfully connected to MIDI (simulation mode)")
@@ -114,7 +104,7 @@ class LightSoftwareSim:
                 return False
 
         except Exception as e:
-            logger.error(f"[SIM] MIDI connection failed: {e}")
+            logger.error("[SIM] MIDI connection failed: %s", e)
             self.connection_good = False
             return False
 
@@ -157,55 +147,66 @@ class LightSoftwareSim:
         Send queued MIDI feedback and process incoming commands.
         This is called by the controller to get feedback.
 
+        Validates port liveness before every I/O operation.
+
         Returns:
             Dictionary of note -> state changes (True=on, False=off)
         """
-        changes = {}
+        changes: t.Dict[int, bool] = {}
+
+        if not self.connection_good:
+            return changes
 
         # First, send any queued feedback
-        if self.midi_out and self.feedback_queue:
+        if self.feedback_queue and midi_manager.is_port_alive(self.midi_out):
             try:
-                with midi_manager.lock:
-                    for note, velocity in self.feedback_queue:
-                        self.midi_out.write([[[0x90, note, velocity], pygame.midi.time()]])
+                for note, velocity in self.feedback_queue:
+                    msg = mido.Message(
+                        "note_on", note=note, velocity=velocity, channel=0
+                    )
+                    ok = midi_manager.safe_send(self.midi_out, msg)
+                    if ok:
                         logger.debug(
-                            f"[SIM] Sent feedback: note {note}, velocity {velocity}"
+                            "[SIM] Sent feedback: note %s, velocity %s", note, velocity
                         )
-
                         changes[note] = velocity > 0
+                    else:
+                        logger.warning("[SIM] Feedback send failed – marking disconnected")
+                        self.connection_good = False
+                        return changes
 
                 self.feedback_queue.clear()
             except Exception as e:
-                logger.error(f"[SIM] MIDI feedback send error: {e}")
+                logger.error("[SIM] MIDI feedback send error: %s", e)
+                self.connection_good = False
+                return changes
 
         # Process incoming commands from controller
-        if self.midi_in:
+        if midi_manager.is_port_alive(self.midi_in):
             try:
-                with midi_manager.lock:
-                    has_data = self.midi_in.poll()
-                if has_data:
-                    with midi_manager.lock:
-                        midi_events = self.midi_in.read(100)
-                    for event in midi_events:
-                        msg_data = event[0]
-                        if isinstance(msg_data, list) and len(msg_data) >= 3:
-                            status, note, velocity = msg_data[0], msg_data[1], msg_data[2]
+                for msg in self.midi_in.iter_pending():
+                    if msg.type == "note_on":
+                        note = msg.note
+                        velocity = msg.velocity
+                        logger.debug(
+                            "[SIM] Received command: note %s, velocity %s",
+                            note,
+                            velocity,
+                        )
 
-                            if status == 0x90:  # Note on message
-                                logger.debug(
-                                    f"[SIM] Received command: note {note}, velocity {velocity}"
+                        # Handle scene command - toggle based on velocity
+                        scene_coords = self.get_scene_coordinates_for_note(note)
+                        if scene_coords:
+                            if velocity > 0:
+                                current_state = self.scene_states.get(
+                                    scene_coords, False
                                 )
-
-                                # Handle scene command - toggle based on velocity
-                                scene_coords = self.get_scene_coordinates_for_note(note)
-                                if scene_coords:
-                                    if velocity > 0:
-                                        current_state = self.scene_states.get(scene_coords, False)
-                                        self.set_scene_state(scene_coords, not current_state)
-                                    else:
-                                        self.set_scene_state(scene_coords, False)
+                                self.set_scene_state(scene_coords, not current_state)
+                            else:
+                                self.set_scene_state(scene_coords, False)
             except Exception as e:
-                logger.error(f"[SIM] MIDI command processing error: {e}")
+                logger.error("[SIM] MIDI command processing error: %s", e)
+                self.connection_good = False
 
         return changes
 
@@ -213,16 +214,17 @@ class LightSoftwareSim:
         """
         Clean shutdown of MIDI connections.
 
-        Only closes this component's ports.  The shared pygame.midi
-        subsystem is shut down via ``midi_manager.shutdown()`` at
-        application exit.
+        Only closes this component's ports.  The shared MIDI subsystem
+        is shut down via ``midi_manager.shutdown()`` at application exit.
+        Idempotent – safe to call multiple times.
         """
         try:
             self._close_ports()
-            midi_manager.release()
             logger.info("✅ [SIM] MIDI ports closed")
         except Exception as e:
-            logger.error(f"[SIM] Error closing MIDI: {e}")
+            logger.error("[SIM] Error closing MIDI: %s", e)
+        finally:
+            self.connection_good = False
 
     def get_scene_state(self, scene_index: t.Tuple[int, int]) -> bool:
         """

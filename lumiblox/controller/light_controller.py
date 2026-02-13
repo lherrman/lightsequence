@@ -201,7 +201,7 @@ class LightController:
             self.light_software.close_midi()
         elif hasattr(self.light_software, 'close_light_software_midi'):
             self.light_software.close_light_software_midi()
-        # Final pygame.midi shutdown — only safe here at application exit
+        # Final MIDI shutdown — close all tracked ports at application exit
         midi_manager.shutdown()
         logger.info("Cleanup complete")
     

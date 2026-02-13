@@ -15,7 +15,6 @@ def project_root_path():
 
 
 @pytest.fixture(autouse=True)
-def reset_pygame_env():
-    """Ensure pygame environment variable is set"""
-    import os
-    os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"
+def reset_midi_env():
+    """Ensure MIDI backend environment is consistent for tests."""
+    pass

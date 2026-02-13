@@ -6,7 +6,7 @@ Comprehensive settings panel for pilot system configuration.
 
 import logging
 import qtawesome as qta
-import pygame.midi
+import mido
 from PySide6.QtCore import Qt, Signal, QRect, QTimer
 from PySide6.QtWidgets import (
     QWidget,
@@ -80,18 +80,12 @@ class MidiDeviceSelector(QWidget):
         self.combo.clear()
 
         try:
-            if not pygame.midi.get_init():
-                pygame.midi.init()
-
-            for i in range(pygame.midi.get_count()):
-                info = pygame.midi.get_device_info(i)
-                if not info:
-                    continue
-                _interface, name, is_input, is_output, _opened = info
-                decoded = name.decode() if isinstance(name, bytes) else str(name)
-
-                # Add device to list
-                self.combo.addItem(decoded)
+            # Combine input and output port names (deduplicated, preserving order)
+            seen = set()
+            for name in mido.get_input_names() + mido.get_output_names():
+                if name not in seen:
+                    seen.add(name)
+                    self.combo.addItem(name)
 
             # Try to restore previous selection or select matching keyword
             if current and self.combo.findText(current) >= 0:

@@ -1,17 +1,14 @@
 """
-LightSoftware MIDI Communication Utilities
+LightSoftware MIDI Communication Utilities  (mido + python-rtmidi)
 
 Clean utility functions for communicating with LightSoftware via loopMIDI.
-Only tested with DasLight 4
-
+Only tested with DasLight 4.
 """
 
-import os
 import logging
 import typing as t
 
-os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"
-import pygame.midi
+import mido
 
 from lumiblox.common.device_state import DeviceManager, DeviceType
 from lumiblox.midi.midi_manager import midi_manager
@@ -27,9 +24,9 @@ class LightSoftware:
         # Reverse mapping for feedback processing
         self._note_to_scene_map = {v: k for k, v in self._scene_to_note_map.items()}
         
-        # MIDI connection variables
-        self.midi_out = None
-        self.midi_in = None
+        # MIDI connection variables (mido port objects)
+        self.midi_out = None  # type: t.Any
+        self.midi_in = None   # type: t.Any
         
         # Connection state flag
         self.connection_good = False
@@ -55,7 +52,7 @@ class LightSoftware:
         return scene_map
 
     def _close_ports(self) -> None:
-        """Close existing MIDI port objects without touching the global subsystem."""
+        """Close existing MIDI port objects."""
         midi_manager.close_port(self.midi_out)
         midi_manager.close_port(self.midi_in)
         self.midi_out = None
@@ -75,62 +72,56 @@ class LightSoftware:
             # Close any stale port handles before opening new ones
             self._close_ports()
 
-            midi_manager.acquire()
-
-            with midi_manager.lock:
-                for i in range(pygame.midi.get_count()):
-                    info = pygame.midi.get_device_info(i)
-                    interface, name, is_input, is_output, opened = info
-                    name = name.decode() if name else ""
-
-                    # Connect input (from LightSoftware via LightSoftware_out)
-                    if "lightsoftware_out" in name.lower() and is_input:
-                        self.midi_in = pygame.midi.Input(i)
-                        logger.info(f"✅ LightSoftware IN: {name}")
-
-                    # Connect output (to LightSoftware via LightSoftware_in)
-                    elif "lightsoftware_in" in name.lower() and is_output:
-                        self.midi_out = pygame.midi.Output(i)
-                        logger.info(f"✅ LightSoftware OUT: {name}")
-
-            if not self.midi_out:
-                logger.error("❌ No LightSoftware_in MIDI output found")
-            if not self.midi_in:
+            # Open input (feedback FROM LightSoftware via loopMIDI "lightsoftware_out")
+            self.midi_in = midi_manager.open_input_by_keyword("lightsoftware_out")
+            if self.midi_in:
+                logger.info("✅ LightSoftware IN: %s", self.midi_in.name)
+            else:
                 logger.error("❌ No LightSoftware_out MIDI input found")
 
-            # Update connection state if successful
+            # Open output (commands TO LightSoftware via loopMIDI "lightsoftware_in")
+            self.midi_out = midi_manager.open_output_by_keyword("lightsoftware_in")
+            if self.midi_out:
+                logger.info("✅ LightSoftware OUT: %s", self.midi_out.name)
+            else:
+                logger.error("❌ No LightSoftware_in MIDI output found")
+
+            # Update connection state
             if self.midi_out and self.midi_in:
                 self.connection_good = True
-                
                 if self.device_manager:
                     self.device_manager.set_connected(DeviceType.LIGHT_SOFTWARE)
-                
                 logger.info("✅ Successfully connected to LightSoftware MIDI")
                 return True
             else:
                 self.connection_good = False
-                
                 if self.device_manager:
                     self.device_manager.set_disconnected(DeviceType.LIGHT_SOFTWARE)
-                
                 logger.error(
                     "❌ Failed to connect to LightSoftware - missing MIDI ports"
                 )
                 return False
 
         except Exception as e:
-            logger.error(f"LightSoftware MIDI connection failed: {e}")
+            logger.error("LightSoftware MIDI connection failed: %s", e)
             self.connection_good = False
-            
             if self.device_manager:
                 self.device_manager.set_error(DeviceType.LIGHT_SOFTWARE, str(e))
-            
             return False
 
     def set_scene_state(self, scene_index: t.Tuple[int, int], active: bool) -> None:
-        """Set scene state explicitly using a note-on message with velocity for on/off."""
-        if not self.midi_out:
-            logger.debug("MIDI output not connected - skipping scene command")
+        """Set scene state explicitly using a note-on message with velocity for on/off.
+
+        Uses ``midi_manager.safe_send`` for automatic retry on transient
+        I/O errors and marks the connection as bad when recovery fails so
+        that ``DeviceMonitor`` can trigger a full reconnect.
+        """
+        if not self.connection_good:
+            return
+
+        if not midi_manager.is_port_alive(self.midi_out):
+            logger.warning("LightSoftware output port is closed – marking disconnected")
+            self._mark_disconnected("Output port closed")
             return
 
         scene_note = self._scene_to_note_map.get(scene_index)
@@ -141,21 +132,20 @@ class LightSoftware:
         velocity = 127 if active else 0
 
         try:
-            with midi_manager.lock:
-                self.midi_out.write([[[0x90, scene_note, velocity], pygame.midi.time()]])
-            logger.debug(
-                "Sent to LightSoftware: Scene %s -> note %s, velocity %s",
-                scene_index,
-                scene_note,
-                velocity,
-            )
+            msg = mido.Message("note_on", note=scene_note, velocity=velocity, channel=0)
+            ok = midi_manager.safe_send(self.midi_out, msg)
+            if ok:
+                logger.debug(
+                    "Sent to LightSoftware: Scene %s -> note %s, velocity %s",
+                    scene_index,
+                    scene_note,
+                    velocity,
+                )
+            else:
+                self._mark_disconnected("safe_send failed")
         except Exception as e:
             logger.error("MIDI send error: %s", e)
-            self.connection_good = False
-            if self.device_manager:
-                self.device_manager.set_error(
-                    DeviceType.LIGHT_SOFTWARE, f"Send error: {e}"
-                )
+            self._mark_disconnected(f"Send error: {e}")
 
     def get_scene_coordinates_for_note(
         self, note: int
@@ -175,52 +165,59 @@ class LightSoftware:
         """
         Process MIDI feedback from LightSoftware and return LED state changes.
 
+        Validates port liveness before reading.  On failure the connection
+        is marked bad so ``DeviceMonitor`` triggers reconnection.
+
         Returns:
             Dictionary of note -> state changes (True=on, False=off)
         """
-        changes = {}
+        changes: t.Dict[int, bool] = {}
+
+        if not self.connection_good:
+            return changes
+
+        if not midi_manager.is_port_alive(self.midi_in):
+            self._mark_disconnected("Input port closed during feedback")
+            return changes
 
         try:
-            if not self.midi_in:
-                return changes
-            with midi_manager.lock:
-                if not self.midi_in.poll():
-                    return changes
-                midi_events = self.midi_in.read(100)
-            for event in midi_events:
-                msg_data = event[0]
-                if isinstance(msg_data, list) and len(msg_data) >= 3:
-                    status, note, velocity = msg_data[0], msg_data[1], msg_data[2]
-
-                    if status == 0x90:  # Note on message
-                        # Only track changes, not repeated states
-                        changes[note] = velocity > 0
+            for msg in self.midi_in.iter_pending():
+                if msg.type == "note_on":
+                    changes[msg.note] = msg.velocity > 0
 
         except Exception as e:
-            logger.error(f"MIDI feedback processing error: {e}")
-            # Mark as disconnected on error
-            self.connection_good = False
-            if self.device_manager:
-                self.device_manager.set_error(DeviceType.LIGHT_SOFTWARE, f"Feedback error: {e}")
+            logger.error("MIDI feedback processing error: %s", e)
+            self._mark_disconnected(f"Feedback error: {e}")
 
         return changes
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _mark_disconnected(self, reason: str) -> None:
+        """Centralised helper to flag a broken connection."""
+        if not self.connection_good:
+            return  # already flagged – avoid log spam
+        self.connection_good = False
+        logger.warning("LightSoftware connection lost: %s", reason)
+        if self.device_manager:
+            self.device_manager.set_error(DeviceType.LIGHT_SOFTWARE, reason)
 
     def close_midi(self) -> None:
         """
         Clean shutdown of LightSoftware MIDI connections.
 
-        Only closes this component's ports.  The shared pygame.midi
-        subsystem is shut down via ``midi_manager.shutdown()`` at
-        application exit.
+        Only closes this component's ports.  The shared MIDI subsystem
+        is shut down via ``midi_manager.shutdown()`` at application exit.
+        Idempotent – safe to call multiple times.
         """
         try:
             self._close_ports()
-            midi_manager.release()
             logger.info("✅  LightSoftware MIDI ports closed")
-            
+        except Exception as e:
+            logger.error("Error closing LightSoftware MIDI: %s", e)
+        finally:
             self.connection_good = False
             if self.device_manager:
                 self.device_manager.set_disconnected(DeviceType.LIGHT_SOFTWARE)
-                
-        except Exception as e:
-            logger.error(f"Error closing LightSoftware MIDI: {e}")
