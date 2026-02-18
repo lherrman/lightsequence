@@ -13,11 +13,18 @@ import mido
 from lumiblox.common.device_state import DeviceManager, DeviceType
 from lumiblox.midi.midi_manager import midi_manager
 
+if t.TYPE_CHECKING:
+    from lumiblox.common.config import ConfigManager
+
 logger = logging.getLogger(__name__)
 
 
 class LightSoftware:
-    def __init__(self, device_manager: t.Optional[DeviceManager] = None):
+    def __init__(
+        self,
+        device_manager: t.Optional[DeviceManager] = None,
+        config: t.Optional["ConfigManager"] = None,
+    ):
         # Scene mapping: relative coordinates (x, y) to MIDI notes
         self._scene_to_note_map = self._build_scene_note_mapping()
 
@@ -33,6 +40,15 @@ class LightSoftware:
         
         # Device state management
         self.device_manager = device_manager
+
+        # MIDI output values
+        if config:
+            midi_output_config = config.data.get("midi_output", {})
+            self.on_value = midi_output_config.get("on_value", 127)
+            self.off_value = midi_output_config.get("off_value", 0)
+        else:
+            self.on_value = 127
+            self.off_value = 0
 
     def _build_scene_note_mapping(self) -> t.Dict[t.Tuple[int, int], int]:
         """
@@ -129,7 +145,7 @@ class LightSoftware:
             logger.warning("No MIDI note mapped for scene coordinates %s", scene_index)
             return
 
-        velocity = 127 if active else 0
+        velocity = self.on_value if active else self.off_value
 
         try:
             msg = mido.Message("note_on", note=scene_note, velocity=velocity, channel=0)

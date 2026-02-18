@@ -7,6 +7,13 @@ from typing_extensions import TypedDict
 logger = logging.getLogger(__name__)
 
 
+class MidiOutputConfig(TypedDict):
+    """Type definition for MIDI output configuration."""
+
+    on_value: int
+    off_value: int
+
+
 class ColorConfig(TypedDict):
     """Type definition for color configuration."""
 
@@ -64,6 +71,7 @@ class ConfigData(TypedDict):
     scene_on_color_from_column: bool
     colors: ColorConfig
     key_bindings: KeyBindings
+    midi_output: MidiOutputConfig
     pilot: Dict[str, Any]  # Pilot configuration (enabled, decks, etc.)
 
 
@@ -77,6 +85,10 @@ class ConfigManager:
         "brightness_background_top_row": 0.5,
         "background_animation": "default",
         "scene_on_color_from_column": True,
+        "midi_output": {
+            "on_value": 127,
+            "off_value": 0,
+        },
         "colors": {
             "column_colors": {
                 "0": "#ff0000",

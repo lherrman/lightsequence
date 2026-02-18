@@ -109,6 +109,10 @@
             ]
         }
     },
+    "midi_output": {
+        "off_value": 127,
+        "on_value": 127
+    },
     "pilot": {
         "decks": {
             "A": {

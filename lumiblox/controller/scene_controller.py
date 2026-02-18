@@ -87,7 +87,8 @@ class SceneController:
     
     def _deactivate_scene(self, scene: t.Tuple[int, int]) -> None:
         """Deactivate a single scene."""
-        before_active = scene in self.active_scenes
+        if scene not in self.active_scenes:
+            return
         if self.on_scene_deactivate:
             self.on_scene_deactivate(scene)
         

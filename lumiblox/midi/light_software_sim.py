@@ -12,6 +12,9 @@ import mido
 
 from lumiblox.midi.midi_manager import midi_manager
 
+if t.TYPE_CHECKING:
+    from lumiblox.common.config import ConfigManager
+
 logger = logging.getLogger(__name__)
 
 
@@ -21,7 +24,7 @@ class LightSoftwareSim:
     Provides MIDI feedback and maintains scene state.
     """
 
-    def __init__(self):
+    def __init__(self, config: t.Optional["ConfigManager"] = None):
         # Scene mapping: relative coordinates (x, y) to MIDI notes
         self._scene_to_note_map = self._build_scene_note_mapping()
 
@@ -43,6 +46,15 @@ class LightSoftwareSim:
 
         # Feedback queue - messages to send back to controller
         self.feedback_queue: t.List[t.Tuple[int, int]] = []
+
+        # MIDI output values
+        if config:
+            midi_output_config = config.data.get("midi_output", {})
+            self.on_value = midi_output_config.get("on_value", 127)
+            self.off_value = midi_output_config.get("off_value", 0)
+        else:
+            self.on_value = 127
+            self.off_value = 0
 
     def _build_scene_note_mapping(self) -> t.Dict[t.Tuple[int, int], int]:
         """
@@ -118,7 +130,7 @@ class LightSoftwareSim:
             return
 
         self.scene_states[scene_index] = active
-        velocity = 127 if active else 0
+        velocity = self.on_value if active else self.off_value
         self.feedback_queue.append((scene_note, velocity))
         logger.debug(
             "[SIM] Scene %s set to %s (note %s, velocity %s)",

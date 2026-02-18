@@ -54,6 +54,9 @@ class LightController:
     
     def __init__(self, simulation: bool = False):
         """Initialize the light controller."""
+        # Load config first (needed by other components)
+        self.config = get_config()
+        
         # Device management
         self.device_manager = DeviceManager()
         self.device_monitor = DeviceMonitor(self.device_manager)
@@ -70,9 +73,11 @@ class LightController:
         self.light_software: LightSoftwareProtocol
         if simulation:
             logger.info("Using simulated lighting software")
-            self.light_software = LightSoftwareSim()
+            self.light_software = LightSoftwareSim(config=self.config)
         else:
-            self.light_software = LightSoftware(device_manager=self.device_manager)
+            self.light_software = LightSoftware(
+                device_manager=self.device_manager, config=self.config
+            )
         
         self.launchpad = LaunchpadMK2(device_manager=self.device_manager)
         self._animator = BackgroundAnimator()
@@ -91,7 +96,6 @@ class LightController:
         self._dual_active_positions: t.Set[t.Tuple[int, int]] = set()
         self._other_page_only_positions: t.Set[t.Tuple[int, int]] = set()
         self._BLINK_INTERVAL: float = 0.35  # seconds between color alternation
-        self.config = get_config()
         self.pilot_controller: t.Optional["PilotController"] = None
 
         # App state manager (save modes, pilot select)
