@@ -26,11 +26,13 @@ def test_simulator_initialization(simulator):
 
 
 def test_scene_note_mapping(simulator):
-    """Test scene to note mapping"""
-    # Test a few known mappings
+    """Test scene to note mapping (page-local coordinates)"""
+    # Page-local mapping: (x, local_y) -> note
     assert simulator._scene_to_note_map[(0, 0)] == 81
     assert simulator._scene_to_note_map[(0, 1)] == 71
     assert simulator._scene_to_note_map[(1, 0)] == 82
+    # Only 5 rows in the mapping (one page worth)
+    assert len(simulator._scene_to_note_map) == 9 * 5
 
 
 def test_set_scene_state(simulator):
@@ -50,14 +52,22 @@ def test_set_scene_state(simulator):
 
 
 def test_get_scene_coordinates_for_note(simulator):
-    """Test getting scene coordinates from note"""
+    """Test getting scene coordinates from note and channel"""
     note = 81
-    coords = simulator.get_scene_coordinates_for_note(note)
+    # Channel 0 -> page 0, y stays as-is
+    coords = simulator.get_scene_coordinates_for_note(note, channel=0)
     assert coords == (0, 0)
     
     note = 82
-    coords = simulator.get_scene_coordinates_for_note(note)
+    coords = simulator.get_scene_coordinates_for_note(note, channel=0)
     assert coords == (1, 0)
+
+    # Channel 1 -> page 1, y offset by ROWS_PER_PAGE (5)
+    coords = simulator.get_scene_coordinates_for_note(81, channel=1)
+    assert coords == (0, 5)
+
+    coords = simulator.get_scene_coordinates_for_note(71, channel=1)
+    assert coords == (0, 6)
 
 
 def test_get_all_active_scenes(simulator):

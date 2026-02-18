@@ -111,7 +111,7 @@
                   ],
                   [
                     0,
-                    0
+                    5
                   ]
                 ],
                 "duration": 1.0,
@@ -141,35 +141,12 @@
               {
                 "scenes": [
                   [
-                    1,
-                    1
-                  ],
-                  [
-                    6,
-                    2
-                  ],
-                  [
-                    0,
-                    0
+                    7,
+                    9
                   ]
                 ],
                 "duration": 7.0,
                 "name": "Step 1",
-                "duration_unit": "bars"
-              },
-              {
-                "scenes": [
-                  [
-                    1,
-                    1
-                  ],
-                  [
-                    0,
-                    0
-                  ]
-                ],
-                "duration": 1.0,
-                "name": "Step 2",
                 "duration_unit": "bars"
               }
             ]

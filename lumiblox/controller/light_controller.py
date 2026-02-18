@@ -288,8 +288,7 @@ class LightController:
             return
         
         changes = self.light_software.process_feedback()
-        for note, is_active in changes.items():
-            scene = self.light_software.get_scene_coordinates_for_note(note)
+        for scene, is_active in changes.items():
             if scene:
                 guarded = self.scene_ctrl.get_sequence_guard_scenes()
                 lp_scene = self._scene_to_launchpad_scene(scene)
@@ -310,11 +309,9 @@ class LightController:
         """Sync initial active scenes from light software."""
         if hasattr(self.light_software, 'process_feedback'):
             changes = self.light_software.process_feedback()
-            for note, is_active in changes.items():
-                if is_active:
-                    scene = self.light_software.get_scene_coordinates_for_note(note)
-                    if scene:
-                        self.scene_ctrl.mark_scene_active(scene, True)
+            for scene, is_active in changes.items():
+                if is_active and scene:
+                    self.scene_ctrl.mark_scene_active(scene, True)
     
     # ============================================================================
     # EVENT HANDLERS

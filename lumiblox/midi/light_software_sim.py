@@ -10,6 +10,7 @@ import typing as t
 
 import mido
 
+from lumiblox.common.constants import ROWS_PER_PAGE
 from lumiblox.midi.midi_manager import midi_manager
 
 if t.TYPE_CHECKING:
@@ -45,7 +46,7 @@ class LightSoftwareSim:
         self.connection_good = False
 
         # Feedback queue - messages to send back to controller
-        self.feedback_queue: t.List[t.Tuple[int, int]] = []
+        self.feedback_queue: t.List[t.Tuple[int, int, int]] = []
 
         # MIDI output values
         if config:
@@ -58,20 +59,32 @@ class LightSoftwareSim:
 
     def _build_scene_note_mapping(self) -> t.Dict[t.Tuple[int, int], int]:
         """
-        Build mapping from scene button coordinates to MIDI notes.
-        Page 1 (y=0-4): Original Launchpad MK2 note layout.
-        Page 2 (y=5-9): Extended mapping using remaining MIDI note ranges.
+        Build mapping from page-local scene coordinates to MIDI notes.
+
+        Only covers one page (ROWS_PER_PAGE rows).  Different pages
+        reuse the same notes but are distinguished by MIDI channel
+        (channel = page index).
         """
         scene_map = {}
-        base_notes = [81, 71, 61, 51, 41, 31, 21, 11, 1, 91]
+        base_notes = [81, 71, 61, 51, 41]
 
         for x in range(9):  # 9 columns
-            for y in range(len(base_notes)):
-                note = base_notes[y] + x
+            for local_y in range(len(base_notes)):
+                note = base_notes[local_y] + x
                 if 0 <= note <= 127:
-                    scene_map[(x, y)] = note
+                    scene_map[(x, local_y)] = note
 
         return scene_map
+
+    def _scene_to_note_and_channel(self, scene_index: t.Tuple[int, int]) -> t.Optional[t.Tuple[int, int]]:
+        """Return (note, channel) for an absolute scene coordinate, or None."""
+        x, y = scene_index
+        page = y // ROWS_PER_PAGE
+        local_y = y % ROWS_PER_PAGE
+        note = self._scene_to_note_map.get((x, local_y))
+        if note is None:
+            return None
+        return note, page
 
     def _close_ports(self) -> None:
         """Close existing MIDI port objects."""
@@ -122,49 +135,59 @@ class LightSoftwareSim:
 
     def set_scene_state(self, scene_index: t.Tuple[int, int], active: bool) -> None:
         """Set an explicit scene state (used to mirror deterministic controller diffs)."""
-        scene_note = self._scene_to_note_map.get(scene_index)
-        if scene_note is None:
+        result = self._scene_to_note_and_channel(scene_index)
+        if result is None:
             logger.warning(
                 "[SIM] No MIDI note mapped for scene coordinates %s", scene_index
             )
             return
 
+        scene_note, channel = result
         self.scene_states[scene_index] = active
         velocity = self.on_value if active else self.off_value
-        self.feedback_queue.append((scene_note, velocity))
+        self.feedback_queue.append((scene_note, velocity, channel))
         logger.debug(
-            "[SIM] Scene %s set to %s (note %s, velocity %s)",
+            "[SIM] Scene %s set to %s (note %s, ch %s, velocity %s)",
             scene_index,
             "ON" if active else "OFF",
             scene_note,
+            channel,
             velocity,
         )
 
     def get_scene_coordinates_for_note(
-        self, note: int
+        self, note: int, channel: int = 0
     ) -> t.Optional[t.Tuple[int, int]]:
         """
-        Get scene coordinates for a given MIDI note.
+        Get absolute scene coordinates for a MIDI note and channel.
 
         Args:
             note: MIDI note number
+            channel: MIDI channel (used as page index)
 
         Returns:
-            Tuple of (x, y) coordinates or None if not found
+            Tuple of (x, y) absolute coordinates or None if not found
         """
-        return self._note_to_scene_map.get(note)
+        local = self._note_to_scene_map.get(note)
+        if local is None:
+            return None
+        x, local_y = local
+        return (x, local_y + channel * ROWS_PER_PAGE)
 
-    def process_feedback(self) -> t.Dict[int, bool]:
+    def process_feedback(self) -> t.Dict[t.Tuple[int, int], bool]:
         """
         Send queued MIDI feedback and process incoming commands.
         This is called by the controller to get feedback.
 
+        Uses the MIDI channel to determine which page a note belongs to,
+        then returns absolute scene coordinates as keys.
+
         Validates port liveness before every I/O operation.
 
         Returns:
-            Dictionary of note -> state changes (True=on, False=off)
+            Dictionary of scene_coords -> state changes (True=on, False=off)
         """
-        changes: t.Dict[int, bool] = {}
+        changes: t.Dict[t.Tuple[int, int], bool] = {}
 
         if not self.connection_good:
             return changes
@@ -172,16 +195,18 @@ class LightSoftwareSim:
         # First, send any queued feedback
         if self.feedback_queue and midi_manager.is_port_alive(self.midi_out):
             try:
-                for note, velocity in self.feedback_queue:
+                for note, velocity, channel in self.feedback_queue:
                     msg = mido.Message(
-                        "note_on", note=note, velocity=velocity, channel=0
+                        "note_on", note=note, velocity=velocity, channel=channel
                     )
                     ok = midi_manager.safe_send(self.midi_out, msg)
                     if ok:
                         logger.debug(
-                            "[SIM] Sent feedback: note %s, velocity %s", note, velocity
+                            "[SIM] Sent feedback: note %s, ch %s, velocity %s", note, channel, velocity
                         )
-                        changes[note] = velocity > 0
+                        scene = self.get_scene_coordinates_for_note(note, channel)
+                        if scene is not None:
+                            changes[scene] = velocity > 0
                     else:
                         logger.warning("[SIM] Feedback send failed – marking disconnected")
                         self.connection_good = False
@@ -200,14 +225,16 @@ class LightSoftwareSim:
                     if msg.type == "note_on":
                         note = msg.note
                         velocity = msg.velocity
+                        channel = msg.channel
                         logger.debug(
-                            "[SIM] Received command: note %s, velocity %s",
+                            "[SIM] Received command: note %s, ch %s, velocity %s",
                             note,
+                            channel,
                             velocity,
                         )
 
                         # Handle scene command - toggle based on velocity
-                        scene_coords = self.get_scene_coordinates_for_note(note)
+                        scene_coords = self.get_scene_coordinates_for_note(note, channel)
                         if scene_coords:
                             if velocity > 0:
                                 current_state = self.scene_states.get(

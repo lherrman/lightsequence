@@ -11,6 +11,7 @@ import typing as t
 import mido
 
 from lumiblox.common.device_state import DeviceManager, DeviceType
+from lumiblox.common.constants import ROWS_PER_PAGE
 from lumiblox.midi.midi_manager import midi_manager
 
 if t.TYPE_CHECKING:
@@ -52,20 +53,32 @@ class LightSoftware:
 
     def _build_scene_note_mapping(self) -> t.Dict[t.Tuple[int, int], int]:
         """
-        Build mapping from scene button coordinates to MIDI notes.
-        Page 1 (y=0-4): Original Launchpad MK2 note layout.
-        Page 2 (y=5-9): Extended mapping using remaining MIDI note ranges.
+        Build mapping from page-local scene coordinates to MIDI notes.
+
+        Only covers one page (ROWS_PER_PAGE rows).  Different pages
+        reuse the same notes but are distinguished by MIDI channel
+        (channel = page index).
         """
         scene_map = {}
-        base_notes = [81, 71, 61, 51, 41, 31, 21, 11, 1, 91]
+        base_notes = [81, 71, 61, 51, 41]
 
         for x in range(9):  # 9 columns
-            for y in range(len(base_notes)):
-                note = base_notes[y] + x
+            for local_y in range(len(base_notes)):
+                note = base_notes[local_y] + x
                 if 0 <= note <= 127:
-                    scene_map[(x, y)] = note
+                    scene_map[(x, local_y)] = note
 
         return scene_map
+
+    def _scene_to_note_and_channel(self, scene_index: t.Tuple[int, int]) -> t.Optional[t.Tuple[int, int]]:
+        """Return (note, channel) for an absolute scene coordinate, or None."""
+        x, y = scene_index
+        page = y // ROWS_PER_PAGE
+        local_y = y % ROWS_PER_PAGE
+        note = self._scene_to_note_map.get((x, local_y))
+        if note is None:
+            return None
+        return note, page
 
     def _close_ports(self) -> None:
         """Close existing MIDI port objects."""
@@ -140,15 +153,16 @@ class LightSoftware:
             self._mark_disconnected("Output port closed")
             return
 
-        scene_note = self._scene_to_note_map.get(scene_index)
-        if scene_note is None:
+        result = self._scene_to_note_and_channel(scene_index)
+        if result is None:
             logger.warning("No MIDI note mapped for scene coordinates %s", scene_index)
             return
 
+        scene_note, channel = result
         velocity = self.on_value if active else self.off_value
 
         try:
-            msg = mido.Message("note_on", note=scene_note, velocity=velocity, channel=0)
+            msg = mido.Message("note_on", note=scene_note, velocity=velocity, channel=channel)
             ok = midi_manager.safe_send(self.midi_out, msg)
             if ok:
                 logger.debug(
@@ -164,30 +178,38 @@ class LightSoftware:
             self._mark_disconnected(f"Send error: {e}")
 
     def get_scene_coordinates_for_note(
-        self, note: int
+        self, note: int, channel: int = 0
     ) -> t.Optional[t.Tuple[int, int]]:
         """
-        Get scene coordinates for a given MIDI note.
+        Get absolute scene coordinates for a MIDI note and channel.
 
         Args:
             note: MIDI note number
+            channel: MIDI channel (used as page index)
 
         Returns:
-            Tuple of (x, y) coordinates or None if not found
+            Tuple of (x, y) absolute coordinates or None if not found
         """
-        return self._note_to_scene_map.get(note)
+        local = self._note_to_scene_map.get(note)
+        if local is None:
+            return None
+        x, local_y = local
+        return (x, local_y + channel * ROWS_PER_PAGE)
 
-    def process_feedback(self) -> t.Dict[int, bool]:
+    def process_feedback(self) -> t.Dict[t.Tuple[int, int], bool]:
         """
         Process MIDI feedback from LightSoftware and return LED state changes.
+
+        Uses the MIDI channel to determine which page a note belongs to,
+        then returns absolute scene coordinates as keys.
 
         Validates port liveness before reading.  On failure the connection
         is marked bad so ``DeviceMonitor`` triggers reconnection.
 
         Returns:
-            Dictionary of note -> state changes (True=on, False=off)
+            Dictionary of scene_coords -> state changes (True=on, False=off)
         """
-        changes: t.Dict[int, bool] = {}
+        changes: t.Dict[t.Tuple[int, int], bool] = {}
 
         if not self.connection_good:
             return changes
@@ -199,7 +221,9 @@ class LightSoftware:
         try:
             for msg in self.midi_in.iter_pending():
                 if msg.type == "note_on":
-                    changes[msg.note] = msg.velocity > 0
+                    scene = self.get_scene_coordinates_for_note(msg.note, msg.channel)
+                    if scene is not None:
+                        changes[scene] = msg.velocity > 0
 
         except Exception as e:
             logger.error("MIDI feedback processing error: %s", e)
