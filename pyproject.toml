@@ -21,6 +21,7 @@ dependencies = [
     "pillow>=11.3.0",
     "scikit-learn>=1.6.1",
     "joblib>=1.5.2",
+    "pygame>=2.6.1",
 ]
 
 [tool.uv]
