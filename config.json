@@ -119,19 +119,29 @@
                 "master_button_region": {
                     "height": 22,
                     "width": 64,
-                    "x": 79,
-                    "y": 235
+                    "x": -1846,
+                    "y": 70
                 },
                 "timeline_region": {
                     "height": 88,
                     "width": 220,
-                    "x": 194,
-                    "y": 261
+                    "x": -1645,
+                    "y": 96
                 }
             },
             "B": {
-                "master_button_region": null,
-                "timeline_region": null
+                "master_button_region": {
+                    "height": 22,
+                    "width": 64,
+                    "x": -1147,
+                    "y": 69
+                },
+                "timeline_region": {
+                    "height": 88,
+                    "width": 220,
+                    "x": -949,
+                    "y": 95
+                }
             },
             "C": {
                 "master_button_region": null,
@@ -142,7 +152,7 @@
                 "timeline_region": null
             }
         },
-        "enabled": false,
+        "enabled": true,
         "midi_actions": [],
         "midiclock_device": "midiclock",
         "model_path": "pilot-tests/resources/traktor/classifier_traktor.pkl",
