@@ -1425,7 +1425,8 @@ class PilotWidget(QWidget):
 
     def _on_add_preset(self) -> None:
         """Show dialog to create a new preset."""
-        dialog = PresetEditorDialog(preset=None, parent=self)
+        all_pilot_names = [p.name for p in self.project_repo.pilots] if self.project_repo else []
+        dialog = PresetEditorDialog(preset=None, all_pilot_names=all_pilot_names, parent=self)
         if dialog.exec():
             # Get the new preset from dialog
             new_preset = dialog.get_preset()
@@ -1441,7 +1442,8 @@ class PilotWidget(QWidget):
         pilots = self.project_repo.pilots if self.project_repo else []
         if 0 <= current_index < len(pilots):
             current_preset = pilots[current_index]
-            dialog = PresetEditorDialog(preset=current_preset, parent=self)
+            all_pilot_names = [p.name for p in pilots]
+            dialog = PresetEditorDialog(preset=current_preset, all_pilot_names=all_pilot_names, parent=self)
             if dialog.exec():
                 # Update the preset
                 updated_preset = dialog.get_preset()

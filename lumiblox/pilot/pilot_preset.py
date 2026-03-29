@@ -232,6 +232,7 @@ class PilotPreset:
     enabled: bool
     rules: List[AutomationRule]
     sequences: Dict[str, Any] = None  # Stores sequences data for this pilot
+    linked_pilot: Optional[str] = None  # Name of pilot to share sequences from
 
     def __post_init__(self):
         """Ensure sequences is initialized."""
@@ -244,6 +245,7 @@ class PilotPreset:
             "enabled": self.enabled,
             "rules": [r.to_dict() for r in self.rules],
             "sequences": self.sequences or {"sequences": []},
+            "linked_pilot": self.linked_pilot,
         }
 
     @classmethod
@@ -253,6 +255,7 @@ class PilotPreset:
             enabled=data["enabled"],
             rules=[AutomationRule.from_dict(r) for r in data.get("rules", [])],
             sequences=data.get("sequences", {"sequences": []}),
+            linked_pilot=data.get("linked_pilot"),
         )
 
 

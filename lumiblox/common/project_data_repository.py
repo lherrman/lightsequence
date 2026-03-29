@@ -213,8 +213,13 @@ class ProjectDataRepository:
             pilot_index = self._active_pilot_index
         
         pilot = self.get_pilot(pilot_index)
-        if pilot and pilot.sequences:
-            return pilot.sequences
+        if pilot:
+            if pilot.linked_pilot:
+                for p in self.pilots:
+                    if p.name == pilot.linked_pilot:
+                        return p.sequences or {"sequences": []}
+            if pilot.sequences is not None:
+                return pilot.sequences
         return {"sequences": []}
 
     def save_sequences(self, sequences_data: Dict[str, Any], pilot_index: Optional[int] = None) -> bool:
@@ -230,9 +235,14 @@ class ProjectDataRepository:
         """
         if pilot_index is None:
             pilot_index = self._active_pilot_index
-        
+
         pilot = self.get_pilot(pilot_index)
         if pilot:
+            if pilot.linked_pilot:
+                for p in self.pilots:
+                    if p.name == pilot.linked_pilot:
+                        p.sequences = sequences_data
+                        return self.save()
             pilot.sequences = sequences_data
             return self.save()
         return False

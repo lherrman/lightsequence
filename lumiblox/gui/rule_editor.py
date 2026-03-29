@@ -417,9 +417,10 @@ class RuleEditorDialog(QDialog):
 class PresetEditorDialog(QDialog):
     """Dialog for editing a pilot preset with multiple rules."""
 
-    def __init__(self, preset: Optional[PilotPreset] = None, parent=None):
+    def __init__(self, preset: Optional[PilotPreset] = None, all_pilot_names: Optional[list[str]] = None, parent=None):
         super().__init__(parent)
         self.preset = preset
+        self.all_pilot_names = all_pilot_names or []
 
         self.setWindowTitle("Edit Pilot Preset" if preset else "New Pilot Preset")
         self.setMinimumSize(600, 500)
@@ -438,6 +439,13 @@ class PresetEditorDialog(QDialog):
         self.name_edit = QLineEdit()
         self.name_edit.setPlaceholderText("Preset name")
         info_layout.addRow("Name:", self.name_edit)
+        
+        self.linked_pilot_combo = QComboBox()
+        self.linked_pilot_combo.addItem("-- None (Own Sequences) --", userData=None)
+        for name in self.all_pilot_names:
+            if not self.preset or name != self.preset.name:
+                self.linked_pilot_combo.addItem(name, userData=name)
+        info_layout.addRow("Share Sequences From:", self.linked_pilot_combo)
 
         layout.addLayout(info_layout)
 
@@ -480,6 +488,11 @@ class PresetEditorDialog(QDialog):
     def load_preset(self, preset: PilotPreset) -> None:
         """Load preset data into UI."""
         self.name_edit.setText(preset.name)
+        
+        if preset.linked_pilot:
+            index = self.linked_pilot_combo.findData(preset.linked_pilot)
+            if index >= 0:
+                self.linked_pilot_combo.setCurrentIndex(index)
 
         for rule in preset.rules:
             self._add_rule_to_list(rule)
@@ -530,9 +543,14 @@ class PresetEditorDialog(QDialog):
 
         # Preserve existing enabled state, or default to False for new presets
         enabled = self.preset.enabled if self.preset else False
+        
+        linked_pilot = self.linked_pilot_combo.currentData()
+        if not linked_pilot:
+            linked_pilot = None
 
         return PilotPreset(
             name=self.name_edit.text() or "Unnamed Preset",
             enabled=enabled,
             rules=rules,
+            linked_pilot=linked_pilot,
         )
