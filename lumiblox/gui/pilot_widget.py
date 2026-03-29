@@ -906,9 +906,15 @@ class PilotWidget(QWidget):
         dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
 
         # Connect signals
+        from lumiblox.gui.screen_utils import logical_to_physical
         dialog.regions_configured.connect(
             lambda deck, btn, tl: self.deck_region_configured.emit(
-                deck, "timeline", CaptureRegion(tl.x(), tl.y(), tl.width(), tl.height())
+                deck, "timeline", CaptureRegion(
+                    logical_to_physical(tl).x(),
+                    logical_to_physical(tl).y(),
+                    logical_to_physical(tl).width(),
+                    logical_to_physical(tl).height(),
+                )
             )
         )
         dialog.midi_action_added.connect(

@@ -184,18 +184,35 @@ class ControllerThread(QThread):
 
                 if button_region and timeline_region:
                     from lumiblox.pilot.phrase_detector import CaptureRegion
+                    from lumiblox.gui.screen_utils import logical_to_physical
+                    from PySide6.QtCore import QRect
 
-                    button_capture_region = CaptureRegion(
-                        x=button_region["x"],
-                        y=button_region["y"],
-                        width=button_region["width"],
-                        height=button_region["height"],
+                    log_btn = QRect(
+                        button_region["x"],
+                        button_region["y"],
+                        button_region["width"],
+                        button_region["height"],
                     )
+                    phys_btn = logical_to_physical(log_btn)
+                    button_capture_region = CaptureRegion(
+                        x=phys_btn.x(),
+                        y=phys_btn.y(),
+                        width=phys_btn.width(),
+                        height=phys_btn.height(),
+                    )
+
+                    log_tl = QRect(
+                        timeline_region["x"],
+                        timeline_region["y"],
+                        timeline_region["width"],
+                        timeline_region["height"],
+                    )
+                    phys_tl = logical_to_physical(log_tl)
                     timeline_capture_region = CaptureRegion(
-                        x=timeline_region["x"],
-                        y=timeline_region["y"],
-                        width=timeline_region["width"],
-                        height=timeline_region["height"],
+                        x=phys_tl.x(),
+                        y=phys_tl.y(),
+                        width=phys_tl.width(),
+                        height=phys_tl.height(),
                     )
 
                     self.pilot_controller.configure_deck(

@@ -28,6 +28,7 @@ TRAIN_IMAGE_SIZE = (64, 32)
 DECK_BUTTON_SIZE = (32, 32)
 
 
+
 @dataclass
 class CaptureRegion:
     """Screen capture region definition."""

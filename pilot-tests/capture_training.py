@@ -221,11 +221,27 @@ class TrainingCaptureWindow(QMainWindow):
         target_dir.mkdir(parents=True, exist_ok=True)
 
         rect = self.region.rect
+        from textwrap import dedent
+        
+        # logical_to_physical equivalent inline
+        app = QApplication.instance()
+        screen = app.screenAt(rect.topLeft()) if app else None
+        if screen:
+            dpr = screen.devicePixelRatio()
+            sx = screen.geometry().x()
+            sy = screen.geometry().y()
+            px = sx + (rect.x() - sx) * dpr
+            py = sy + (rect.y() - sy) * dpr
+            pw = rect.width() * dpr
+            ph = rect.height() * dpr
+        else:
+            px, py, pw, ph = rect.x(), rect.y(), rect.width(), rect.height()
+
         bbox = {
-            "left": rect.x(),
-            "top": rect.y(),
-            "width": rect.width(),
-            "height": rect.height(),
+            "left": int(px),
+            "top": int(py),
+            "width": int(pw),
+            "height": int(ph),
         }
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")

@@ -899,17 +899,22 @@ class PilotSettingsDialog(QDialog):
 
         # Configure on pilot controller if available
         if self.pilot_controller:
+            from lumiblox.gui.screen_utils import logical_to_physical
+            
+            phys_btn = logical_to_physical(button_rect)
             button_region = CaptureRegion(
-                button_rect.x(),
-                button_rect.y(),
-                button_rect.width(),
-                button_rect.height(),
+                phys_btn.x(),
+                phys_btn.y(),
+                phys_btn.width(),
+                phys_btn.height(),
             )
+            
+            phys_tl = logical_to_physical(timeline_rect)
             timeline_region = CaptureRegion(
-                timeline_rect.x(),
-                timeline_rect.y(),
-                timeline_rect.width(),
-                timeline_rect.height(),
+                phys_tl.x(),
+                phys_tl.y(),
+                phys_tl.width(),
+                phys_tl.height(),
             )
             self.pilot_controller.configure_deck(
                 deck_name, button_region, timeline_region

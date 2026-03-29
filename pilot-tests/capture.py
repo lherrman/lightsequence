@@ -204,11 +204,24 @@ class CaptureWindow(QMainWindow):
         with mss.mss() as grabber:
             for region in regions:
                 rect = region.rect
+                app = QApplication.instance()
+                screen = app.screenAt(rect.topLeft()) if app else None
+                if screen:
+                    dpr = screen.devicePixelRatio()
+                    sx = screen.geometry().x()
+                    sy = screen.geometry().y()
+                    px = sx + (rect.x() - sx) * dpr
+                    py = sy + (rect.y() - sy) * dpr
+                    pw = rect.width() * dpr
+                    ph = rect.height() * dpr
+                else:
+                    px, py, pw, ph = rect.x(), rect.y(), rect.width(), rect.height()
+
                 bbox = {
-                    "left": rect.x(),
-                    "top": rect.y(),
-                    "width": rect.width(),
-                    "height": rect.height(),
+                    "left": int(px),
+                    "top": int(py),
+                    "width": int(pw),
+                    "height": int(ph),
                 }
                 start = time.perf_counter()
                 _ = grabber.grab(bbox)
