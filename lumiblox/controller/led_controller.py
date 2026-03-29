@@ -240,6 +240,12 @@ class LEDController:
         clear_color = "success_flash" if has_active_scenes else "off"
         self.update_control_led(clear_coords, clear_color)
 
+        # Align-to-beat button: always glow pink to make it easy to find
+        if "align_to_beat_button" in key_bindings:
+            align_coords = tuple(key_bindings["align_to_beat_button"]["coordinates"])
+            # Use the preset_on color (pink) as a constant glow
+            self.update_control_led(align_coords, "preset_on")
+
         # Page buttons
         page_buttons = ["page_1_button", "page_2_button"]
         for page_idx, page_key in enumerate(page_buttons):

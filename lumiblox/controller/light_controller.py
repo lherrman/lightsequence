@@ -159,6 +159,7 @@ class LightController:
             "next_step_button",
             "clear_button",
             "pilot_select_button",
+            "align_to_beat_button",
             "pilot_toggle_button",
             "page_1_button",
             "page_2_button",
@@ -348,6 +349,7 @@ class LightController:
             "next_step_button": self._next_step,
             "clear_button": self._clear_all_scenes,
             "pilot_select_button": self.app_state_mgr.toggle_pilot_select_mode,
+            "align_to_beat_button": self._align_to_beat,
             "pilot_toggle_button": self._toggle_pilot_enabled,
             "page_1_button": lambda: self._switch_page(0),
             "page_2_button": lambda: self._switch_page(1),
@@ -638,6 +640,20 @@ class LightController:
                     logger.warning("Failed to stop pilot controller: %s", exc)
                     return
             self.config.set_pilot_enabled(False)
+
+    def _align_to_beat(self) -> None:
+        """Trigger manual alignment to beat via the PilotController."""
+        if not self.pilot_controller:
+            logger.warning("Pilot controller not attached; cannot align to beat")
+            return
+        try:
+            if not self.pilot_controller.ensure_running():
+                logger.warning("Pilot controller could not be started for alignment")
+                return
+            self.pilot_controller.align_to_beat()
+            logger.info("Pilot align-to-beat triggered")
+        except Exception as exc:
+            logger.warning("Failed to trigger align-to-beat: %s", exc)
     
     def _update_leds(self) -> None:
         """Update all LED displays."""

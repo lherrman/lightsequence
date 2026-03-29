@@ -45,6 +45,13 @@
         "yellow_bright": "#ffff00"
     },
     "key_bindings": {
+        "align_to_beat_button": {
+            "button_type": "CONTROL",
+            "coordinates": [
+                3,
+                0
+            ]
+        },
         "clear_button": {
             "button_type": "CONTROL",
             "coordinates": [
@@ -152,7 +159,7 @@
                 "timeline_region": null
             }
         },
-        "enabled": true,
+        "enabled": false,
         "midi_actions": [],
         "midiclock_device": "midiclock",
         "model_path": "pilot-tests/resources/traktor/classifier_traktor.pkl",

@@ -137,8 +137,9 @@ class ConfigManager:
             "clear_button": {"button_type": "CONTROL", "coordinates": [8, 8]},
             "pilot_select_button": {"button_type": "CONTROL", "coordinates": [4, 0]},
             "pilot_toggle_button": {"button_type": "CONTROL", "coordinates": [5, 0]},
-            "page_1_button": {"button_type": "CONTROL", "coordinates": [6, 0]},
-            "page_2_button": {"button_type": "CONTROL", "coordinates": [7, 0]},
+                "page_1_button": {"button_type": "CONTROL", "coordinates": [6, 0]},
+                "page_2_button": {"button_type": "CONTROL", "coordinates": [7, 0]},
+                "align_to_beat_button": {"button_type": "CONTROL", "coordinates": [3, 0]},
         },
         "pilot": {
             "enabled": False,
