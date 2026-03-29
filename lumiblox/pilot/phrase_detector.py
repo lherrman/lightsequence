@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import time
+import datetime
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Callable
@@ -26,6 +27,11 @@ ANALYZE_WIDTH = 220
 ANALYZE_HEIGHT = 88
 TRAIN_IMAGE_SIZE = (64, 32)
 DECK_BUTTON_SIZE = (32, 32)
+
+DEBUG_LOG_IMAGES = False
+DEBUG_OUTPUT_DIR = Path("logs/pilot")
+if DEBUG_LOG_IMAGES:
+    DEBUG_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 
 
@@ -260,6 +266,7 @@ class PhraseDetector:
 
         # Capture all decks and calculate distances
         deck_distances = {}
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
 
         for deck_name, deck in self.decks.items():
             if deck.master_button_region is None:
@@ -289,6 +296,10 @@ class PhraseDetector:
                 logger.debug(
                     f"Deck {deck_name}: dist_on={dist_on:.1f}, dist_off={dist_off:.1f}"
                 )
+
+                if DEBUG_LOG_IMAGES:
+                    cv.imwrite(str(DEBUG_OUTPUT_DIR / f"{timestamp}_deck_{deck_name}_raw.png"), img)
+                    cv.imwrite(str(DEBUG_OUTPUT_DIR / f"{timestamp}_deck_{deck_name}_resized.png"), img_resized)
 
             except Exception as e:
                 logger.error(f"Error detecting deck {deck_name}: {e}")
@@ -344,6 +355,7 @@ class PhraseDetector:
 
         try:
             start = time.perf_counter()
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
 
             # Capture timeline region
             bbox = deck.timeline_region.to_bbox()
@@ -373,6 +385,11 @@ class PhraseDetector:
             logger.info(
                 f"Deck {deck_name} → {result.upper()} (took {elapsed * 1000:.1f}ms)"
             )
+            
+            if DEBUG_LOG_IMAGES:
+                cv.imwrite(str(DEBUG_OUTPUT_DIR / f"{timestamp}_timeline_{deck_name}_{result}.png"), img)
+                img_pil.save(DEBUG_OUTPUT_DIR / f"{timestamp}_timeline_{deck_name}_{result}_resized.png")
+
             return result
 
         except Exception as e:
