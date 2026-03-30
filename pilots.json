@@ -3,7 +3,7 @@
   "presets": [
     {
       "name": "Default Pilot",
-      "enabled": false,
+      "enabled": true,
       "rules": [
         {
           "name": "On Breakdown",
@@ -1081,7 +1081,7 @@
     },
     {
       "name": "Low Energy",
-      "enabled": true,
+      "enabled": false,
       "rules": [
         {
           "name": "On Drop",

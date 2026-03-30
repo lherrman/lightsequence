@@ -683,7 +683,12 @@ class PresetSequenceEditor(QWidget):
         else:
             # Create default single step
             self.sequence_steps = [
-                SequenceStep(scenes=[], duration=DEFAULT_STEP_DURATION, name="Step 1")
+                SequenceStep(
+                    scenes=[],
+                    duration=float(DEFAULT_STEP_BARS),
+                    name="Step 1",
+                    duration_unit=SequenceDurationUnit.BARS,
+                )
             ]
 
         # Load loop setting
@@ -876,12 +881,9 @@ class PresetSequenceEditor(QWidget):
 
     def add_empty_step(self):
         """Add an empty step."""
-        unit = self._current_duration_unit()
-        default_duration = (
-            float(DEFAULT_STEP_BARS)
-            if unit == SequenceDurationUnit.BARS
-            else DEFAULT_STEP_DURATION
-        )
+        # Always default to BARS for new steps
+        unit = SequenceDurationUnit.BARS
+        default_duration = float(DEFAULT_STEP_BARS)
         step = SequenceStep(
             scenes=[],
             duration=default_duration,
@@ -901,12 +903,10 @@ class PresetSequenceEditor(QWidget):
         if not active_scenes:
             return
 
-        unit = self._current_duration_unit()
-        duration = (
-            float(DEFAULT_STEP_BARS)
-            if unit == SequenceDurationUnit.BARS
-            else DEFAULT_STEP_DURATION
-        )
+        # Always default to BARS for new steps
+        unit = SequenceDurationUnit.BARS
+        duration = float(DEFAULT_STEP_BARS)
+
         step = SequenceStep(
             scenes=active_scenes,
             duration=duration,
