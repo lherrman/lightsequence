@@ -28,7 +28,7 @@ ANALYZE_HEIGHT = 88
 TRAIN_IMAGE_SIZE = (64, 32)
 DECK_BUTTON_SIZE = (32, 32)
 
-DEBUG_LOG_IMAGES = False
+DEBUG_LOG_IMAGES = True
 DEBUG_OUTPUT_DIR = Path("logs/pilot")
 if DEBUG_LOG_IMAGES:
     DEBUG_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)

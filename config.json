@@ -126,27 +126,27 @@
                 "master_button_region": {
                     "height": 22,
                     "width": 64,
-                    "x": -1846,
+                    "x": -1845,
                     "y": 70
                 },
                 "timeline_region": {
                     "height": 88,
                     "width": 220,
-                    "x": -1645,
-                    "y": 96
+                    "x": -1541,
+                    "y": 95
                 }
             },
             "B": {
                 "master_button_region": {
                     "height": 22,
                     "width": 64,
-                    "x": -1147,
-                    "y": 69
+                    "x": -1018,
+                    "y": 71
                 },
                 "timeline_region": {
                     "height": 88,
                     "width": 220,
-                    "x": -949,
+                    "x": -718,
                     "y": 95
                 }
             },
