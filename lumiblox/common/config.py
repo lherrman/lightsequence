@@ -143,6 +143,7 @@ class ConfigManager:
         },
         "pilot": {
             "enabled": False,
+            "automation_paused": False,
             "midiclock_device": "midiclock",
             "zero_signal": {
                 "enabled": False,
@@ -331,6 +332,19 @@ class ConfigManager:
         self.data["pilot"]["enabled"] = enabled
         self.save()
         logger.info(f"Pilot {'enabled' if enabled else 'disabled'} in configuration")
+
+    def set_pilot_automation_paused(self, paused: bool) -> None:
+        """Set pilot automation paused state and save to config."""
+        if "pilot" not in self.data:
+            self.data["pilot"] = self.DEFAULT_CONFIG.get("pilot", {}).copy()
+        self.data["pilot"]["automation_paused"] = paused
+        self.save()
+        logger.info(f"Pilot automation {'paused' if paused else 'unpaused'} in configuration")
+
+    @property
+    def pilot_automation_paused(self) -> bool:
+        """Get the current pilot automation paused state."""
+        return bool(self.data.get("pilot", {}).get("automation_paused", False))
 
     def set_deck_region(
         self, deck: str, region_type: str, region_data: Dict[str, int]

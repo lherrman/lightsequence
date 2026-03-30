@@ -112,6 +112,9 @@ class LightSequenceGUI(QMainWindow):
         self.pilot_widget.pilot_enable_requested.connect(
             self._on_pilot_enable_requested
         )
+        self.pilot_widget.automation_pause_requested.connect(
+            self._on_automation_pause_requested
+        )
         self.pilot_widget.phrase_detection_enable_requested.connect(
             self._on_phrase_detection_enable_requested
         )
@@ -652,6 +655,17 @@ class LightSequenceGUI(QMainWindow):
                     f"Failed to stop pilot: {e}",
                 )
 
+    def _on_automation_pause_requested(self, paused: bool) -> None:
+        """Handle automation pause/resume request from GUI."""
+        if not self.controller_thread:
+            logger.warning("Controller thread not available")
+            return
+            
+        pilot = self.controller_thread.pilot_controller
+        pilot.automation_paused = paused
+        if self.controller:
+            self.controller.config.set_pilot_automation_paused(paused)
+
     def _on_phrase_detection_enable_requested(self, enabled: bool) -> None:
         """Handle phrase detection enable/disable request from GUI."""
         if not self.controller_thread:
@@ -775,8 +789,9 @@ class LightSequenceGUI(QMainWindow):
         active_deck = pilot.get_active_deck()
         phrase_type = pilot.get_current_phrase_type()
         phrase_duration = pilot.get_phrase_duration()
+        automation_paused = pilot.automation_paused
         self.pilot_widget.update_status(
-            state.value, bpm, aligned, active_deck, phrase_type, phrase_duration
+            state.value, bpm, aligned, active_deck, phrase_type, phrase_duration, automation_paused
         )
 
         cooldowns = pilot.get_rule_cooldowns()

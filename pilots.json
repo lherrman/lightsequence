@@ -3,7 +3,7 @@
   "presets": [
     {
       "name": "Default Pilot",
-      "enabled": true,
+      "enabled": false,
       "rules": [
         {
           "name": "On Breakdown",
@@ -17,35 +17,19 @@
             "action_type": "activate_sequence",
             "sequences": [
               {
-                "weight": 0.125,
+                "weight": 0.25,
                 "sequence_index": "2.0"
               },
               {
-                "weight": 0.125,
+                "weight": 0.25,
                 "sequence_index": "1.0"
               },
               {
-                "weight": 0.125,
-                "sequence_index": "0.0"
-              },
-              {
-                "weight": 0.125,
+                "weight": 0.25,
                 "sequence_index": "3.0"
               },
               {
-                "weight": 0.125,
-                "sequence_index": "5.0"
-              },
-              {
-                "weight": 0.125,
-                "sequence_index": "6.0"
-              },
-              {
-                "weight": 0.125,
-                "sequence_index": "7.0"
-              },
-              {
-                "weight": 0.125,
+                "weight": 0.25,
                 "sequence_index": "4.0"
               }
             ]
@@ -100,35 +84,51 @@
           "cooldown_bars": 0
         },
         {
-          "name": "Unnamed Rule",
-          "enabled": false,
+          "name": "Random",
+          "enabled": true,
           "condition": {
             "condition_type": "after_phrase_type",
-            "phrase_type": "breakdown",
-            "duration_bars": 4
+            "phrase_type": null,
+            "duration_bars": 16
           },
           "action": {
             "action_type": "activate_sequence",
             "sequences": [
               {
-                "weight": 1.0,
-                "sequence_index": "0.0"
+                "weight": 0.13,
+                "sequence_index": "0.1"
               },
               {
-                "weight": 1.0,
-                "sequence_index": "1.0"
+                "weight": 0.13,
+                "sequence_index": "1.1"
               },
               {
-                "weight": 1.0,
-                "sequence_index": "2.0"
+                "weight": 0.13,
+                "sequence_index": "2.1"
               },
               {
-                "weight": 1.0,
-                "sequence_index": "3.0"
+                "weight": 0.13,
+                "sequence_index": "3.1"
+              },
+              {
+                "weight": 0.13,
+                "sequence_index": "4.1"
+              },
+              {
+                "weight": 0.13,
+                "sequence_index": "5.1"
+              },
+              {
+                "weight": 0.13,
+                "sequence_index": "6.1"
+              },
+              {
+                "weight": 0.13,
+                "sequence_index": "7.1"
               }
             ]
           },
-          "cooldown_bars": 4
+          "cooldown_bars": 8
         }
       ],
       "sequences": {
@@ -545,10 +545,6 @@
                 "scenes": [
                   [
                     7,
-                    4
-                  ],
-                  [
-                    7,
                     5
                   ],
                   [
@@ -578,6 +574,10 @@
                   [
                     8,
                     5
+                  ],
+                  [
+                    7,
+                    9
                   ]
                 ],
                 "duration": 1.0,
@@ -599,23 +599,11 @@
                 "scenes": [
                   [
                     7,
-                    4
+                    9
                   ],
                   [
                     4,
                     0
-                  ],
-                  [
-                    0,
-                    3
-                  ],
-                  [
-                    7,
-                    3
-                  ],
-                  [
-                    7,
-                    9
                   ],
                   [
                     7,
@@ -628,6 +616,10 @@
                   [
                     1,
                     6
+                  ],
+                  [
+                    0,
+                    3
                   ],
                   [
                     5,
@@ -652,10 +644,6 @@
               {
                 "scenes": [
                   [
-                    7,
-                    4
-                  ],
-                  [
                     4,
                     0
                   ],
@@ -670,6 +658,10 @@
                   [
                     5,
                     2
+                  ],
+                  [
+                    7,
+                    9
                   ]
                 ],
                 "duration": 1.0,
@@ -834,10 +826,6 @@
               {
                 "scenes": [
                   [
-                    7,
-                    4
-                  ],
-                  [
                     5,
                     6
                   ],
@@ -860,6 +848,10 @@
                   [
                     2,
                     0
+                  ],
+                  [
+                    7,
+                    9
                   ]
                 ],
                 "duration": 1.0,
@@ -1053,10 +1045,6 @@
               {
                 "scenes": [
                   [
-                    7,
-                    4
-                  ],
-                  [
                     5,
                     6
                   ],
@@ -1075,6 +1063,10 @@
                   [
                     1,
                     4
+                  ],
+                  [
+                    7,
+                    9
                   ]
                 ],
                 "duration": 1.0,
@@ -1089,26 +1081,112 @@
     },
     {
       "name": "Low Energy",
-      "enabled": false,
+      "enabled": true,
       "rules": [
         {
-          "name": "Change Every 32 Bars",
+          "name": "On Drop",
           "enabled": true,
           "condition": {
-            "condition_type": "after_phrase_type",
-            "phrase_type": null,
-            "duration_bars": 32
+            "condition_type": "on_phrase_change",
+            "phrase_type": "body",
+            "duration_bars": 12
           },
           "action": {
             "action_type": "activate_sequence",
             "sequences": [
               {
-                "weight": 1.0,
-                "sequence_index": "0.0"
+                "weight": 0.14,
+                "sequence_index": "0.1"
+              },
+              {
+                "weight": 0.14,
+                "sequence_index": "1.1"
+              },
+              {
+                "weight": 0.14,
+                "sequence_index": "2.1"
+              },
+              {
+                "weight": 0.14,
+                "sequence_index": "2.2"
+              },
+              {
+                "weight": 0.14,
+                "sequence_index": "1.2"
+              },
+              {
+                "weight": 0.14,
+                "sequence_index": "0.2"
+              },
+              {
+                "weight": 0.14,
+                "sequence_index": "3.2"
               }
             ]
           },
-          "cooldown_bars": 0
+          "cooldown_bars": 8
+        },
+        {
+          "name": "On Brekdown",
+          "enabled": true,
+          "condition": {
+            "condition_type": "on_phrase_change",
+            "phrase_type": "breakdown",
+            "duration_bars": 12
+          },
+          "action": {
+            "action_type": "activate_sequence",
+            "sequences": [
+              {
+                "weight": 0.25,
+                "sequence_index": "0.0"
+              },
+              {
+                "weight": 0.25,
+                "sequence_index": "1.0"
+              },
+              {
+                "weight": 0.25,
+                "sequence_index": "2.0"
+              },
+              {
+                "weight": 0.25,
+                "sequence_index": "3.0"
+              }
+            ]
+          },
+          "cooldown_bars": 8
+        },
+        {
+          "name": "Random",
+          "enabled": true,
+          "condition": {
+            "condition_type": "after_phrase_type",
+            "phrase_type": null,
+            "duration_bars": 16
+          },
+          "action": {
+            "action_type": "activate_sequence",
+            "sequences": [
+              {
+                "weight": 0.25,
+                "sequence_index": "3.1"
+              },
+              {
+                "weight": 0.25,
+                "sequence_index": "2.1"
+              },
+              {
+                "weight": 0.25,
+                "sequence_index": "1.1"
+              },
+              {
+                "weight": 0.25,
+                "sequence_index": "0.1"
+              }
+            ]
+          },
+          "cooldown_bars": 12
         }
       ],
       "sequences": {

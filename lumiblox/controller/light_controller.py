@@ -350,7 +350,7 @@ class LightController:
             "clear_button": self._clear_all_scenes,
             "pilot_select_button": self.app_state_mgr.toggle_pilot_select_mode,
             "align_to_beat_button": self._align_to_beat,
-            "pilot_toggle_button": self._toggle_pilot_enabled,
+            "pilot_toggle_button": self._toggle_pilot_automation,
             "page_1_button": lambda: self._switch_page(0),
             "page_2_button": lambda: self._switch_page(1),
         }
@@ -606,40 +606,27 @@ class LightController:
         
         self.scene_ctrl.clear_all()
 
-    def _toggle_pilot_enabled(self) -> None:
-        """Toggle pilot controller on/off and persist configuration."""
-        pilot_running = False
-        if self.pilot_controller:
+    def _toggle_pilot_automation(self) -> None:
+        """Toggle pilot automation execution on/off and persist configuration (leaves tracking running)."""
+        if not self.pilot_controller:
+            logger.warning("Pilot controller not attached; cannot toggle automation")
+            return
+            
+        current_paused = self.pilot_controller.automation_paused
+        new_paused = not current_paused
+        
+        self.pilot_controller.automation_paused = new_paused
+        self.config.set_pilot_automation_paused(new_paused)
+        
+        # If unpausing and the engine isn't fully running, try to start it
+        if not new_paused and not self.pilot_controller.is_running():
             try:
-                pilot_running = self.pilot_controller.is_running()
+                self.pilot_controller.ensure_running()
             except Exception as exc:
-                logger.debug("Could not read pilot state: %s", exc)
-        else:
-            pilot_running = bool(self.config.data.get("pilot", {}).get("enabled", False))
-
-        target_enabled = not pilot_running
-
-        if target_enabled:
-            if not self.pilot_controller:
-                logger.warning("Pilot controller not attached; cannot enable pilot mode")
-                return
-            try:
-                started = self.pilot_controller.start(enable_phrase_detection=False)
-            except Exception as exc:
-                logger.warning("Failed to start pilot controller: %s", exc)
-                return
-            if not started:
-                logger.warning("Pilot controller did not start")
-                return
-            self.config.set_pilot_enabled(True)
-        else:
-            if self.pilot_controller and pilot_running:
-                try:
-                    self.pilot_controller.stop()
-                except Exception as exc:
-                    logger.warning("Failed to stop pilot controller: %s", exc)
-                    return
-            self.config.set_pilot_enabled(False)
+                logger.warning("Failed to start pilot controller from automation toggle: %s", exc)
+        
+        state_str = "paused" if new_paused else "armed"
+        logger.info(f"Pilot automation {state_str} via hardware button")
 
     def _align_to_beat(self) -> None:
         """Trigger manual alignment to beat via the PilotController."""
@@ -661,11 +648,11 @@ class LightController:
         pilot_running = False
         if self.pilot_controller:
             try:
-                pilot_running = self.pilot_controller.is_running()
+                pilot_running = self.pilot_controller.is_running() and not self.pilot_controller.automation_paused
             except Exception:
                 pass
         else:
-            pilot_running = bool(self.config.data.get("pilot", {}).get("enabled", False))
+            pilot_running = bool(self.config.data.get("pilot", {}).get("enabled", False)) and not self.config.pilot_automation_paused
 
         active_index = self.sequence_ctrl.active_sequence
         active_steps = self.sequence_ctrl.get_sequence(active_index) if active_index else None
@@ -718,6 +705,8 @@ class LightController:
         """Attach a pilot controller for preset synchronization."""
         self.pilot_controller = pilot_controller
         self.app_state_mgr.pilot_controller = pilot_controller
+        # Sync automation paused state from config
+        self.pilot_controller.automation_paused = self.config.pilot_automation_paused
 
     # ============================================================================
     # COMMAND QUEUE (thread-safe GUI -> controller communication)

@@ -98,6 +98,7 @@ class PilotController:
 
         # Automation system
         self.project_repo = project_repo
+        self.automation_paused = False
         self.rule_engine: Optional[RuleEngine] = (
             None  # Created when automation is enabled
         )
@@ -381,7 +382,7 @@ class PilotController:
         self.phrase_bars_elapsed = delta if delta >= 0 else 0
 
         # Update rule engine state
-        if self.rule_engine:
+        if self.rule_engine and not self.automation_paused:
             bars = self.phrase_bars_elapsed
             self.rule_engine.update_state(
                 self._effective_phrase_type(), bars, bar_index
@@ -446,7 +447,7 @@ class PilotController:
                     f"Phrase changed: {old_type} → {new_type}, reset duration tracking"
                 )
 
-                if self.rule_engine:
+                if self.rule_engine and not self.automation_paused:
                     self.rule_engine.notify_phrase_change(
                         new_phrase_type=new_type,
                         previous_phrase_type=old_type,

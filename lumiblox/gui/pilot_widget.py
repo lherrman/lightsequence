@@ -651,6 +651,7 @@ class PilotWidget(QWidget):
 
     pilot_enable_requested = Signal(bool)
     phrase_detection_enable_requested = Signal(bool)
+    automation_pause_requested = Signal(bool)
     align_requested = Signal()
     deck_region_configured = Signal(str, str, CaptureRegion)
     midi_action_added = Signal(object)  # Emits MidiActionConfig
@@ -698,6 +699,16 @@ class PilotWidget(QWidget):
         self.pilot_toggle_btn.setIconSize(ICON_SIZE_MEDIUM)
         self.pilot_toggle_btn.toggled.connect(self._on_pilot_toggle)
         header_layout.addWidget(self.pilot_toggle_btn)
+
+        self.pause_automation_btn = QPushButton()
+        self.pause_automation_btn.setCheckable(True)
+        self.pause_automation_btn.setToolTip("Pause/Resume Automation")
+        self.pause_automation_btn.setFixedSize(BUTTON_SIZE_LARGE)
+        self.pause_automation_btn.setStyleSheet(BUTTON_STYLE)
+        self.pause_automation_btn.setIcon(qta.icon("fa5s.pause", color="white"))
+        self.pause_automation_btn.setIconSize(ICON_SIZE_MEDIUM)
+        self.pause_automation_btn.toggled.connect(self._on_pause_automation_toggle)
+        header_layout.addWidget(self.pause_automation_btn)
 
         self.phrase_detection_btn = QPushButton()
         self.phrase_detection_btn.setCheckable(True)
@@ -888,6 +899,17 @@ class PilotWidget(QWidget):
         if checked:
             QTimer.singleShot(200, self.align_requested.emit)
 
+    def _on_pause_automation_toggle(self, checked: bool) -> None:
+        """Handle automation pause/resume."""
+        self.automation_pause_requested.emit(checked)
+        # Update styling based on state
+        if checked:
+            self.pause_automation_btn.setIcon(qta.icon("fa5s.play", color="#ffaa00"))
+            self.pause_automation_btn.setToolTip("Resume Automation")
+        else:
+            self.pause_automation_btn.setIcon(qta.icon("fa5s.pause", color="white"))
+            self.pause_automation_btn.setToolTip("Pause Automation")
+
     def _on_phrase_detection_toggle(self, checked: bool) -> None:
         """Handle phrase detection enable/disable."""
         self.phrase_detection_enabled = checked
@@ -951,6 +973,7 @@ class PilotWidget(QWidget):
         active_deck: Optional[str] = None,
         phrase_type: Optional[str] = None,
         phrase_duration: Optional[tuple[int, int]] = None,
+        automation_paused: bool = False,
     ) -> None:
         """Update status display."""
         # Keep toggle button in sync with actual pilot state
@@ -959,6 +982,18 @@ class PilotWidget(QWidget):
             self.pilot_toggle_btn.blockSignals(True)
             self.pilot_toggle_btn.setChecked(should_be_checked)
             self.pilot_toggle_btn.blockSignals(False)
+
+        # Keep automation pause button in sync
+        if self.pause_automation_btn.isChecked() != automation_paused:
+            self.pause_automation_btn.blockSignals(True)
+            self.pause_automation_btn.setChecked(automation_paused)
+            if automation_paused:
+                self.pause_automation_btn.setIcon(qta.icon("fa5s.play", color="#ffaa00"))
+                self.pause_automation_btn.setToolTip("Resume Automation")
+            else:
+                self.pause_automation_btn.setIcon(qta.icon("fa5s.pause", color="white"))
+                self.pause_automation_btn.setToolTip("Pause Automation")
+            self.pause_automation_btn.blockSignals(False)
 
         if aligned:
             # Update BPM value
