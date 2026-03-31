@@ -314,10 +314,6 @@
                     2
                   ],
                   [
-                    3,
-                    3
-                  ],
-                  [
                     1,
                     0
                   ],
@@ -331,6 +327,10 @@
                   ],
                   [
                     8,
+                    5
+                  ],
+                  [
+                    3,
                     5
                   ]
                 ],
@@ -353,6 +353,10 @@
                 "scenes": [
                   [
                     6,
+                    7
+                  ],
+                  [
+                    6,
                     3
                   ],
                   [
@@ -366,7 +370,7 @@
                 ],
                 "duration": 1.0,
                 "name": "Step 1",
-                "duration_unit": "bars"
+                "duration_unit": "seconds"
               }
             ]
           },
@@ -477,7 +481,7 @@
                 "scenes": [
                   [
                     6,
-                    6
+                    8
                   ],
                   [
                     6,
@@ -490,7 +494,7 @@
                 ],
                 "duration": 1.0,
                 "name": "Step 1",
-                "duration_unit": "bars"
+                "duration_unit": "seconds"
               }
             ]
           },
@@ -846,25 +850,21 @@
               {
                 "scenes": [
                   [
+                    0,
+                    4
+                  ],
+                  [
                     1,
-                    0
+                    4
                   ],
                   [
                     3,
-                    0
-                  ],
-                  [
-                    7,
-                    8
-                  ],
-                  [
-                    0,
                     0
                   ]
                 ],
                 "duration": 1.0,
                 "name": "Step 1",
-                "duration_unit": "bars"
+                "duration_unit": "seconds"
               }
             ]
           },
@@ -1098,12 +1098,12 @@
               {
                 "scenes": [
                   [
-                    0,
-                    0
+                    4,
+                    3
                   ],
                   [
-                    4,
-                    2
+                    0,
+                    0
                   ],
                   [
                     1,
@@ -1132,7 +1132,7 @@
                 ],
                 "duration": 1.0,
                 "name": "Step 1",
-                "duration_unit": "bars"
+                "duration_unit": "seconds"
               }
             ]
           }

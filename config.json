@@ -121,7 +121,7 @@
         "on_value": 127
     },
     "pilot": {
-        "automation_paused": true,
+        "automation_paused": false,
         "decks": {
             "A": {
                 "master_button_region": {
