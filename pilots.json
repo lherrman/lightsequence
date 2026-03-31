@@ -124,7 +124,7 @@
           "enabled": true,
           "condition": {
             "condition_type": "after_phrase_type",
-            "phrase_type": null,
+            "phrase_type": "body",
             "duration_bars": 16
           },
           "action": {
