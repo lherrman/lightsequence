@@ -98,6 +98,8 @@ class LightController:
         self._BLINK_INTERVAL: float = 0.35  # seconds between color alternation
         self.pilot_controller: t.Optional["PilotController"] = None
 
+        self.last_manual_sequence_time: float = 0.0
+
         # App state manager (save modes, pilot select)
         self.app_state_mgr = AppStateManager(
             led_ctrl=self.led_ctrl,
@@ -326,6 +328,9 @@ class LightController:
     
     def _handle_sequence_button(self, index: t.Tuple[int, int], pressed: bool) -> None:
         """Handle sequence button press (based on app state)."""
+        if pressed:
+            self.last_manual_sequence_time = time.time()
+            
         state = self.app_state_mgr.state
         if state == AppState.SAVE_MODE:
             self._save_sequence(index)
@@ -726,7 +731,10 @@ class LightController:
             elif cmd.command_type == CommandType.CLEAR:
                 self._clear_all_scenes()
             elif cmd.command_type == CommandType.ACTIVATE_SEQUENCE:
-                self._activate_deactivate_sequence(cmd.data["index"])
+                if time.time() - self.last_manual_sequence_time < 1.0:
+                    logger.debug(f"Ignoring automated sequence {cmd.data['index']} due to recent manual intervention.")
+                else:
+                    self._activate_deactivate_sequence(cmd.data["index"])
             elif cmd.command_type == CommandType.SAVE_SEQUENCE:
                 self.sequence_ctrl.save_sequence(
                     cmd.data["index"],
