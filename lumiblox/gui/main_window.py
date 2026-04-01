@@ -828,7 +828,7 @@ class LightSequenceGUI(QMainWindow):
             return
 
         # Activate sequence via command queue
-        self.controller.post_activate_sequence(index)
+        self.controller.post_activate_sequence(index, force_activate=True)
 
     def _on_automation_rule_fired(self, rule_name: str) -> None:
         """Handle rule firing notification - flash UI indicator."""

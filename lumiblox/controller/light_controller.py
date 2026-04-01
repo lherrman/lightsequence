@@ -419,9 +419,9 @@ class LightController:
     # SEQUENCE ACTIONS
     # ============================================================================
     
-    def _activate_deactivate_sequence(self, index: t.Tuple[int, int]) -> None:
+    def _activate_deactivate_sequence(self, index: t.Tuple[int, int], force_activate: bool = False) -> None:
         """Activate or deactivate a sequence."""
-        if self.active_sequence == index:
+        if self.active_sequence == index and not force_activate:
             # Deactivate
             last_scenes = self._last_sequence_scenes.copy()
             self.sequence_ctrl.clear()
@@ -734,7 +734,7 @@ class LightController:
                 if time.time() - self.last_manual_sequence_time < 1.0:
                     logger.debug(f"Ignoring automated sequence {cmd.data['index']} due to recent manual intervention.")
                 else:
-                    self._activate_deactivate_sequence(cmd.data["index"])
+                    self._activate_deactivate_sequence(cmd.data["index"], force_activate=cmd.data.get("force_activate", False))
             elif cmd.command_type == CommandType.SAVE_SEQUENCE:
                 self.sequence_ctrl.save_sequence(
                     cmd.data["index"],
@@ -776,8 +776,8 @@ class LightController:
     def post_clear(self) -> None:
         self.command_queue.post(ControllerCommand(CommandType.CLEAR))
 
-    def post_activate_sequence(self, index: t.Tuple[int, int]) -> None:
-        self.command_queue.post(ControllerCommand(CommandType.ACTIVATE_SEQUENCE, {"index": index}))
+    def post_activate_sequence(self, index: t.Tuple[int, int], force_activate: bool = False) -> None:
+        self.command_queue.post(ControllerCommand(CommandType.ACTIVATE_SEQUENCE, {"index": index, "force_activate": force_activate}))
 
     def post_save_sequence(
         self,
