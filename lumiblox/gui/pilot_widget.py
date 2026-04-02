@@ -36,6 +36,7 @@ from lumiblox.gui.ui_constants import (
     BUTTON_SIZE_SMALL,
     ICON_SIZE_MEDIUM,
     BUTTON_STYLE,
+    BUTTON_STYLE_ACTIVE,
     VALUE_LABEL_STYLE,
     HEADER_LABEL_STYLE,
     ICON_SIZE_SMALL,
@@ -701,13 +702,12 @@ class PilotWidget(QWidget):
         header_layout.addWidget(self.pilot_toggle_btn)
 
         self.pause_automation_btn = QPushButton()
-        self.pause_automation_btn.setCheckable(True)
         self.pause_automation_btn.setToolTip("Pause/Resume Automation")
         self.pause_automation_btn.setFixedSize(BUTTON_SIZE_LARGE)
-        self.pause_automation_btn.setStyleSheet(BUTTON_STYLE)
+        self.pause_automation_btn.setStyleSheet(BUTTON_STYLE_ACTIVE)
         self.pause_automation_btn.setIcon(qta.icon("fa5s.pause", color="white"))
         self.pause_automation_btn.setIconSize(ICON_SIZE_MEDIUM)
-        self.pause_automation_btn.toggled.connect(self._on_pause_automation_toggle)
+        self.pause_automation_btn.clicked.connect(self._on_pause_automation_toggle)
         header_layout.addWidget(self.pause_automation_btn)
 
         self.phrase_detection_btn = QPushButton()
@@ -899,15 +899,22 @@ class PilotWidget(QWidget):
         if checked:
             QTimer.singleShot(200, self.align_requested.emit)
 
-    def _on_pause_automation_toggle(self, checked: bool) -> None:
+    def _on_pause_automation_toggle(self) -> None:
         """Handle automation pause/resume."""
-        self.automation_pause_requested.emit(checked)
+        # Determine new state based on current state. Since it's no longer checkable,
+        # we check the current tool tip or icon style. A better way is checking the current logic state
+        is_paused = self.pause_automation_btn.toolTip() == "Resume Automation"
+        new_paused = not is_paused
+        
+        self.automation_pause_requested.emit(new_paused)
         # Update styling based on state
-        if checked:
-            self.pause_automation_btn.setIcon(qta.icon("fa5s.play", color="#ffaa00"))
+        if new_paused:
+            self.pause_automation_btn.setIcon(qta.icon("fa5s.play", color="white"))
+            self.pause_automation_btn.setStyleSheet(BUTTON_STYLE)
             self.pause_automation_btn.setToolTip("Resume Automation")
         else:
             self.pause_automation_btn.setIcon(qta.icon("fa5s.pause", color="white"))
+            self.pause_automation_btn.setStyleSheet(BUTTON_STYLE_ACTIVE)
             self.pause_automation_btn.setToolTip("Pause Automation")
 
     def _on_phrase_detection_toggle(self, checked: bool) -> None:
@@ -984,14 +991,16 @@ class PilotWidget(QWidget):
             self.pilot_toggle_btn.blockSignals(False)
 
         # Keep automation pause button in sync
-        if self.pause_automation_btn.isChecked() != automation_paused:
+        is_currently_paused = self.pause_automation_btn.toolTip() == "Resume Automation"
+        if is_currently_paused != automation_paused:
             self.pause_automation_btn.blockSignals(True)
-            self.pause_automation_btn.setChecked(automation_paused)
             if automation_paused:
-                self.pause_automation_btn.setIcon(qta.icon("fa5s.play", color="#ffaa00"))
+                self.pause_automation_btn.setIcon(qta.icon("fa5s.play", color="white"))
+                self.pause_automation_btn.setStyleSheet(BUTTON_STYLE)
                 self.pause_automation_btn.setToolTip("Resume Automation")
             else:
                 self.pause_automation_btn.setIcon(qta.icon("fa5s.pause", color="white"))
+                self.pause_automation_btn.setStyleSheet(BUTTON_STYLE_ACTIVE)
                 self.pause_automation_btn.setToolTip("Pause Automation")
             self.pause_automation_btn.blockSignals(False)
 
