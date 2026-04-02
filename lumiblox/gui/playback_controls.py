@@ -29,8 +29,10 @@ class PlaybackControls(QWidget):
 
     def __init__(self):
         super().__init__()
-        self.is_playing = False
+        self.is_playing = True
         self.setup_ui()
+        self.update_play_pause_button()
+        self.update_play_pause_button()
 
     def setup_ui(self):
         """Setup the UI."""
@@ -71,8 +73,6 @@ class PlaybackControls(QWidget):
 
     def _on_play_pause_clicked(self):
         """Handle play/pause button click."""
-        self.is_playing = not self.is_playing
-        self.update_play_pause_button()
         self.play_pause_clicked.emit()
 
     def update_play_pause_button(self):

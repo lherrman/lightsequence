@@ -589,9 +589,6 @@ class LightController:
     
     def _toggle_playback(self) -> None:
         """Toggle sequence playback."""
-        if not self.active_sequence:
-            return
-        
         if self.sequence_ctrl.playback_state == PlaybackState.PLAYING:
             self.sequence_ctrl.pause()
         else:
