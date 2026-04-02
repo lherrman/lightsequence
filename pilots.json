@@ -284,8 +284,35 @@
                     2
                   ]
                 ],
-                "duration": 1.0,
+                "duration": 7.0,
                 "name": "Step 1",
+                "duration_unit": "bars"
+              },
+              {
+                "scenes": [
+                  [
+                    0,
+                    0
+                  ],
+                  [
+                    5,
+                    0
+                  ],
+                  [
+                    1,
+                    5
+                  ],
+                  [
+                    6,
+                    1
+                  ],
+                  [
+                    4,
+                    1
+                  ]
+                ],
+                "duration": 1.0,
+                "name": "Step 2",
                 "duration_unit": "bars"
               }
             ]
@@ -322,6 +349,45 @@
                     5
                   ],
                   [
+                    8,
+                    5
+                  ],
+                  [
+                    6,
+                    3
+                  ],
+                  [
+                    7,
+                    1
+                  ]
+                ],
+                "duration": 1.0,
+                "name": "Step 2",
+                "duration_unit": "bars"
+              },
+              {
+                "scenes": [
+                  [
+                    6,
+                    8
+                  ],
+                  [
+                    7,
+                    9
+                  ],
+                  [
+                    0,
+                    2
+                  ],
+                  [
+                    1,
+                    0
+                  ],
+                  [
+                    7,
+                    5
+                  ],
+                  [
                     6,
                     3
                   ],
@@ -334,9 +400,9 @@
                     5
                   ]
                 ],
-                "duration": 1.0,
+                "duration": 3.0,
                 "name": "Step 1",
-                "duration_unit": "seconds"
+                "duration_unit": "bars"
               }
             ]
           },
@@ -356,16 +422,20 @@
                     7
                   ],
                   [
+                    0,
+                    0
+                  ],
+                  [
+                    1,
+                    6
+                  ],
+                  [
                     6,
                     3
                   ],
                   [
-                    1,
-                    3
-                  ],
-                  [
                     0,
-                    0
+                    6
                   ]
                 ],
                 "duration": 1.0,
@@ -446,6 +516,29 @@
               {
                 "scenes": [
                   [
+                    1,
+                    6
+                  ],
+                  [
+                    5,
+                    4
+                  ],
+                  [
+                    4,
+                    1
+                  ],
+                  [
+                    0,
+                    0
+                  ]
+                ],
+                "duration": 1.0,
+                "name": "Step 1",
+                "duration_unit": "bars"
+              },
+              {
+                "scenes": [
+                  [
                     5,
                     4
                   ],
@@ -463,8 +556,8 @@
                   ]
                 ],
                 "duration": 1.0,
-                "name": "Step 1",
-                "duration_unit": "seconds"
+                "name": "Step 2",
+                "duration_unit": "bars"
               }
             ]
           },
@@ -492,9 +585,28 @@
                     2
                   ]
                 ],
-                "duration": 1.0,
+                "duration": 3.5,
                 "name": "Step 1",
-                "duration_unit": "seconds"
+                "duration_unit": "bars"
+              },
+              {
+                "scenes": [
+                  [
+                    6,
+                    8
+                  ],
+                  [
+                    6,
+                    3
+                  ],
+                  [
+                    8,
+                    4
+                  ]
+                ],
+                "duration": 0.5,
+                "name": "Step 2",
+                "duration_unit": "bars"
               }
             ]
           },
@@ -572,9 +684,48 @@
                     3
                   ]
                 ],
-                "duration": 1.0,
+                "duration": 2.0,
                 "name": "Step 1",
-                "duration_unit": "seconds"
+                "duration_unit": "bars"
+              },
+              {
+                "scenes": [
+                  [
+                    0,
+                    2
+                  ],
+                  [
+                    4,
+                    0
+                  ],
+                  [
+                    7,
+                    7
+                  ],
+                  [
+                    6,
+                    0
+                  ],
+                  [
+                    1,
+                    6
+                  ],
+                  [
+                    5,
+                    2
+                  ],
+                  [
+                    7,
+                    2
+                  ],
+                  [
+                    0,
+                    1
+                  ]
+                ],
+                "duration": 2.0,
+                "name": "Step 2",
+                "duration_unit": "bars"
               }
             ]
           },
@@ -686,8 +837,82 @@
                     9
                   ],
                   [
+                    1,
+                    6
+                  ],
+                  [
+                    6,
+                    3
+                  ],
+                  [
+                    5,
+                    2
+                  ],
+                  [
+                    7,
+                    3
+                  ]
+                ],
+                "duration": 0.5,
+                "name": "Step 1",
+                "duration_unit": "bars"
+              },
+              {
+                "scenes": [
+                  [
+                    4,
+                    0
+                  ],
+                  [
+                    6,
+                    8
+                  ],
+                  [
+                    0,
+                    3
+                  ],
+                  [
+                    7,
+                    9
+                  ],
+                  [
+                    1,
+                    6
+                  ],
+                  [
+                    6,
+                    3
+                  ],
+                  [
+                    5,
+                    2
+                  ],
+                  [
                     7,
                     2
+                  ]
+                ],
+                "duration": 5.5,
+                "name": "Step 2",
+                "duration_unit": "bars"
+              },
+              {
+                "scenes": [
+                  [
+                    4,
+                    0
+                  ],
+                  [
+                    6,
+                    8
+                  ],
+                  [
+                    0,
+                    3
+                  ],
+                  [
+                    7,
+                    9
                   ],
                   [
                     1,
@@ -702,9 +927,9 @@
                     2
                   ]
                 ],
-                "duration": 1.0,
-                "name": "Step 1",
-                "duration_unit": "seconds"
+                "duration": 2.0,
+                "name": "Step 3",
+                "duration_unit": "bars"
               }
             ]
           },
@@ -834,7 +1059,7 @@
                 ],
                 "duration": 1.0,
                 "name": "Step 1",
-                "duration_unit": "seconds"
+                "duration_unit": "bars"
               }
             ]
           },
@@ -864,7 +1089,7 @@
                 ],
                 "duration": 1.0,
                 "name": "Step 1",
-                "duration_unit": "seconds"
+                "duration_unit": "bars"
               }
             ]
           },
@@ -880,7 +1105,19 @@
               {
                 "scenes": [
                   [
+                    0,
+                    0
+                  ],
+                  [
+                    2,
+                    2
+                  ],
+                  [
                     1,
+                    1
+                  ],
+                  [
+                    4,
                     1
                   ],
                   [
@@ -888,17 +1125,13 @@
                     1
                   ],
                   [
-                    4,
-                    2
-                  ],
-                  [
-                    0,
+                    3,
                     0
                   ]
                 ],
                 "duration": 1.0,
                 "name": "Step 1",
-                "duration_unit": "bars"
+                "duration_unit": "seconds"
               }
             ]
           },
@@ -946,8 +1179,51 @@
                     1
                   ]
                 ],
-                "duration": 1.0,
+                "duration": 3.5,
                 "name": "Step 1",
+                "duration_unit": "bars"
+              },
+              {
+                "scenes": [
+                  [
+                    1,
+                    5
+                  ],
+                  [
+                    6,
+                    8
+                  ],
+                  [
+                    2,
+                    0
+                  ],
+                  [
+                    7,
+                    9
+                  ],
+                  [
+                    5,
+                    6
+                  ],
+                  [
+                    0,
+                    8
+                  ],
+                  [
+                    6,
+                    3
+                  ],
+                  [
+                    4,
+                    1
+                  ],
+                  [
+                    7,
+                    2
+                  ]
+                ],
+                "duration": 0.5,
+                "name": "Step 2",
                 "duration_unit": "bars"
               }
             ]
@@ -972,11 +1248,11 @@
                     4
                   ],
                   [
-                    4,
-                    2
+                    3,
+                    1
                   ],
                   [
-                    3,
+                    4,
                     1
                   ],
                   [
@@ -988,8 +1264,39 @@
                     6
                   ]
                 ],
-                "duration": 1.0,
+                "duration": 3.0,
                 "name": "Step 1",
+                "duration_unit": "bars"
+              },
+              {
+                "scenes": [
+                  [
+                    0,
+                    1
+                  ],
+                  [
+                    1,
+                    4
+                  ],
+                  [
+                    3,
+                    1
+                  ],
+                  [
+                    0,
+                    6
+                  ],
+                  [
+                    4,
+                    1
+                  ],
+                  [
+                    5,
+                    6
+                  ]
+                ],
+                "duration": 1.0,
+                "name": "Step 2",
                 "duration_unit": "bars"
               }
             ]
@@ -1082,7 +1389,7 @@
                 ],
                 "duration": 1.0,
                 "name": "Step 1",
-                "duration_unit": "seconds"
+                "duration_unit": "bars"
               }
             ]
           },
@@ -1128,11 +1435,54 @@
                   [
                     6,
                     3
+                  ],
+                  [
+                    7,
+                    1
                   ]
                 ],
-                "duration": 1.0,
+                "duration": 0.25,
                 "name": "Step 1",
-                "duration_unit": "seconds"
+                "duration_unit": "bars"
+              },
+              {
+                "scenes": [
+                  [
+                    4,
+                    3
+                  ],
+                  [
+                    0,
+                    0
+                  ],
+                  [
+                    1,
+                    4
+                  ],
+                  [
+                    7,
+                    9
+                  ],
+                  [
+                    6,
+                    7
+                  ],
+                  [
+                    5,
+                    6
+                  ],
+                  [
+                    0,
+                    5
+                  ],
+                  [
+                    6,
+                    3
+                  ]
+                ],
+                "duration": 1.75,
+                "name": "Step 2",
+                "duration_unit": "bars"
               }
             ]
           }
@@ -1548,16 +1898,16 @@
               {
                 "scenes": [
                   [
-                    0,
-                    5
+                    4,
+                    0
                   ],
                   [
                     3,
                     0
                   ],
                   [
-                    4,
-                    2
+                    0,
+                    5
                   ],
                   [
                     5,
@@ -1566,7 +1916,7 @@
                 ],
                 "duration": 1.0,
                 "name": "Step 1",
-                "duration_unit": "bars"
+                "duration_unit": "seconds"
               }
             ]
           },
@@ -1860,8 +2210,27 @@
                     4
                   ]
                 ],
-                "duration": 1.0,
+                "duration": 4.0,
                 "name": "Step 1",
+                "duration_unit": "bars"
+              },
+              {
+                "scenes": [
+                  [
+                    1,
+                    6
+                  ],
+                  [
+                    3,
+                    2
+                  ],
+                  [
+                    0,
+                    4
+                  ]
+                ],
+                "duration": 4.0,
+                "name": "Step 2",
                 "duration_unit": "bars"
               }
             ]
@@ -1882,10 +2251,6 @@
                     4
                   ],
                   [
-                    7,
-                    2
-                  ],
-                  [
                     1,
                     0
                   ],
@@ -1896,10 +2261,37 @@
                   [
                     3,
                     0
+                  ],
+                  [
+                    7,
+                    2
                   ]
                 ],
-                "duration": 1.0,
+                "duration": 2.0,
                 "name": "Step 1",
+                "duration_unit": "bars"
+              },
+              {
+                "scenes": [
+                  [
+                    1,
+                    0
+                  ],
+                  [
+                    7,
+                    5
+                  ],
+                  [
+                    0,
+                    4
+                  ],
+                  [
+                    3,
+                    0
+                  ]
+                ],
+                "duration": 2.0,
+                "name": "Step 2",
                 "duration_unit": "bars"
               }
             ]
@@ -1913,6 +2305,41 @@
             "loop_count": 1,
             "next_sequences": [],
             "steps": [
+              {
+                "scenes": [
+                  [
+                    7,
+                    6
+                  ],
+                  [
+                    4,
+                    3
+                  ],
+                  [
+                    1,
+                    0
+                  ],
+                  [
+                    7,
+                    5
+                  ],
+                  [
+                    5,
+                    7
+                  ],
+                  [
+                    0,
+                    6
+                  ],
+                  [
+                    7,
+                    1
+                  ]
+                ],
+                "duration": 0.5,
+                "name": "Step 1",
+                "duration_unit": "bars"
+              },
               {
                 "scenes": [
                   [
@@ -1944,8 +2371,39 @@
                     6
                   ]
                 ],
-                "duration": 1.0,
-                "name": "Step 1",
+                "duration": 1.5,
+                "name": "Step 2",
+                "duration_unit": "bars"
+              },
+              {
+                "scenes": [
+                  [
+                    7,
+                    6
+                  ],
+                  [
+                    4,
+                    3
+                  ],
+                  [
+                    1,
+                    0
+                  ],
+                  [
+                    7,
+                    5
+                  ],
+                  [
+                    5,
+                    7
+                  ],
+                  [
+                    0,
+                    6
+                  ]
+                ],
+                "duration": 1.75,
+                "name": "Step 3",
                 "duration_unit": "bars"
               }
             ]
@@ -2034,6 +2492,10 @@
                     7
                   ],
                   [
+                    4,
+                    0
+                  ],
+                  [
                     5,
                     6
                   ],
@@ -2044,15 +2506,11 @@
                   [
                     6,
                     4
-                  ],
-                  [
-                    4,
-                    2
                   ]
                 ],
                 "duration": 1.0,
                 "name": "Step 1",
-                "duration_unit": "bars"
+                "duration_unit": "seconds"
               }
             ]
           },
@@ -2123,6 +2581,125 @@
         ]
       },
       "linked_pilot": null
+    },
+    {
+      "name": "Default - Early",
+      "enabled": false,
+      "rules": [
+        {
+          "name": "On Breakdown",
+          "enabled": true,
+          "condition": {
+            "condition_type": "on_phrase_change",
+            "phrase_type": "breakdown",
+            "duration_bars": 8
+          },
+          "action": {
+            "action_type": "activate_sequence",
+            "sequences": [
+              {
+                "weight": 0.25,
+                "sequence_index": "2.0"
+              },
+              {
+                "weight": 0.25,
+                "sequence_index": "1.0"
+              },
+              {
+                "weight": 0.25,
+                "sequence_index": "0.0"
+              },
+              {
+                "weight": 0.25,
+                "sequence_index": "3.0"
+              }
+            ]
+          },
+          "cooldown_bars": 8
+        },
+        {
+          "name": "On Drop",
+          "enabled": true,
+          "condition": {
+            "condition_type": "on_phrase_change",
+            "phrase_type": "body",
+            "duration_bars": 8
+          },
+          "action": {
+            "action_type": "activate_sequence",
+            "sequences": [
+              {
+                "weight": 0.1429,
+                "sequence_index": "1.2"
+              },
+              {
+                "weight": 0.1429,
+                "sequence_index": "0.1"
+              },
+              {
+                "weight": 0.1429,
+                "sequence_index": "2.1"
+              },
+              {
+                "weight": 0.1429,
+                "sequence_index": "3.1"
+              },
+              {
+                "weight": 0.1429,
+                "sequence_index": "1.1"
+              },
+              {
+                "weight": 0.1429,
+                "sequence_index": "4.1"
+              },
+              {
+                "weight": 0.1429,
+                "sequence_index": "2.2"
+              }
+            ]
+          },
+          "cooldown_bars": 0
+        },
+        {
+          "name": "Random",
+          "enabled": true,
+          "condition": {
+            "condition_type": "after_phrase_type",
+            "phrase_type": "body",
+            "duration_bars": 16
+          },
+          "action": {
+            "action_type": "activate_sequence",
+            "sequences": [
+              {
+                "weight": 0.2,
+                "sequence_index": "0.1"
+              },
+              {
+                "weight": 0.2,
+                "sequence_index": "1.1"
+              },
+              {
+                "weight": 0.2,
+                "sequence_index": "2.1"
+              },
+              {
+                "weight": 0.2,
+                "sequence_index": "3.1"
+              },
+              {
+                "weight": 0.2,
+                "sequence_index": "2.0"
+              }
+            ]
+          },
+          "cooldown_bars": 8
+        }
+      ],
+      "sequences": {
+        "sequences": []
+      },
+      "linked_pilot": "Default Pilot"
     }
   ]
 }
