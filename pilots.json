@@ -1492,7 +1492,7 @@
     },
     {
       "name": "Low Energy",
-      "enabled": true,
+      "enabled": false,
       "rules": [
         {
           "name": "On Drop",
@@ -2734,6 +2734,226 @@
         "sequences": []
       },
       "linked_pilot": "Default Pilot"
+    },
+    {
+      "name": "Daytime",
+      "enabled": true,
+      "rules": [
+        {
+          "name": "Random",
+          "enabled": true,
+          "condition": {
+            "condition_type": "after_phrase_type",
+            "phrase_type": null,
+            "duration_bars": 4
+          },
+          "action": {
+            "action_type": "activate_sequence",
+            "sequences": [
+              {
+                "weight": 0.2,
+                "sequence_index": "0.0"
+              },
+              {
+                "weight": 0.2,
+                "sequence_index": "1.0"
+              },
+              {
+                "weight": 0.2,
+                "sequence_index": "2.0"
+              },
+              {
+                "weight": 0.2,
+                "sequence_index": "3.0"
+              },
+              {
+                "weight": 0.2,
+                "sequence_index": "4.0"
+              }
+            ]
+          },
+          "cooldown_bars": 2
+        }
+      ],
+      "sequences": {
+        "sequences": [
+          {
+            "index": [
+              0,
+              0
+            ],
+            "loop": true,
+            "loop_count": 1,
+            "next_sequences": [],
+            "steps": [
+              {
+                "scenes": [
+                  [
+                    1,
+                    7
+                  ],
+                  [
+                    0,
+                    4
+                  ],
+                  [
+                    3,
+                    0
+                  ]
+                ],
+                "duration": 1.0,
+                "name": "Step 1",
+                "duration_unit": "seconds"
+              }
+            ]
+          },
+          {
+            "index": [
+              1,
+              0
+            ],
+            "loop": true,
+            "loop_count": 1,
+            "next_sequences": [],
+            "steps": [
+              {
+                "scenes": [
+                  [
+                    1,
+                    7
+                  ],
+                  [
+                    0,
+                    4
+                  ],
+                  [
+                    5,
+                    9
+                  ],
+                  [
+                    4,
+                    6
+                  ],
+                  [
+                    0,
+                    9
+                  ]
+                ],
+                "duration": 1.0,
+                "name": "Step 1",
+                "duration_unit": "seconds"
+              }
+            ]
+          },
+          {
+            "index": [
+              2,
+              0
+            ],
+            "loop": true,
+            "loop_count": 1,
+            "next_sequences": [],
+            "steps": [
+              {
+                "scenes": [
+                  [
+                    3,
+                    3
+                  ],
+                  [
+                    0,
+                    4
+                  ],
+                  [
+                    5,
+                    8
+                  ],
+                  [
+                    1,
+                    8
+                  ],
+                  [
+                    4,
+                    6
+                  ],
+                  [
+                    0,
+                    9
+                  ]
+                ],
+                "duration": 1.0,
+                "name": "Step 1",
+                "duration_unit": "seconds"
+              }
+            ]
+          },
+          {
+            "index": [
+              3,
+              0
+            ],
+            "loop": true,
+            "loop_count": 1,
+            "next_sequences": [],
+            "steps": [
+              {
+                "scenes": [
+                  [
+                    1,
+                    7
+                  ],
+                  [
+                    0,
+                    4
+                  ],
+                  [
+                    3,
+                    0
+                  ]
+                ],
+                "duration": 1.0,
+                "name": "Step 1",
+                "duration_unit": "seconds"
+              }
+            ]
+          },
+          {
+            "index": [
+              4,
+              0
+            ],
+            "loop": true,
+            "loop_count": 1,
+            "next_sequences": [],
+            "steps": [
+              {
+                "scenes": [
+                  [
+                    3,
+                    3
+                  ],
+                  [
+                    0,
+                    9
+                  ],
+                  [
+                    4,
+                    1
+                  ],
+                  [
+                    5,
+                    8
+                  ]
+                ],
+                "duration": 1.0,
+                "name": "Step 1",
+                "duration_unit": "seconds"
+              }
+            ]
+          }
+        ]
+      },
+      "linked_pilot": null
     }
   ]
 }
